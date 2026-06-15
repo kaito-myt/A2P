@@ -12,6 +12,7 @@
     "./ab-comparison": "./src/ab-comparison.ts"
   },
   "scripts": {
+    "postinstall": "prisma generate --schema=./schema.prisma",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run",
     "test:watch": "vitest",
