@@ -1,0 +1,128 @@
+/*
+ * apps/web/app/globals.css
+ *
+ * Tailwind v3 directives + A2P design token CSS variables.
+ * Single source of truth: packages/ui/src/tokens.ts (docs/04 §6.3, docs/03 §K).
+ *
+ * shadcn semantic CSS variables (--background / --foreground / --primary /
+ * --border / --ring etc.) are mapped to A2P warm-parchment palette so that
+ * shadcn components automatically render with cream / charcoal / border-warm.
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* A2P base tokens (mirrored from tokens.ts for use outside Tailwind) */
+  --cream: #f7f4ed;
+  --cream-light: #fcfbf8;
+  --charcoal: #1c1c1c;
+  --charcoal-83: rgba(28, 28, 28, 0.83);
+  --charcoal-82: rgba(28, 28, 28, 0.82);
+  --charcoal-40: rgba(28, 28, 28, 0.40);
+  --charcoal-04: rgba(28, 28, 28, 0.04);
+  --charcoal-03: rgba(28, 28, 28, 0.03);
+  --border-warm: #eceae4;
+  --muted: #5f5f5d;
+
+  /* Semantic colors */
+  --destructive: #b91c1c;
+  --destructive-bg: #fee2e2;
+  --warning: #b45309;
+  --warning-bg: #fef3c7;
+  --success: #15803d;
+  --success-bg: #dcfce7;
+  --accent: #1d4ed8;
+  --accent-bg: #dbeafe;
+
+  /* Focus / ring */
+  --ring-blue: rgba(59, 130, 246, 0.50);
+
+  /* Radius */
+  --radius-micro: 4px;
+  --radius-default: 6px;
+  --radius-snug: 8px;
+  --radius-card: 12px;
+  --radius-container: 16px;
+  --radius-pill: 9999px;
+
+  /* Shadow tokens (L2 Inset for primary button signature; L3 Focus for active state) */
+  --shadow-l2-inset:
+    inset 0 0.5px 0 0 rgba(255, 255, 255, 0.20),
+    inset 0 0 0 0.5px rgba(0, 0, 0, 0.20),
+    0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-l3-focus: 0 4px 12px rgba(0, 0, 0, 0.10);
+
+  /* shadcn semantic CSS variables (used by generated components) */
+  --background: var(--cream);
+  --foreground: var(--charcoal);
+  --card: var(--cream);
+  --card-foreground: var(--charcoal);
+  --popover: var(--cream-light);
+  --popover-foreground: var(--charcoal);
+  --primary: var(--charcoal);
+  --primary-foreground: var(--cream-light);
+  --secondary: var(--cream);
+  --secondary-foreground: var(--charcoal);
+  --muted-foreground: var(--muted);
+  --accent-foreground: var(--cream-light);
+  --destructive-foreground: var(--cream-light);
+  --border: var(--border-warm);
+  --input: var(--border-warm);
+  --ring: var(--ring-blue);
+
+  /* Font stacks bound by next/font/google variables in layout.tsx */
+  --font-sans: var(--font-inter), var(--font-noto-jp), ui-sans-serif, system-ui, sans-serif;
+
+  /*
+   * --color-* aliases — T-01-09 (login page) consumed these names before T-01-10
+   * unified the token layer. Kept as a thin alias so the login UI keeps rendering
+   * with §6.3 tokens without rewriting it. Remove when login is migrated to
+   * Tailwind utility classes.
+   */
+  --color-cream: var(--cream);
+  --color-cream-light: var(--cream-light);
+  --color-charcoal: var(--charcoal);
+  --color-charcoal-82: var(--charcoal-82);
+  --color-charcoal-40: var(--charcoal-40);
+  --color-border-warm: var(--border-warm);
+  --color-muted: var(--muted);
+  --color-destructive: var(--destructive);
+  --color-destructive-bg: var(--destructive-bg);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--cream);
+  color: var(--charcoal);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+/* §6.7 国際化: 日本語のベタ組をプロポーショナル化する */
+[lang='ja'] {
+  font-feature-settings: 'palt';
+}

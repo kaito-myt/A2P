@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>KDP レポート — 架空ダミーデータ</title>
+</head>
+<body>
+  <div id="report-container">
+    <h1>売上レポート</h1>
+    <p class="report-period">対象期間: 2026年05月</p>
+
+    <table id="sales-report-table" class="a-bordered">
+      <thead>
+        <tr>
+          <th>ASIN</th>
+          <th>タイトル</th>
+          <th>販売冊数</th>
+          <th>ロイヤリティ (円)</th>
+          <th>レビュー数</th>
+          <th>平均評価</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="report-row" data-asin="B0TESTAA01">
+          <td class="asin-cell">B0TESTAA01</td>
+          <td class="title-cell">テスト書籍 A</td>
+          <td class="units-cell">42</td>
+          <td class="royalty-cell">¥12500</td>
+          <td class="reviews-cell">レビュー: 15件</td>
+          <td class="stars-cell">4.3</td>
+        </tr>
+        <tr class="report-row" data-asin="B0TESTBB02">
+          <td class="asin-cell">B0TESTBB02</td>
+          <td class="title-cell">テスト書籍 B</td>
+          <td class="units-cell">7</td>
+          <td class="royalty-cell">¥3200</td>
+          <td class="reviews-cell">レビュー: 3件</td>
+          <td class="stars-cell">4.7</td>
+        </tr>
+        <tr class="report-row" data-asin="B0TESTCC03">
+          <td class="asin-cell">B0TESTCC03</td>
+          <td class="title-cell">テスト書籍 C</td>
+          <td class="units-cell">0</td>
+          <td class="royalty-cell">¥0</td>
+          <td class="reviews-cell">レビュー: 0件</td>
+          <td class="stars-cell"></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="report-summary">
+      <p>合計販売冊数: 49冊</p>
+      <p>合計ロイヤリティ: ¥15,700</p>
+    </div>
+  </div>
+</body>
+</html>

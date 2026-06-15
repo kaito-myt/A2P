@@ -1,0 +1,37 @@
+node_modules/
+.next/
+dist/
+build/
+.turbo/
+.tsbuildinfo
+*.tsbuildinfo
+
+# env (Hard Rule 6: never commit)
+.env
+.env.*
+!.env.example
+
+*.log
+.DS_Store
+Thumbs.db
+
+coverage/
+playwright-report/
+test-results/
+# Playwright storageState (認証 cookie を含む)
+tests/e2e/.auth/
+
+# Prisma generated client
+packages/db/generated/
+
+.vercel/
+.railway/
+
+# pnpm
+.pnpm-store/
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example

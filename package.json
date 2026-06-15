@@ -1,0 +1,30 @@
+{
+  "name": "a2p",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Amazon Automated Publishing Tool — AI agent harness + runtime for KDP book production",
+  "engines": {
+    "node": "^22"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "lint": "pnpm -r --if-present lint",
+    "typecheck": "pnpm -r --if-present typecheck && pnpm typecheck:e2e",
+    "typecheck:e2e": "tsc --noEmit -p tests/e2e/tsconfig.json",
+    "test:unit": "pnpm -r --if-present test:unit",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install --with-deps chromium",
+    "build": "pnpm -r --if-present build",
+    "check:env": "tsx scripts/check-env-example.ts",
+    "check:llm-client": "tsx scripts/check-llm-client-usage.ts",
+    "db:seed": "pnpm --filter @a2p/db seed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.9.0",
+    "dotenv": "^16.4.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}

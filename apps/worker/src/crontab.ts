@@ -1,0 +1,183 @@
+import { type CronItem, parseCronItems, type ParsedCronItem } from 'graphile-worker';
+
+import { ALERT_COST_CHECK_TASK_NAME } from './tasks/alert-cost-check.js';
+import { ARCHIVE_DB_BACKUP_TASK_NAME } from './tasks/archive-db-backup.js';
+import { ARCHIVE_JOBS_TASK_NAME } from './tasks/archive-jobs.js';
+import { BATCH_PLAN_DISPATCHER_TASK_NAME } from './tasks/batch-plan-dispatcher.js';
+import { CATALOG_FETCH_TASK_NAME } from './tasks/catalog-fetch.js';
+import { FX_FETCH_TASK_NAME } from './tasks/fx-fetch.js';
+import { SALES_FETCH_DISPATCHER_TASK_NAME } from './tasks/sales-fetch-dispatcher.js';
+
+/**
+ * graphile-worker cron 定義 (docs/05 §5.4 / SP-01 仕様: `apps/worker/src/crontab.ts`)
+ *
+ * docs/05 §5.1 ではタスク名にドット表記 (`pipeline.book.kickoff`) を採用しているが、
+ * graphile-worker 0.16 の crontab 文字列パーサ (`CRONTAB_COMMAND` 正規表現:
+ * `^([_a-zA-Z][_a-zA-Z0-9:_-]*)...`) はドットを許容しない。一方で `CronItem` の
+ * プログラマティック API はタスク名に制約がないため、本ファイルでは `CronItem[]` を
+ * 直接生成して `parseCronItems()` に渡す方式を採用する（docs/05 §5.1 の命名規約と
+ * graphile-worker の cron 文字列制約を両立するための実装上の決定）。
+ *
+ * Phase 1 (SP-01) 時点で有効化する cron:
+ *   - `archive.db.backup`: 週次 pg_dump → R2 退避 (R-12 緩和)
+ *
+ * Phase 1 後半 / Phase 2 で有効化する cron は docs/05 §5.4 に列挙。各 SP でタスク本実装
+ * とセットで本配列に追記する運用とする。
+ */
+
+/**
+ * 毎週土曜 18:00 UTC = 日曜 03:00 JST。docs/03 R-12 緩和 (Railway 障害時の R2 復元手段)。
+ *
+ * graphile-worker の cron は UTC ベース:
+ *   日曜 03:00 JST = 土曜 18:00 UTC → `0 18 * * 6`
+ * docs/05 §5.4 に「日曜 03:00 JST」と記載されているため、土曜 18:00 UTC で起動する。
+ */
+export const ARCHIVE_DB_BACKUP_CRON = '0 18 * * 6';
+
+/**
+ * SP-02 T-02-07: 毎時 0 分に期限切れ BookLock を掃除。
+ * docs/05 OQ-D-05 で運用方針が確定 (「必要なら alert.cost.check と同 cron で掃除」)、
+ * かつ docs/05 §14 #4 で BookLock は `expires_at` 自動解放と定められているため。
+ */
+export const LOCKS_SWEEP_CRON = '0 * * * *';
+
+/**
+ * SP-02 T-02-08: 日次の為替レート取得。
+ * `55 18 * * *` UTC = JST 03:55。catalog.fetch (T-02-09, JST 04:00) より 5 分前に
+ * 走らせて `AppSettings.latest_fx_rate` を更新しておく (docs/05 §5.4 と整合)。
+ */
+export const FX_FETCH_CRON = '55 18 * * *';
+
+/**
+ * SP-02 T-02-09: 日次の単価カタログ取得。
+ * env `MODEL_CATALOG_FETCH_CRON` (既定 `0 19 * * *` UTC = JST 04:00) を使用 (docs/05 §5.4)。
+ * fx.fetch (`55 18 * * *`) の 5 分後に走らせ、`AppSettings.latest_fx_rate` を
+ * 同日分のレートとして利用する。
+ */
+export const CATALOG_FETCH_CRON_DEFAULT = '0 19 * * *';
+
+/**
+ * SP-03 T-03-10: 毎分 batch_plan のスケジュール起動チェック。
+ * `BatchPlan.status='scheduled' AND planned_at <= now()` の plan を一括 kick する
+ * (docs/05 §5.4 / F-021)。1 分粒度で十分 (BatchPlan の planned_at は分単位)。
+ */
+export const BATCH_PLAN_DISPATCHER_CRON = '* * * * *';
+
+/**
+ * SP-07 T-07-02: 毎時 0 分にコストアラートチェック (docs/05 §5.4)。
+ * `0 * * * *` UTC — monthly scope は毎時、per_book scope は個別 enqueue。
+ */
+export const ALERT_COST_CHECK_CRON = '0 * * * *';
+
+/**
+ * T-09-04: 毎週日曜 03:00 JST = 土曜 18:00 UTC (docs/05 §5.3.18)。
+ * archive.db.backup (`0 18 * * 6`) と同スケジュール — 日曜朝メンテナンスウィンドウ統一。
+ */
+export const ARCHIVE_JOBS_CRON = '0 18 * * 6';
+
+/** env から catalog cron を取得 (既定 `0 19 * * *`)。 */
+export function resolveCatalogFetchCron(env: NodeJS.ProcessEnv = process.env): string {
+  const v = env.MODEL_CATALOG_FETCH_CRON;
+  if (typeof v === 'string' && v.trim().length > 0) return v.trim();
+  return CATALOG_FETCH_CRON_DEFAULT;
+}
+
+/**
+ * SP-12 T-12-05: 日次の売上自動取得 dispatcher。
+ * `0 17 * * *` UTC = JST 02:00。docs/05 §5.4 / F-038。
+ * このエントリは CRON_ITEMS に静的追加せず、`buildCronItemsWithSettings` で条件付き追加する。
+ */
+export const SALES_FETCH_CRON_DEFAULT = '0 17 * * *'; // 02:00 JST
+
+/** env から sales.fetch.dispatch cron を取得 (既定 `0 17 * * *`)。 */
+export function resolveSalesFetchCron(env: NodeJS.ProcessEnv = process.env): string {
+  const v = env.SALES_FETCH_CRON;
+  if (typeof v === 'string' && v.trim().length > 0) return v.trim();
+  return SALES_FETCH_CRON_DEFAULT;
+}
+
+/** `sales.fetch.dispatch` の CronItem 定義 (AppSettings.sales_auto_fetch_enabled=true のときのみ使用)。 */
+export const SALES_FETCH_DISPATCH_CRON_ITEM: CronItem = {
+  task: SALES_FETCH_DISPATCHER_TASK_NAME,
+  match: resolveSalesFetchCron(),
+  identifier: 'sales-fetch-dispatch-daily',
+};
+
+/** AppSettings.sales_auto_fetch_enabled に応じて CronItem 配列を組み立てる。 */
+export interface SalesFetchSettings {
+  sales_auto_fetch_enabled: boolean;
+  /** DB に保存されている cron 文字列 (省略時は env / 既定値を使用)。 */
+  sales_auto_fetch_cron?: string | null;
+}
+
+/**
+ * AppSettings を受け取り、最終的な CronItem[] を返す。
+ *
+ * - `sales_auto_fetch_enabled=false` → CRON_ITEMS のみ (静的 6 件)
+ * - `sales_auto_fetch_enabled=true`  → CRON_ITEMS + sales.fetch.dispatch エントリ
+ * - `sales_auto_fetch_cron` が設定されていれば env より優先して使う
+ */
+export function buildCronItemsWithSettings(settings: SalesFetchSettings): CronItem[] {
+  if (!settings.sales_auto_fetch_enabled) return [...CRON_ITEMS];
+
+  const cronMatch =
+    typeof settings.sales_auto_fetch_cron === 'string' &&
+    settings.sales_auto_fetch_cron.trim().length > 0
+      ? settings.sales_auto_fetch_cron.trim()
+      : resolveSalesFetchCron();
+
+  const dispatchItem: CronItem = {
+    ...SALES_FETCH_DISPATCH_CRON_ITEM,
+    match: cronMatch,
+  };
+
+  return [...CRON_ITEMS, dispatchItem];
+}
+
+export const CRON_ITEMS: CronItem[] = [
+  {
+    task: ARCHIVE_DB_BACKUP_TASK_NAME,
+    match: ARCHIVE_DB_BACKUP_CRON,
+    identifier: 'archive-db-backup-weekly',
+    // payload は不要 (タスク本体は env と helpers.job から状態を取る)
+  },
+  {
+    task: FX_FETCH_TASK_NAME,
+    match: FX_FETCH_CRON,
+    identifier: 'fx-fetch-daily',
+    // payload 不要 (タスク本体は env FX_RATE_API_URL を内部で読む)
+  },
+  {
+    task: CATALOG_FETCH_TASK_NAME,
+    match: resolveCatalogFetchCron(),
+    identifier: 'catalog-fetch-daily',
+    payload: { trigger: 'cron' },
+  },
+  {
+    task: BATCH_PLAN_DISPATCHER_TASK_NAME,
+    match: BATCH_PLAN_DISPATCHER_CRON,
+    identifier: 'batch-plan-dispatcher-minute',
+    // payload 不要 (タスク本体は now() を内部で取り DB 駆動で plan を探す)
+  },
+  // SP-07 T-07-02: 毎時 0 分に monthly scope コストチェック (docs/05 §5.4)
+  {
+    task: ALERT_COST_CHECK_TASK_NAME,
+    match: ALERT_COST_CHECK_CRON,
+    identifier: 'alert-cost-check-hourly',
+    payload: { scope: 'monthly' },
+  },
+  // T-09-04: 週次ジョブログアーカイブ (日曜 03:00 JST = 土曜 18:00 UTC, docs/05 §5.3.18)
+  {
+    task: ARCHIVE_JOBS_TASK_NAME,
+    match: ARCHIVE_JOBS_CRON,
+    identifier: 'archive-jobs-weekly',
+  },
+  // sales.fetch.dispatch は AppSettings.sales_auto_fetch_enabled に応じて
+  // buildCronItemsWithSettings() で条件付き追加する (SP-12 T-12-05)。
+  // 静的 CRON_ITEMS には含めない — 既存テストの 6 件アサーションを維持するため。
+];
+
+/** graphile-worker `run({ parsedCronItems })` に渡す。空配列なら cron 無効。 */
+export function buildParsedCronItems(items: CronItem[] = CRON_ITEMS): ParsedCronItem[] {
+  return parseCronItems(items);
+}

@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "@playwright/test"],
+    "paths": {
+      "@a2p/db": ["../../packages/db/index.ts"],
+      "@a2p/db/*": ["../../packages/db/*"],
+      "@a2p/agents": ["../../packages/agents/src/index.ts"],
+      "@a2p/agents/*": ["../../packages/agents/src/*"],
+      "@a2p/crypto": ["../../packages/crypto/src/index.ts"],
+      "@a2p/crypto/*": ["../../packages/crypto/src/*"],
+      "@a2p/contracts": ["../../packages/contracts/src/index.ts"],
+      "@a2p/contracts/*": ["../../packages/contracts/src/*"]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "../../playwright.config.ts"
+  ]
+}

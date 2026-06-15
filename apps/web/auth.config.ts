@@ -1,0 +1,64 @@
+/**
+ * Auth.js v5 共通設定 (middleware + Node auth で共有)
+ *
+ * Auth.js v5 では Credentials Provider と Prisma が Edge Runtime で動かないため、
+ * - middleware.ts は **この auth.config.ts のみ** を import する（Edge 互換）
+ * - apps/web/auth.ts は config + providers を追加して Node ランタイムで動く NextAuth を export する
+ *
+ * 詳細: https://authjs.dev/guides/edge-compatibility
+ */
+import type { NextAuthConfig } from 'next-auth';
+
+export const authConfig: NextAuthConfig = {
+  // セッション期限 30 日 [F-043 受け入れ基準]
+  session: {
+    strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60, // 30 days (seconds)
+  },
+  pages: {
+    signIn: '/login',
+  },
+  callbacks: {
+    /**
+     * middleware から呼ばれる認可コールバック。
+     * - `/login` 以外を未認証で叩いたら false → middleware が signIn ページへ redirect
+     * - `/api/auth/*` と公開リソースは matcher 側で除外
+     */
+    authorized({ auth, request }) {
+      const isLoggedIn = Boolean(auth?.user);
+      const { pathname } = request.nextUrl;
+
+      const isLoginPage = pathname === '/login';
+      if (isLoginPage) {
+        // 既にログイン済みでログイン画面に来たらダッシュボードへ
+        if (isLoggedIn) {
+          const dashboard = new URL('/', request.nextUrl);
+          return Response.redirect(dashboard);
+        }
+        return true;
+      }
+      return isLoggedIn;
+    },
+    /** JWT に user.id / user.username を埋め込む。 */
+    jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+        // user.username はカスタムフィールド (auth.ts authorize で付与)
+        const candidate = (user as { username?: unknown }).username;
+        if (typeof candidate === 'string') {
+          token.username = candidate;
+        }
+      }
+      return token;
+    },
+    /** session.user.id / username を露出する。 */
+    session({ session, token }) {
+      if (session.user) {
+        if (typeof token.id === 'string') session.user.id = token.id;
+        if (typeof token.username === 'string') session.user.username = token.username;
+      }
+      return session;
+    },
+  },
+  providers: [], // 実 provider は apps/web/auth.ts で追加
+};
