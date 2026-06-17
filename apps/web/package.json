@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",
-    "start": "next start -p 3001",
+    "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "next lint",
     "test:unit": "vitest run",
