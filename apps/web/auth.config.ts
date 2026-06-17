@@ -10,6 +10,10 @@
 import type { NextAuthConfig } from 'next-auth';
 
 export const authConfig: NextAuthConfig = {
+  // リバースプロキシ (Railway 等) 配下で Host ヘッダを信頼する。
+  // 未設定だと Auth.js v5 が UntrustedHost エラーを投げ、/api/auth/session 解決が
+  // 失敗して /login が 500 になる。AUTH_TRUST_HOST env でも可だがコードで明示する。
+  trustHost: true,
   // セッション期限 30 日 [F-043 受け入れ基準]
   session: {
     strategy: 'jwt',
