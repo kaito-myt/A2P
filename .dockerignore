@@ -1,0 +1,34 @@
+# Docker ビルドコンテキストから除外する。
+# 特に node_modules はホスト (Windows) 用に解決済みのため、コンテナ内で
+# pnpm install が作る Linux 用シンボリックリンク構造を上書きしてはならない
+# (上書きすると @a2p/* ワークスペースリンクが壊れ ERR_MODULE_NOT_FOUND になる)。
+
+# 依存・ビルド成果物
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+packages/db/generated
+
+# テスト・カバレッジ
+**/coverage
+**/.vitest
+tests/e2e/.auth
+test-results
+playwright-report
+
+# ローカル環境・秘密情報
+.env
+.env.*
+!.env.example
+
+# VCS / エディタ / OS
+.git
+.gitignore
+.vscode
+.idea
+**/.DS_Store
+
+# ログ・一時ファイル
+**/*.log
+**/tmp

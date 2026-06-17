@@ -168,12 +168,18 @@ importers:
       '@a2p/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@anthropic-ai/sdk':
+        specifier: ^0.98.0
+        version: 0.98.0(zod@3.25.76)
       cheerio:
         specifier: ^1.0.0
         version: 1.2.0
       graphile-worker:
         specifier: ^0.16.6
         version: 0.16.6(typescript@5.9.3)
+      openai:
+        specifier: ^6.39.0
+        version: 6.39.0(zod@3.25.76)
       p-limit:
         specifier: ^6.1.0
         version: 6.2.0

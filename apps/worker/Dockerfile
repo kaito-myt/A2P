@@ -47,12 +47,16 @@ FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/worker/package.json apps/worker/package.json
 COPY apps/web/package.json apps/web/package.json
+COPY packages/agents/package.json packages/agents/package.json
 COPY packages/contracts/package.json packages/contracts/package.json
 COPY packages/db/package.json packages/db/package.json
 COPY packages/storage/package.json packages/storage/package.json
 COPY packages/notify/package.json packages/notify/package.json
 COPY packages/crypto/package.json packages/crypto/package.json
 COPY packages/ui/package.json packages/ui/package.json
+COPY packages/output/image/package.json packages/output/image/package.json
+COPY packages/output/pdf/package.json packages/output/pdf/package.json
+COPY packages/output/word/package.json packages/output/word/package.json
 
 # `--ignore-scripts` は Prisma などの postinstall を抑止 (この段階では generate に必要な
 # schema.prisma がまだコピーされていないため)。

@@ -21,8 +21,10 @@
     "@a2p/output-pdf": "workspace:*",
     "@a2p/output-word": "workspace:*",
     "@a2p/storage": "workspace:*",
+    "@anthropic-ai/sdk": "^0.98.0",
     "cheerio": "^1.0.0",
     "graphile-worker": "^0.16.6",
+    "openai": "^6.39.0",
     "p-limit": "^6.1.0",
     "zod": "^3.23.8"
   },
