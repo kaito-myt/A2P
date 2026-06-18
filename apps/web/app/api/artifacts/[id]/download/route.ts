@@ -35,14 +35,19 @@ export async function GET(
 
   const artifact = await prisma.artifact.findUnique({
     where: { id },
-    select: { r2_key: true, kind: true },
+    select: { r2_key: true, kind: true, book: { select: { title: true } } },
   });
 
   if (!artifact) {
     return new NextResponse('Not Found', { status: 404 });
   }
 
-  const signedUrl = await getSignedDownloadUrl(artifact.r2_key);
+  // ブラウザで開かず即ダウンロードさせるため、本タイトル付き filename を渡す。
+  const ext = artifact.kind === 'pdf' ? 'pdf' : artifact.kind === 'docx' ? 'docx' : 'png';
+  const safeTitle = (artifact.book?.title ?? 'book').replace(/[\\/:*?"<>|]/g, '_');
+  const filename = `${safeTitle}.${ext}`;
+
+  const signedUrl = await getSignedDownloadUrl(artifact.r2_key, 900, {}, filename);
 
   return NextResponse.redirect(signedUrl, 302);
 }

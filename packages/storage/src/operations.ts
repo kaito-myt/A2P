@@ -135,15 +135,27 @@ export async function getSignedDownloadUrl(
   key: string,
   expiresSec = 900,
   options: OperationOptions = {},
+  /**
+   * 指定すると署名 URL に `response-content-disposition=attachment; filename=...`
+   * を付与し、ブラウザでのインライン表示ではなく**ダウンロード**を強制する。
+   */
+  downloadFilename?: string,
 ): Promise<string> {
   const { client, bucket } = resolveClient(options);
   try {
-    const url = await getSignedUrl(
-      client,
-      new GetObjectCommand({ Bucket: bucket, Key: key }),
-      { expiresIn: expiresSec },
-    );
-    logInfo('r2.signed_url', { key, expiresSec });
+    const commandInput: ConstructorParameters<typeof GetObjectCommand>[0] = {
+      Bucket: bucket,
+      Key: key,
+    };
+    if (downloadFilename) {
+      // RFC 5987 で非 ASCII (日本語) ファイル名も安全に渡す。
+      const encoded = encodeURIComponent(downloadFilename);
+      commandInput.ResponseContentDisposition = `attachment; filename*=UTF-8''${encoded}`;
+    }
+    const url = await getSignedUrl(client, new GetObjectCommand(commandInput), {
+      expiresIn: expiresSec,
+    });
+    logInfo('r2.signed_url', { key, expiresSec, attachment: Boolean(downloadFilename) });
     return url;
   } catch (err) {
     throw new StorageError('R2 署名付き URL 生成に失敗しました', {

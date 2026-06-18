@@ -5,8 +5,6 @@ import {
   TextRun,
   HeadingLevel,
   AlignmentType,
-  TableOfContents,
-  StyleLevel,
   Footer,
   PageNumber,
   NumberFormat,
@@ -35,7 +33,7 @@ export async function buildDocx(
   const sorted = [...chapters].sort((a, b) => a.index - b.index);
 
   const titleSection = buildTitleSection(book);
-  const tocSection = buildTocSection();
+  const tocSection = buildTocSection(sorted);
   const chapterSections = sorted.map((ch) => buildChapterSection(ch));
 
   const doc = new Document({
@@ -135,7 +133,23 @@ function buildTitleSection(book: BuildDocxBook): ISectionOptions {
   };
 }
 
-function buildTocSection(): ISectionOptions {
+function buildTocSection(chapters: BuildDocxChapter[]): ISectionOptions {
+  // Word の TableOfContents フィールドは開いて「フィールド更新」するまで空表示に
+  // なるため、章見出しを静的に列挙して確実に目次が見えるようにする (PDF と同形)。
+  const tocEntries = chapters.map(
+    (ch) =>
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `第${ch.index}章　${ch.heading}`,
+            font: FONT,
+            size: 22,
+          }),
+        ],
+        spacing: { after: 160 },
+      }),
+  );
+
   return {
     properties: {
       page: {
@@ -155,15 +169,7 @@ function buildTocSection(): ISectionOptions {
         alignment: AlignmentType.CENTER,
         spacing: { after: 400 },
       }),
-      new TableOfContents('Table of Contents', {
-        hyperlink: true,
-        headingStyleRange: '1-3',
-        stylesWithLevels: [
-          new StyleLevel('Heading1', 1),
-          new StyleLevel('Heading2', 2),
-          new StyleLevel('Heading3', 3),
-        ],
-      }),
+      ...tocEntries,
     ],
   };
 }

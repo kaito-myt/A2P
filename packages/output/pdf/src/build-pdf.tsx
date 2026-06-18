@@ -41,6 +41,36 @@ const styles = StyleSheet.create({
     fontWeight: 700,
     textAlign: 'center',
   },
+  bookTitleText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 26,
+    fontWeight: 700,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  bookSubtitleText: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 13,
+    textAlign: 'center',
+    color: '#444',
+  },
+  tocTitle: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 20,
+    fontWeight: 700,
+    marginBottom: 24,
+  },
+  tocRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  tocHeading: {
+    fontFamily: FONT_FAMILY,
+    fontSize: 11,
+    flex: 1,
+    paddingRight: 8,
+  },
   bodyContainer: {
     flex: 1,
   },
@@ -65,6 +95,39 @@ export interface BuildPdfChapter {
   index: number;
   heading: string;
   body_md: string;
+}
+
+function TitlePage({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: string | null;
+}): React.ReactElement {
+  return (
+    <Page size={[A5_WIDTH_PT, A5_HEIGHT_PT]} style={styles.chapterTitlePage}>
+      <Text style={styles.bookTitleText}>{title}</Text>
+      {subtitle ? <Text style={styles.bookSubtitleText}>{subtitle}</Text> : null}
+    </Page>
+  );
+}
+
+function TocPage({
+  chapters,
+}: {
+  chapters: BuildPdfChapter[];
+}): React.ReactElement {
+  return (
+    <Page size={[A5_WIDTH_PT, A5_HEIGHT_PT]} style={styles.page}>
+      <Text style={styles.tocTitle}>目次</Text>
+      {chapters.map((ch) => (
+        <View key={`toc-${ch.index}`} style={styles.tocRow}>
+          <Text style={styles.tocHeading}>{ch.heading}</Text>
+        </View>
+      ))}
+      <Text style={styles.pageNumber} render={({ pageNumber }) => `${pageNumber}`} />
+    </Page>
+  );
 }
 
 function ChapterTitlePage({
@@ -116,6 +179,8 @@ export async function buildPdf(
       author="A2P"
       subject={book.subtitle ?? undefined}
     >
+      <TitlePage title={book.title} subtitle={book.subtitle} />
+      <TocPage chapters={sorted} />
       {sorted.map((ch) => (
         <React.Fragment key={`ch-${ch.index}`}>
           <ChapterTitlePage heading={ch.heading} />

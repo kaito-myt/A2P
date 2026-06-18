@@ -34,7 +34,7 @@ import { AgentError } from '@a2p/contracts/errors';
 import type { LLMClient } from '@a2p/contracts/agents';
 import {
   EditorInputSchema,
-  EditorOutputSchema,
+  EditorChapterOutputSchema,
   type EditorChapterInput,
   type EditorChapterOutput,
   type EditorInput,
@@ -97,18 +97,6 @@ export async function editBook(
     parsedInput.genre,
     deps.promptLoaderDeps,
   );
-  const systemPrompt = fillPlaceholders(prompt.template, {
-    theme_title: parsedInput.themeContext.title,
-    theme_subtitle: parsedInput.themeContext.subtitle ?? '',
-    theme_hook: parsedInput.themeContext.hook,
-    target_reader: parsedInput.themeContext.target_reader,
-    chapter_count: parsedInput.chapters.length,
-    draft_chapters: JSON.stringify(parsedInput.chapters),
-    ai_disclosure_text: parsedInput.aiDisclosureText,
-    feedback: formatFeedback(parsedInput.feedback),
-    genre: parsedInput.genre ?? 'general',
-  });
-
   // 3. LLMClient (withTokenLogging ラップ済) 取得
   //    jobId は input から forward — 未指定なら ctx に key を含めず token_usage.job_id=null
   //    bookId は Editor 起動時点で確定済み → ctx.bookId に必ず詰める
@@ -132,95 +120,125 @@ export async function editBook(
     factoryDeps,
   );
 
-  // 4. LLM 呼出
-  const completion = await client.complete({
-    role: 'editor',
-    genre: parsedInput.genre,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: buildUserMessage(parsedInput) },
-    ],
-    maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
-  });
+  // 4. LLM 呼出 — **章ごとに分割**して校閲する。
+  //    全章を 1 回で返す設計だと出力 (~50,000 字 + JSON) が maxOutputTokens を超えて
+  //    truncation し JSON parse に失敗する (8 章規模で editor.invalid_output が再現)。
+  //    章単位で呼び出し、結果を入力順で結合する。AI 開示文は最終章にのみ付与する
+  //    (各章末への重複挿入を防ぐため、非最終章では ai_disclosure_text を空で渡す)。
+  const editedChapters: EditorChapterOutput[] = [];
+  for (let ci = 0; ci < parsedInput.chapters.length; ci++) {
+    const chapter = parsedInput.chapters[ci]!;
+    const isLast = ci === parsedInput.chapters.length - 1;
+    const disclosureForChunk = isLast ? parsedInput.aiDisclosureText : '';
+    const chunkInput: EditorInput = {
+      ...parsedInput,
+      chapters: [chapter],
+      aiDisclosureText: disclosureForChunk,
+    };
 
-  const rawText = completion.text;
-  if (typeof rawText !== 'string' || rawText.trim().length === 0) {
-    throw new AgentError('editor.invalid_output: empty response', {
-      details: { rawText: String(rawText) },
+    const systemPrompt = fillPlaceholders(prompt.template, {
+      theme_title: parsedInput.themeContext.title,
+      theme_subtitle: parsedInput.themeContext.subtitle ?? '',
+      theme_hook: parsedInput.themeContext.hook,
+      target_reader: parsedInput.themeContext.target_reader,
+      chapter_count: 1,
+      draft_chapters: JSON.stringify(chunkInput.chapters),
+      ai_disclosure_text: disclosureForChunk,
+      feedback: formatFeedback(parsedInput.feedback),
+      genre: parsedInput.genre ?? 'general',
     });
-  }
 
-  // 5. JSON 抽出 — schema-aware predicate で `chapters` 配列 + `ai_disclosure_appended` を
-  //    持つブロックを優先選択
-  const parsedJson = extractJson(rawText, hasEditorShape);
-  if (parsedJson === undefined) {
-    throw new AgentError('editor.invalid_output: failed to parse JSON', {
-      details: { rawText },
+    const completion = await client.complete({
+      role: 'editor',
+      genre: parsedInput.genre,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: buildUserMessage(chunkInput) },
+      ],
+      maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
     });
-  }
 
-  // 6. zod 検証前に欠落フィールド (ai_disclosure_text / ai_disclosure_appended / heading) を救済
-  const normalized = normalizePartialOutput(parsedJson, parsedInput);
-  const validated = EditorOutputSchema.safeParse(normalized);
-  if (!validated.success) {
-    throw new AgentError('editor.invalid_output: schema validation failed', {
-      details: { rawText, issues: validated.error.issues },
-      cause: validated.error,
-    });
+    const rawText = completion.text;
+    if (typeof rawText !== 'string' || rawText.trim().length === 0) {
+      throw new AgentError('editor.invalid_output: empty response', {
+        details: { rawText: String(rawText), chapterIndex: chapter.index },
+      });
+    }
+
+    // 5. JSON 抽出 — schema-aware predicate で `chapters` 配列を持つブロックを優先選択
+    const parsedJson = extractJson(rawText, hasEditorShape);
+    if (parsedJson === undefined) {
+      throw new AgentError('editor.invalid_output: failed to parse JSON', {
+        details: { rawText, chapterIndex: chapter.index },
+      });
+    }
+
+    // 6. 欠落フィールド救済 → **章要素**を zod 検証。
+    //    出力ラッパ (EditorOutputSchema) は chapters.min(7) を要求するため、
+    //    章分割では要素スキーマ (EditorChapterOutputSchema) で 1 章ずつ検証する。
+    const normalized = normalizePartialOutput(parsedJson, chunkInput);
+    const chaptersRaw = (normalized as { chapters?: unknown }).chapters;
+    const firstRaw = Array.isArray(chaptersRaw) ? chaptersRaw[0] : undefined;
+    if (firstRaw === undefined) {
+      throw new AgentError('editor.invalid_output: missing chapter in output', {
+        details: { rawText, chapterIndex: chapter.index },
+      });
+    }
+    const validated = EditorChapterOutputSchema.safeParse(firstRaw);
+    if (!validated.success) {
+      throw new AgentError('editor.invalid_output: schema validation failed', {
+        details: { rawText, issues: validated.error.issues, chapterIndex: chapter.index },
+        cause: validated.error,
+      });
+    }
+
+    // index は入力章のものへ正規化して順序を保証する。
+    const editedChapter = validated.data;
+    editedChapters.push(
+      editedChapter.index === chapter.index
+        ? editedChapter
+        : { ...editedChapter, index: chapter.index },
+    );
   }
 
   // 7. 章数不一致検証 (F-005 受入基準: 全章校閲、抜け落ち禁止)
-  if (validated.data.chapters.length !== parsedInput.chapters.length) {
+  if (editedChapters.length !== parsedInput.chapters.length) {
     throw new AgentError('editor.chapters_mismatch: count differs from input', {
       details: {
         input_count: parsedInput.chapters.length,
-        output_count: validated.data.chapters.length,
+        output_count: editedChapters.length,
       },
     });
   }
 
-  // 8. index 一致検証 (順序維持、入力 [1..N] と一致)
-  const inputIndices = parsedInput.chapters.map((c) => c.index);
-  const outputIndices = validated.data.chapters.map((c) => c.index);
-  for (let i = 0; i < inputIndices.length; i++) {
-    if (outputIndices[i] !== inputIndices[i]) {
-      throw new AgentError('editor.chapters_mismatch: index order differs from input', {
-        details: { input_indices: inputIndices, output_indices: outputIndices },
-      });
-    }
-  }
-
-  // 9. R-05 安全装置: 最終章 body_md 末尾に AI 開示文が含まれることを確認。
-  //    含まれなければ強制挿入し ai_disclosure_appended=true で返却する。
-  //    LLM が忘れても KDP コンテンツガイドライン違反を防ぐ。
-  const lastIdx = validated.data.chapters.length - 1;
-  const lastChapter = validated.data.chapters[lastIdx]!;
+  // 8. 章末尾の AI 生成開示文を全章から除去する。
+  //    章分割校閲では LLM が各章末に開示文を付けがちだが、開示は**巻末 (最終章)
+  //    に 1 回だけ**で足りる (KDP は書籍単位の開示で十分)。
   const aiText = parsedInput.aiDisclosureText.trim();
-  let finalChapters: EditorChapterOutput[] = validated.data.chapters;
-  let appended = validated.data.ai_disclosure_appended;
+  const stripped: EditorChapterOutput[] = editedChapters.map((c) => ({
+    ...c,
+    body_md: stripTrailingAiDisclosure(c.body_md),
+  }));
+
+  // 9. R-05 安全装置: 最終章 body_md 末尾に正規の AI 開示文を 1 回だけ付与する。
+  const lastIdx = stripped.length - 1;
+  const lastChapter = stripped[lastIdx]!;
+  let finalChapters: EditorChapterOutput[] = stripped;
 
   if (!containsDisclosure(lastChapter.body_md, aiText)) {
-    // 強制挿入: 末尾に 2 行空けて AI 開示文を追加
     const fixedLast: EditorChapterOutput = {
       ...lastChapter,
       body_md: `${lastChapter.body_md.trimEnd()}\n\n${aiText}`,
     };
-    finalChapters = [...validated.data.chapters];
+    finalChapters = [...stripped];
     finalChapters[lastIdx] = fixedLast;
-    appended = true;
-  } else {
-    // LLM が挿入済 — フラグを強制 true に揃える (LLM が false 申告でも実体優先)
-    appended = true;
   }
 
   const result: EditorOutput = {
     chapters: finalChapters,
-    ai_disclosure_appended: appended,
+    ai_disclosure_appended: true,
     ai_disclosure_text: aiText,
   };
-  if (validated.data.overall_notes !== undefined) {
-    result.overall_notes = validated.data.overall_notes;
-  }
   return result;
 }
 
@@ -279,6 +297,33 @@ function normalizePartialOutput(raw: unknown, input: EditorInput): unknown {
  * AI 開示文が body_md に含まれるか (空白・改行差を吸収するため normalize 比較)。
  * 完全一致だと「。」「、」など微妙な違いで誤判定するため、空白圧縮した部分一致で確認。
  */
+/**
+ * 章末尾に LLM が付与しがちな「AI 生成開示文」段落を除去する。
+ * 末尾から走査し、AI 開示マーカーを含む段落 (および直前の見出しのみの段落) を
+ * 落とす。本文段落に当たった時点で停止する (本文を誤って削らない)。
+ * 馬券免責など AI 開示以外の注意書きは対象外 (ユーザー要望は AI 開示文のみ)。
+ */
+const AI_DISCLOSURE_MARKER =
+  /生成\s*AI|AI\s*生成|AI を活用|AI生成コンテンツ|コンテンツガイドライン|本開示|生成系?AI/;
+
+function stripTrailingAiDisclosure(bodyMd: string): string {
+  const paragraphs = bodyMd.split(/\n{2,}/);
+  while (paragraphs.length > 0) {
+    const last = paragraphs[paragraphs.length - 1]!;
+    if (AI_DISCLOSURE_MARKER.test(last)) {
+      paragraphs.pop();
+      // 直前が「## 免責事項」等の見出しだけの段落なら一緒に落とす。
+      const prev = paragraphs[paragraphs.length - 1];
+      if (prev !== undefined && /^#{1,6}\s*\S{0,20}$/.test(prev.trim()) && prev.trim().length < 25) {
+        paragraphs.pop();
+      }
+      continue;
+    }
+    break;
+  }
+  return paragraphs.join('\n\n').trimEnd();
+}
+
 function containsDisclosure(bodyMd: string, aiText: string): boolean {
   const norm = (s: string) => s.replace(/\s+/g, '');
   const needle = norm(aiText);
