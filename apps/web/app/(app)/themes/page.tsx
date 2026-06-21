@@ -62,6 +62,13 @@ export default async function ThemesPage({ searchParams }: ThemesPageProps) {
   const rows = rawRows.map(serializeThemeRow);
   const summary = summarizeRows(rows);
 
+  // テーマ生成モーダル用に有効アカウント一覧を取得
+  const accounts = await prisma.account.findMany({
+    where: { status: 'active' },
+    select: { id: true, pen_name: true },
+    orderBy: { created_at: 'asc' },
+  });
+
   return (
     <div className="flex flex-col gap-space-loose">
       <header className="flex flex-col gap-space-snug">
@@ -80,7 +87,7 @@ export default async function ThemesPage({ searchParams }: ThemesPageProps) {
             <p className="text-body text-muted">{m.pageSubtitle}</p>
           </div>
           <div className="flex items-center gap-space-snug">
-            <GenerateThemesButton />
+            <GenerateThemesButton accounts={accounts} />
           </div>
         </div>
         {sessionId && (
@@ -113,7 +120,7 @@ export default async function ThemesPage({ searchParams }: ThemesPageProps) {
           <p className="text-body font-medium text-charcoal">{m.empty.title}</p>
           <p className="mt-2 text-body text-muted">{m.empty.body}</p>
           <div className="mt-space-snug flex justify-center">
-            <GenerateThemesButton />
+            <GenerateThemesButton accounts={accounts} />
           </div>
         </div>
       ) : (
