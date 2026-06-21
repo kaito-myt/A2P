@@ -211,11 +211,19 @@ export async function editBook(
     });
   }
 
+  // 7b. **全体整合パス (第2段校閲)**。
+  //    章分割校閲 (第1段) は各章が他章を知らないため、「次章は〇〇」「第N章で詳述」
+  //    といった章間参照や、第1章の章立てロードマップが実体とズレる (Quality Judge 指摘)。
+  //    全章の確定見出し一覧 (TOC) を各章に渡し、**事実誤りの参照だけ**を補正する
+  //    軽量パスを通す。本文の内容・構成・文体は変更しない。
+  const toc = editedChapters.map((c) => ({ index: c.index, heading: c.heading }));
+  const reconciled = await runConsistencyPass(editedChapters, toc, parsedInput, client);
+
   // 8. 章末尾の AI 生成開示文を全章から除去する。
   //    章分割校閲では LLM が各章末に開示文を付けがちだが、開示は**巻末 (最終章)
   //    に 1 回だけ**で足りる (KDP は書籍単位の開示で十分)。
   const aiText = parsedInput.aiDisclosureText.trim();
-  const stripped: EditorChapterOutput[] = editedChapters.map((c) => ({
+  const stripped: EditorChapterOutput[] = reconciled.map((c) => ({
     ...c,
     body_md: stripTrailingAiDisclosure(c.body_md),
   }));
@@ -239,6 +247,81 @@ export async function editBook(
     ai_disclosure_appended: true,
     ai_disclosure_text: aiText,
   };
+  return result;
+}
+
+/**
+ * 第2段「全体整合パス」。各章に**全章の確定見出し一覧 (TOC)** を渡し、章番号・
+ * 相互参照・「次章/前章」予告など**事実として誤っている参照のみ**を本文中で補正する。
+ * 内容・主張・構成・文体・文字数は変えない (校閲の品質判断は第1段で完了済み)。
+ *
+ * 1 章ずつ処理して出力サイズを抑える (全章一括は truncation するため章分割が前提)。
+ * 失敗時 (JSON/zod) はその章だけ**第1段の結果をそのまま採用**してフォールバック
+ * する (整合補正は best-effort で、本文を失わないことを優先)。
+ */
+async function runConsistencyPass(
+  chapters: EditorChapterOutput[],
+  toc: Array<{ index: number; heading: string }>,
+  input: EditorInput,
+  client: LLMClient,
+): Promise<EditorChapterOutput[]> {
+  const tocText = toc.map((t) => `第${t.index}章: ${t.heading}`).join('\n');
+  const systemPrompt = [
+    'あなたは書籍の整合性チェック担当の編集者です。',
+    '与えられた「章構成一覧」を唯一の正とし、対象章の本文に含まれる**章番号・章タイトルへの参照、',
+    '「次章」「前章」「第N章で詳述」などの予告・相互参照**が章構成一覧と食い違っている箇所だけを修正してください。',
+    '',
+    '厳守事項:',
+    '- 本文の主張・内容・構成・文体・段落構成・文字数は一切変えない。参照の事実誤りのみ最小限に直す。',
+    '- 最終章には「次章」予告を書かない（存在しないため、その文を自然に削るか現章のまとめに置き換える）。',
+    '- 章番号は章構成一覧の番号に合わせる。存在しない章への参照は、実在する該当章に置き換えるか、章番号を使わない表現にする。',
+    '- 出力は JSON のみ。形式: {"chapters":[{"index":<対象章番号>,"heading":"<見出し>","body_md":"<修正後の本文Markdown全文>"}]}',
+  ].join('\n');
+
+  const result: EditorChapterOutput[] = [];
+  for (const ch of chapters) {
+    const userMessage = [
+      '【章構成一覧（この番号・タイトルが正）】',
+      tocText,
+      '',
+      `【対象章】第${ch.index}章: ${ch.heading}`,
+      ch.index === chapters.length ? '※これは最終章です。次章の予告は書けません。' : '',
+      '',
+      '【対象章の本文（Markdown）】',
+      ch.body_md,
+    ].join('\n');
+
+    try {
+      const completion = await client.complete({
+        role: 'editor',
+        genre: input.genre,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
+      });
+      const rawText = completion.text;
+      const parsedJson = extractJson(rawText ?? '', hasEditorShape);
+      const chRaw = (parsedJson as { chapters?: unknown } | undefined)?.chapters;
+      const firstRaw = Array.isArray(chRaw) ? chRaw[0] : undefined;
+      const normalizedFirst =
+        firstRaw && typeof firstRaw === 'object'
+          ? { heading: ch.heading, index: ch.index, ...(firstRaw as Record<string, unknown>) }
+          : undefined;
+      const validated = normalizedFirst
+        ? EditorChapterOutputSchema.safeParse(normalizedFirst)
+        : undefined;
+      if (validated?.success) {
+        result.push({ ...validated.data, index: ch.index, heading: ch.heading });
+        continue;
+      }
+    } catch {
+      // フォールバックへ（下）
+    }
+    // 整合パス失敗時は第1段の結果をそのまま採用（本文を失わない）。
+    result.push(ch);
+  }
   return result;
 }
 
