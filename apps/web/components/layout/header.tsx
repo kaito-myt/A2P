@@ -51,6 +51,8 @@ export function Header() {
         <CommentBadgeHeader />
         <Link
           href="/help"
+          target="_blank"
+          rel="noopener noreferrer"
           aria-label={messages.header.helpLabel}
           title={messages.header.helpLabel}
           className="flex h-8 w-8 items-center justify-center rounded-full border border-border-warm bg-cream-light text-button-sm font-medium text-charcoal no-underline hover:bg-charcoal-04 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

@@ -11,6 +11,8 @@ export interface NavItem {
   label: string;
   href: string;
   enabled: boolean;
+  /** true の場合は別タブ (target="_blank") で開く。 */
+  external?: boolean;
 }
 
 export interface NavSection {
@@ -27,7 +29,7 @@ export const navSections: readonly NavSection[] = [
     label: m.sectionHome,
     items: [
       { key: 'home', label: m.itemHome, href: '/dashboard', enabled: true },
-      { key: 'help', label: m.itemHelp, href: '/help', enabled: true },
+      { key: 'help', label: m.itemHelp, href: '/help', enabled: true, external: true },
     ],
   },
   {

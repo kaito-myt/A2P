@@ -28,6 +28,9 @@ export function Sidebar() {
                   {item.enabled ? (
                     <Link
                       href={item.href}
+                      {...(item.external
+                        ? { target: '_blank', rel: 'noopener noreferrer' }
+                        : {})}
                       className={cn(
                         'block rounded-default px-2 py-1.5 text-button-sm text-charcoal no-underline',
                         'hover:bg-charcoal-04',
