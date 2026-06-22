@@ -47,6 +47,7 @@ export const messages = {
     commentBadgeLabel: '修正コメント',
     commentMustLabel: 'must',
     settingsLabel: '設定',
+    helpLabel: '使い方ガイド',
     logoutLabel: 'ログアウト',
     userMenuPlaceholder: 'ユーザーメニュー (SP-07)',
   },
