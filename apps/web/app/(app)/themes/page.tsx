@@ -20,6 +20,7 @@ import Link from 'next/link';
 import { prisma } from '@a2p/db';
 
 import { GenerateThemesButton } from '@/components/themes/generate-themes-button';
+import { GeneratingBanner } from '@/components/themes/generating-banner';
 import { ThemesPageShell } from '@/components/themes/themes-page-shell';
 import { messages } from '@/lib/messages';
 import { serializeThemeRow, summarizeRows } from '@/lib/themes-view';
@@ -69,6 +70,18 @@ export default async function ThemesPage({ searchParams }: ThemesPageProps) {
     orderBy: { created_at: 'asc' },
   });
 
+  // このセッションのテーマ生成ジョブが進行中か (候補が出るまで「生成中」表示)
+  const generatingCount = sessionId
+    ? await prisma.job.count({
+        where: {
+          kind: 'pipeline.theme.generate',
+          status: { in: ['queued', 'running'] },
+          payload_json: { path: ['theme_session_id'], equals: sessionId },
+        },
+      })
+    : 0;
+  const isGenerating = generatingCount > 0 && rows.length === 0;
+
   return (
     <div className="flex flex-col gap-space-loose">
       <header className="flex flex-col gap-space-snug">
@@ -112,7 +125,9 @@ export default async function ThemesPage({ searchParams }: ThemesPageProps) {
         )}
       </header>
 
-      {rows.length === 0 ? (
+      {isGenerating ? (
+        <GeneratingBanner />
+      ) : rows.length === 0 ? (
         <div
           data-testid="themes-empty-state"
           className="rounded-card border border-border-warm bg-cream-light p-space-loose text-center"
