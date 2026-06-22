@@ -1,7 +1,21 @@
+import { Agent, setGlobalDispatcher } from 'undici';
+
 import { parseEnv } from '@a2p/contracts/env';
 import { createLogger } from '@a2p/contracts/logger';
 
 import { installGracefulShutdown, startRunner } from './runner.js';
+
+// LLM の長文生成 (例: 全章一括校閲 / 長い章本文) は、応答ヘッダ到達まで undici 既定の
+// headersTimeout=300s を超えることがあり "Headers Timeout Error" で失敗する。
+// worker プロセス全体の fetch (Anthropic/OpenAI/Google SDK が利用) のタイムアウトを
+// 15 分へ延長する。これは起動時の副作用として最初に適用する。
+setGlobalDispatcher(
+  new Agent({
+    headersTimeout: 15 * 60_000,
+    bodyTimeout: 15 * 60_000,
+    connectTimeout: 60_000,
+  }),
+);
 
 /**
  * apps/worker のプロセスエントリ。
