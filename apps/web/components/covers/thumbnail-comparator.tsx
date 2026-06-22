@@ -219,7 +219,7 @@ function ComparatorCoverCard({
         data-testid={`cover-comment-overlay-${cover.id}`}
       >
         <div
-          className="flex h-[300px] w-full items-center justify-center border border-border-warm bg-cream text-button-sm text-muted"
+          className="relative flex h-[300px] w-full items-center justify-center overflow-hidden border border-border-warm bg-cream text-button-sm text-muted"
           onClick={handleImageClick}
           role="button"
           tabIndex={0}
@@ -238,7 +238,13 @@ function ComparatorCoverCard({
             }
           }}
         >
-          {m.card.coverPlaceholder}
+          {/* eslint-disable-next-line @next/next/no-img-element -- R2 署名 URL への 302 リダイレクトを Cookie 付きで取得するため素の img を使う */}
+          <img
+            src={`/api/covers/${cover.id}/image`}
+            alt={m.comparator.candidateLabel(index + 1)}
+            loading="lazy"
+            className="pointer-events-none h-full w-full object-contain"
+          />
         </div>
 
         {/* Existing comment badges at their image_region positions */}

@@ -189,10 +189,13 @@ function CoverThumbnail({ cover }: CoverThumbnailProps) {
           : 'border-border-warm bg-cream-light'
       }`}
     >
-      {/* Placeholder image (T-05-11 will add signed R2 URLs) */}
-      <div className="flex h-[180px] w-full items-center justify-center border border-border-warm bg-cream text-button-sm text-muted">
-        {m.card.coverPlaceholder}
-      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element -- R2 署名 URL への 302 リダイレクトを Cookie 付きで取得するため素の img を使う (next/image 最適化は Cookie 非送出で middleware に弾かれる) */}
+      <img
+        src={`/api/covers/${cover.id}/image`}
+        alt={statusLabel}
+        loading="lazy"
+        className="h-[180px] w-full rounded-default border border-border-warm bg-cream object-cover"
+      />
       <span
         className={`text-center text-button-sm ${
           cover.status === 'adopted'

@@ -80,6 +80,7 @@ export const messages = {
     itemAuditLog: '監査ログ',
     itemAccounts: 'アカウント管理',
     itemSettings: '設定',
+    itemHelp: '使い方ガイド',
     notImplemented: '次スプリント以降で実装予定',
     jobTickerLabel: '実行中ジョブ',
     jobTickerFallback: '—',

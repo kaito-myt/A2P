@@ -27,6 +27,7 @@ export function BookInfoHeader({ book }: BookInfoHeaderProps) {
             alt={book.title}
             fill
             sizes="56px"
+            unoptimized
             className="object-cover"
           />
         ) : (

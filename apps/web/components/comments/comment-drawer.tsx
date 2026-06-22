@@ -11,6 +11,7 @@
  * Inline edit mode: body textarea + priority select + save/cancel.
  */
 import { useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 
 import { messages } from '@/lib/messages';
 import { sortComments, targetKindLabel, type CommentPriority, type CommentStatus, type TargetKind } from '@/lib/comment-helpers';
@@ -193,16 +194,19 @@ export function CommentDrawer({
   onCommentUpdated,
   onCommentDeleted,
 }: CommentDrawerProps) {
+  const router = useRouter();
   const [body, setBody] = useState('');
   const [priority, setPriority] = useState<CommentPriority>('should');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const sortedComments = sortComments(existingComments);
 
   const handleSubmit = useCallback(async () => {
     if (!body.trim()) return;
     setIsPending(true);
+    setError(null);
     const rangePayload = anchorJson ?? null;
     const result = await createComment({
       book_id: bookId,
@@ -217,12 +221,18 @@ export function CommentDrawer({
       setBody('');
       setPriority('should');
       onCommentCreated?.();
+      // 呼び出し側が onCommentChange を渡していない画面 (チェックリスト等) でも
+      // 登録結果が反映されるよう、RSC を再取得する。
+      router.refresh();
+    } else {
+      setError(result.error?.message ?? messages.comments.errors.createUnknown);
     }
-  }, [body, priority, bookId, targetKind, targetId, anchorJson, onCommentCreated]);
+  }, [body, priority, bookId, targetKind, targetId, anchorJson, onCommentCreated, router]);
 
   const handleSaveEdit = useCallback(
     async (commentId: string, newBody: string, newPriority: CommentPriority) => {
       setIsPending(true);
+      setError(null);
       const result = await updateComment({
         comment_id: commentId,
         body: newBody.trim(),
@@ -232,21 +242,28 @@ export function CommentDrawer({
       if (result.ok) {
         setEditingId(null);
         onCommentUpdated?.();
+        router.refresh();
+      } else {
+        setError(result.error?.message ?? messages.comments.errors.updateUnknown);
       }
     },
-    [onCommentUpdated],
+    [onCommentUpdated, router],
   );
 
   const handleDelete = useCallback(
     async (commentId: string) => {
       setIsPending(true);
+      setError(null);
       const result = await deleteComment({ comment_id: commentId });
       setIsPending(false);
       if (result.ok) {
         onCommentDeleted?.();
+        router.refresh();
+      } else {
+        setError(result.error?.message ?? messages.comments.errors.deleteUnknown);
       }
     },
-    [onCommentDeleted],
+    [onCommentDeleted, router],
   );
 
   const kindLabel = targetKindLabel(targetKind);
@@ -296,6 +313,15 @@ export function CommentDrawer({
               >
                 {isPending ? m.submitting : m.submit}
               </Button>
+              {error && (
+                <p
+                  role="alert"
+                  className="text-caption text-destructive"
+                  data-testid="comment-error"
+                >
+                  {error}
+                </p>
+              )}
             </div>
           </section>
 

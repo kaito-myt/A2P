@@ -40,6 +40,10 @@ export const CreateCommentInputSchema = z.object({
     z.object({ paragraph_range: z.tuple([z.number().int(), z.number().int()]) }),
     z.object({ line_range: z.tuple([z.number().int(), z.number().int()]) }),
     z.object({ image_region: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }) }),
+    // metadata / checklist のフィールド単位アンカー (例: { field: 'title' })。
+    // これが無いとチェックリスト「コメント」列からの登録が range バリデーションで
+    // 弾かれ、UI 上は「何も起きない＝登録できない」状態になる。
+    z.object({ field: z.string().min(1) }),
     z.null(),
   ]).optional().default(null),
   body: z.string().min(1).max(2000),

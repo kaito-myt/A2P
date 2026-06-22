@@ -470,6 +470,22 @@ describe('createCommentCore - input validation', () => {
     expect(isFail(r)).toBe(true);
     if (isFail(r)) expect(r.error.code).toBe('validation');
   });
+
+  // 回帰防止: KDP 入稿チェックリストの「コメント」列は range に
+  // { field: <フィールド名> } を渡す。これが range union に無いと
+  // バリデーションで弾かれ「登録できない (UI 無反応)」になっていた。
+  it('metadata フィールドアンカー { field } で登録できる', async () => {
+    const { deps } = makeDeps({ bookExists: true });
+    const r = await createCommentCore({
+      book_id: 'book_1',
+      target_kind: 'metadata',
+      target_id: 'book_1',
+      range: { field: 'title' },
+      body: 'タイトルを変更してください',
+      priority: 'should',
+    }, deps);
+    expect(isOk(r)).toBe(true);
+  });
 });
 
 // Prisma import warning suppression
