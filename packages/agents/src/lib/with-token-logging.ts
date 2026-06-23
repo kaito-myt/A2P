@@ -84,6 +84,58 @@ export interface WithTokenLoggingDeps {
   ) => Promise<Record<string, unknown>>;
 }
 
+/**
+ * 単価スナップショット + トークン使用量から実コスト (JPY) を計算する。
+ *
+ * LLM クライアント本体は costJpy=0 を返す規約 (ai-sdk-client / agent-sdk-client)。
+ * 実コストは本ミドルウェアが、`fetchPriceSnapshot` で得た単価スナップショットを
+ * 使ってここで計算する (これが未実装だったため token_usage.cost_jpy が常に 0 で、
+ * コストダッシュボードが ¥0 表示になっていた — Hard Rule #5 違反)。
+ *
+ * 計算式 (USD → JPY):
+ *   input  : input_tokens        / 1e6 × input_price_per_mtok_usd
+ *   cached : cached_input_tokens / 1e6 × input_price_per_mtok_usd × 0.1 (キャッシュ読取は約 1/10)
+ *   output : output_tokens       / 1e6 × output_price_per_mtok_usd
+ *   image  : image_count               × image_price_per_image_usd
+ *   合計 USD × fx_rate_usd_jpy
+ *
+ * スナップショットに必要な単価/為替が欠ける場合は 0 を返す (記録は通すが
+ * unit_price_snapshot 欠損として後段で検知可能)。
+ */
+export function computeCostJpy(
+  snapshot: Record<string, unknown> | null | undefined,
+  usage: {
+    inputTokens?: number;
+    outputTokens?: number;
+    cachedInputTokens?: number;
+    imageCount?: number;
+  },
+): number {
+  if (!snapshot) return 0;
+  const num = (v: unknown): number => {
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const fx = num(snapshot.fx_rate_usd_jpy);
+  if (fx <= 0) return 0;
+  const inPrice = num(snapshot.input_price_per_mtok_usd);
+  const outPrice = num(snapshot.output_price_per_mtok_usd);
+  const imgPrice = num(snapshot.image_price_per_image_usd);
+
+  const inputTok = num(usage.inputTokens);
+  const cachedTok = num(usage.cachedInputTokens);
+  const outputTok = num(usage.outputTokens);
+  const images = num(usage.imageCount);
+
+  const usd =
+    (inputTok / 1_000_000) * inPrice +
+    (cachedTok / 1_000_000) * inPrice * 0.1 +
+    (outputTok / 1_000_000) * outPrice +
+    images * imgPrice;
+
+  return usd * fx;
+}
+
 const defaultLogger = {
   warn(payload: Record<string, unknown>, msg?: string): void {
     // console は構造化ログにならないが、Pino 導入前のフォールバック (docs/05 §10.2 で
@@ -160,9 +212,14 @@ export function withTokenLogging<T extends LLMClient>(
         // 1. LLM 呼出: 失敗はそのまま rethrow (token_usage は記録しない)
         const result = (await orig.call(target, args)) as LLMCompleteResult<R>;
 
-        // 2. token_usage INSERT — 失敗時は warn でログだけ
+        // 2. token_usage INSERT — 失敗時は warn でログだけ。
+        //    コストはクライアントが 0 を返す規約なので、単価スナップショットから
+        //    ここで計算する (computeCostJpy)。スナップショット欠損時は client 値に fallback。
+        let costJpy = result.costJpy;
         try {
           const snapshot = await fetchSnapshot(result.provider, result.model);
+          const computed = computeCostJpy(snapshot, result.usage);
+          if (computed > 0) costJpy = computed;
           await prismaClient.tokenUsage.create({
             data: {
               book_id: ctx.bookId ?? null,
@@ -176,7 +233,7 @@ export function withTokenLogging<T extends LLMClient>(
               cached_input_tokens: result.usage.cachedInputTokens ?? 0,
               image_count: result.usage.imageCount ?? 0,
               unit_price_snapshot: snapshot,
-              cost_jpy: result.costJpy,
+              cost_jpy: costJpy,
             },
           });
         } catch (err) {
@@ -196,13 +253,13 @@ export function withTokenLogging<T extends LLMClient>(
         // 3. Book.cost_jpy_total atomic increment — bookId 無し (system タスク) はスキップ
         if (ctx.bookId) {
           try {
-            await updateBookCost(ctx.bookId, result.costJpy, prismaClient);
+            await updateBookCost(ctx.bookId, costJpy, prismaClient);
           } catch (err) {
             logger.warn(
               {
                 err,
                 bookId: ctx.bookId,
-                costJpy: result.costJpy,
+                costJpy,
               },
               'updateBookCost failed',
             );

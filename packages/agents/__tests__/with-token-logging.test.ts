@@ -17,8 +17,48 @@ import type {
 
 import {
   withTokenLogging,
+  computeCostJpy,
   type LoggingContext,
 } from '../src/lib/with-token-logging.js';
+
+// ---------------------------------------------------------------------------
+// computeCostJpy — 単価スナップショットからの実コスト計算 (¥0 バグ回帰防止)
+// ---------------------------------------------------------------------------
+
+describe('computeCostJpy', () => {
+  const snap = {
+    input_price_per_mtok_usd: 5,
+    output_price_per_mtok_usd: 25,
+    image_price_per_image_usd: null,
+    fx_rate_usd_jpy: 160,
+  };
+
+  it('input/output トークンから USD→JPY を計算する', () => {
+    // (1_000_000/1e6*5 + 1_000_000/1e6*25) USD = 30 USD × 160 = 4800 JPY
+    const cost = computeCostJpy(snap, { inputTokens: 1_000_000, outputTokens: 1_000_000 });
+    expect(cost).toBeCloseTo(4800, 5);
+  });
+
+  it('cached input は入力単価の約 1/10 で加算', () => {
+    const cost = computeCostJpy(snap, { inputTokens: 0, outputTokens: 0, cachedInputTokens: 1_000_000 });
+    // 1_000_000/1e6 * 5 * 0.1 = 0.5 USD × 160 = 80 JPY
+    expect(cost).toBeCloseTo(80, 5);
+  });
+
+  it('画像単価がある場合は image_count で課金', () => {
+    const cost = computeCostJpy(
+      { image_price_per_image_usd: 0.04, fx_rate_usd_jpy: 160 },
+      { imageCount: 3 },
+    );
+    expect(cost).toBeCloseTo(0.04 * 3 * 160, 5);
+  });
+
+  it('スナップショット欠損 / fx 不正なら 0', () => {
+    expect(computeCostJpy(null, { inputTokens: 100 })).toBe(0);
+    expect(computeCostJpy({}, { inputTokens: 100 })).toBe(0);
+    expect(computeCostJpy({ fx_rate_usd_jpy: 0, input_price_per_mtok_usd: 5 }, { inputTokens: 1e6 })).toBe(0);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Helpers
