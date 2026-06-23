@@ -90,8 +90,14 @@ describe('buildDocx', () => {
     const zip = await JSZip.loadAsync(buffer);
     const documentXml = await zip.file('word/document.xml')!.async('text');
 
-    expect(documentXml).toContain('TOC');
+    // 目次は Word の TOC フィールド (開くまで空欄表示) ではなく、章見出しを
+    // 静的な段落リストとして描画する実装に変更済み。見出し「目次」と
+    // 「第N章　<章タイトル>」形式のエントリが含まれることを検証する。
     expect(documentXml).toContain('目次');
+    expect(documentXml).toContain('第1章');
+    for (const chapter of sampleChapters) {
+      expect(documentXml).toContain(chapter.heading);
+    }
   });
 
   it('contains the book title in the document', async () => {
