@@ -112,8 +112,8 @@ describe('buildAppSettingsSeed', () => {
 
   it('matches cost thresholds in SP-01 T-01-04', () => {
     const s = buildAppSettingsSeed({});
-    expect(s.cost_per_book_warn_jpy).toBe(500);
-    expect(s.cost_per_book_pause_jpy).toBe(750);
+    expect(s.cost_per_book_warn_jpy).toBe(3000);
+    expect(s.cost_per_book_pause_jpy).toBe(5000);
     expect(s.monthly_cost_yellow_jpy).toBe(40000);
     expect(s.monthly_cost_orange_jpy).toBe(47500);
     expect(s.monthly_cost_red_jpy).toBe(50000);

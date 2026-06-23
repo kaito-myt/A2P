@@ -117,8 +117,11 @@ export function buildAppSettingsSeed(env: NodeJS.ProcessEnv): AppSettingsSeed {
       fx_fetch_failed: true,
       revision_run_failed: true,
     },
-    cost_per_book_warn_jpy: 500,
-    cost_per_book_pause_jpy: 750,
+    // 1 冊あたりの実コストは 8 章 + 2 段校閲で概ね ¥1,000〜1,500。
+    // 旧既定 (warn 500 / pause 750) では通常の書籍が必ず途中停止してしまうため、
+    // 実コストに見合う現実的な値にする (warn 3000 / pause 5000)。
+    cost_per_book_warn_jpy: 3000,
+    cost_per_book_pause_jpy: 5000,
     monthly_cost_yellow_jpy: 40000,
     monthly_cost_orange_jpy: 47500,
     monthly_cost_red_jpy: 50000,
