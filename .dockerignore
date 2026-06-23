@@ -10,12 +10,16 @@
 **/.turbo
 packages/db/generated
 
-# テスト・カバレッジ
+# テスト・カバレッジ (worker ビルドには不要)
 **/coverage
 **/.vitest
-tests/e2e/.auth
+tests
 test-results
 playwright-report
+
+# 設計ドキュメント。worker イメージのビルドには不要で、ワイヤーフレーム PNG 等で
+# 100MB 超あるため、含めると railway up のアップロードがタイムアウトする。
+docs
 
 # ローカル環境・秘密情報
 .env
