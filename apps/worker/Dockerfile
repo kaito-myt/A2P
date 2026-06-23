@@ -6,15 +6,17 @@
 # 同梱物:
 #   - Node 22 (公式 slim)
 #   - pnpm 9 (corepack 経由で固定)
-#   - postgresql-client 16 (`pg_dump` 必須 / R-12 緩和: archive.db.backup タスク)
+#   - postgresql-client 18 (`pg_dump` 必須 / R-12 緩和: archive.db.backup タスク)
+#     ※ Railway Postgres は 18 系。pg_dump はサーバより古いと version mismatch で
+#       拒否するため、クライアントもサーバと同じ 18 系に合わせる。
 #
 # Phase 3 で Playwright + Chromium / sharp 用の libvips を追加予定 (本ファイルにコメントだけ残す)。
 
 FROM node:22-bookworm-slim AS base
 
-# pg_dump (PostgreSQL 16 系) を `apt-get` で導入する。Debian bookworm 標準は 15 系なので、
-# PostgreSQL APT リポジトリを追加して 16 系を pin する。これは Railway Postgres (16) と
-# サーババージョン整合を保つため (`pg_dump` < サーバ時に互換警告が出る)。
+# pg_dump (PostgreSQL 18 系) を `apt-get` で導入する。Debian bookworm 標準は 15 系なので、
+# PostgreSQL APT リポジトリを追加して 18 系を pin する。これは Railway Postgres (18) と
+# サーババージョン整合を保つため (`pg_dump` < サーバ時は version mismatch で実行拒否)。
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
        ca-certificates \
@@ -27,7 +29,7 @@ RUN apt-get update \
   && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
        > /etc/apt/sources.list.d/pgdg.list \
   && apt-get update \
-  && apt-get install -y --no-install-recommends postgresql-client-16 \
+  && apt-get install -y --no-install-recommends postgresql-client-18 \
   && rm -rf /var/lib/apt/lists/*
 
 # Phase 3 で追加予定 (本タスクではコメントのみ):
