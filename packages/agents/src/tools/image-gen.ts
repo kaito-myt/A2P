@@ -17,8 +17,11 @@ import { ConfigError, ProviderError } from '@a2p/contracts/errors';
 
 import { classifyProviderError, isNonRetryable } from '../lib/errors.js';
 
-/** OpenAI `gpt-image-1` の quality パラメータ。 */
-export type ImageQuality = 'standard' | 'hd';
+/**
+ * OpenAI `gpt-image-1` の quality パラメータ。
+ * gpt-image-1 は `low | medium | high | auto` を取る (DALL·E 3 の standard/hd ではない)。
+ */
+export type ImageQuality = 'low' | 'medium' | 'high' | 'auto';
 
 export interface GenerateImageArgs {
   /** 画像生成プロンプト (日本語可)。 */

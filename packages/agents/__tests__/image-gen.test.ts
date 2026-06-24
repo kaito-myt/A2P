@@ -161,12 +161,12 @@ describe('generateImage — 正常系', () => {
     expect(calls[0]!.n).toBe(3);
   });
 
-  it('quality=hd を渡せる', async () => {
+  it('quality=high を渡せる', async () => {
     const { client, calls } = makeStubOpenAI({
       responseQueue: [{ data: [{ b64_json: dummyB64('q') }] }],
     });
-    await generateImage(baseArgs({ quality: 'hd' }), deps(client));
-    expect(calls[0]!.quality).toBe('hd');
+    await generateImage(baseArgs({ quality: 'high' }), deps(client));
+    expect(calls[0]!.quality).toBe('high');
   });
 });
 

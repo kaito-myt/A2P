@@ -84,21 +84,41 @@ export interface GenerateCoverImageDeps {
 // ---------------------------------------------------------------------------
 
 function buildImagePrompt(input: ThumbnailImageInput): string {
+  // gpt-image-1 はアートディレクションを英語で詳細に与えると追従性が高い。
+  // 「AI 生成っぽさ」(過度なグロス/3D/ファンタジー調・崩れた日本語・余計な文字) を
+  // 明示的に禁止し、日本の実用書・ビジネス書として書店に並ぶ水準のデザインを指示する。
   const lines: string[] = [
-    'Japanese book cover design.',
-    `Title text on cover: "${input.title}"`,
+    'Design a professional Japanese non-fiction / business book cover (KDP), portrait orientation.',
+    '',
+    'Exact text to typeset on the cover (use these characters verbatim, nothing else):',
+    `- Main title (largest, dominant): 「${input.title}」`,
   ];
   if (input.subtitle) {
-    lines.push(`Subtitle: "${input.subtitle}"`);
-  }
-  if (input.styleGuide) {
-    lines.push(`Style: ${input.styleGuide}`);
+    lines.push(`- Subtitle (smaller, secondary): 「${input.subtitle}」`);
   }
   lines.push(
-    'Requirements: professional, clean typography, suitable for Amazon KDP thumbnail.',
-    'The cover should be visually appealing at small sizes.',
-    'No watermarks, no borders.',
+    '',
+    'Art direction:',
+    '- Modern, clean editorial design like a real bestselling Japanese practical/business book.',
+    '- Flat, sophisticated composition with a strong typographic hierarchy and generous margins.',
+    '- Restrained, refined color palette of 2–3 colors with high contrast; tasteful, not flashy.',
+    '- A single simple, relevant graphic motif or subtle abstract/geometric element that hints at the topic; keep it minimal and uncluttered.',
+    '- The cover must read clearly even as a small thumbnail.',
+    '',
+    'Typography (critical):',
+    '- Render the Japanese title in crisp, perfectly legible type with CORRECT kanji and kana.',
+    '- Absolutely no garbled, distorted, mojibake, or invented characters.',
+    '- Do NOT add any text other than the title and subtitle above (no fake author lines, no logos, no labels, no lorem text).',
+    '',
+    'Strictly avoid (these make it look AI-generated):',
+    '- 3D renders, glossy digital-painting, fantasy/sci-fi or surreal imagery, neon glow.',
+    '- Uncanny human faces or hands, fake brand logos, stock-photo collage look.',
+    '- Oversaturated rainbow gradients, busy backgrounds, watermarks, borders or frames.',
   );
+  if (input.styleGuide) {
+    lines.push('', `Additional style guidance: ${input.styleGuide}`);
+  }
+  lines.push('', 'Output: a print-ready, sharp, high-quality vertical book cover.');
   return lines.join('\n');
 }
 
@@ -163,6 +183,8 @@ export async function generateCoverImage(
       width: parsed.width,
       height: parsed.height,
       count: 1,
+      // 高品質設定で「AI っぽさ」を抑え、タイポグラフィの破綻を減らす。
+      quality: 'high',
     },
     deps.imageGenDeps,
   );
