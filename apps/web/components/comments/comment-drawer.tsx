@@ -10,7 +10,7 @@
  * Lower section: existing comments list (priority badge + body + edit/delete).
  * Inline edit mode: body textarea + priority select + save/cancel.
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { messages } from '@/lib/messages';
@@ -201,28 +201,50 @@ export function CommentDrawer({
   const [isPending, setIsPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const sortedComments = sortComments(existingComments);
+  // 既存コメントはローカル state で保持し、作成/編集/削除を即時反映する。
+  // 親 (CommentAffordance) が existingComments を再供給しない画面 (チェックリスト等)
+  // でも、登録したコメントがその場で「既存コメント」に並ぶようにするため。
+  const [localComments, setLocalComments] = useState<ExistingComment[]>(existingComments);
+  useEffect(() => {
+    setLocalComments(existingComments);
+    // existingComments の同一性ではなく内容で同期する。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(existingComments)]);
+
+  const sortedComments = sortComments(localComments);
 
   const handleSubmit = useCallback(async () => {
-    if (!body.trim()) return;
+    if (!body.trim()) {
+      setError(messages.comments.errors.validation);
+      return;
+    }
     setIsPending(true);
     setError(null);
     const rangePayload = anchorJson ?? null;
+    const trimmed = body.trim();
     const result = await createComment({
       book_id: bookId,
       target_kind: targetKind,
       target_id: targetId,
       range: rangePayload,
-      body: body.trim(),
+      body: trimmed,
       priority,
     });
     setIsPending(false);
     if (result.ok) {
+      // 楽観反映: 返却された comment_id で「既存コメント」に即追加。
+      const created: ExistingComment = {
+        id: result.data.comment_id,
+        body: trimmed,
+        priority,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+      };
+      setLocalComments((prev) => [created, ...prev]);
       setBody('');
       setPriority('should');
       onCommentCreated?.();
-      // 呼び出し側が onCommentChange を渡していない画面 (チェックリスト等) でも
-      // 登録結果が反映されるよう、RSC を再取得する。
+      // RSC 側 (バッジ件数等) も同期。
       router.refresh();
     } else {
       setError(result.error?.message ?? messages.comments.errors.createUnknown);
@@ -240,6 +262,11 @@ export function CommentDrawer({
       });
       setIsPending(false);
       if (result.ok) {
+        setLocalComments((prev) =>
+          prev.map((c) =>
+            c.id === commentId ? { ...c, body: newBody.trim(), priority: newPriority } : c,
+          ),
+        );
         setEditingId(null);
         onCommentUpdated?.();
         router.refresh();
@@ -257,6 +284,7 @@ export function CommentDrawer({
       const result = await deleteComment({ comment_id: commentId });
       setIsPending(false);
       if (result.ok) {
+        setLocalComments((prev) => prev.filter((c) => c.id !== commentId));
         onCommentDeleted?.();
         router.refresh();
       } else {
@@ -307,8 +335,10 @@ export function CommentDrawer({
               </div>
               <Button
                 size="sm"
+                variant="default"
                 onClick={handleSubmit}
-                disabled={isPending || !body.trim()}
+                disabled={isPending}
+                className="w-full"
                 data-testid="new-comment-submit"
               >
                 {isPending ? m.submitting : m.submit}

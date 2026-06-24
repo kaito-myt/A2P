@@ -176,7 +176,7 @@ export async function buildPdf(
   const doc = (
     <Document
       title={book.title}
-      author="A2P"
+      author="宮田海斗"
       subject={book.subtitle ?? undefined}
     >
       <TitlePage title={book.title} subtitle={book.subtitle} />
