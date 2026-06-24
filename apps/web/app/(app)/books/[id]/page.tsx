@@ -71,6 +71,15 @@ export default async function BookDetailPage({ params }: BookDetailPageProps) {
         },
         orderBy: { index: 'asc' },
       },
+      covers: {
+        select: {
+          id: true,
+          status: true,
+          created_at: true,
+          generation_meta_json: true,
+        },
+        orderBy: { created_at: 'asc' },
+      },
       jobs: {
         select: {
           id: true,

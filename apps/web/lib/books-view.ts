@@ -247,6 +247,17 @@ export interface BookDetailSerialized {
   chapters: BookChapterSerialized[];
   jobs: BookJobSerialized[];
   comments: RevisionCommentSerialized[];
+  covers: BookCoverSerialized[];
+}
+
+export interface BookCoverSerialized {
+  id: string;
+  status: string;
+  /** `<img src>` 用の画像配信エンドポイント。 */
+  imageUrl: string;
+  /** 生成コスト (¥)。generation_meta_json.cost_jpy から。 */
+  costJpy: number | null;
+  created_at: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -279,6 +290,7 @@ type RawBookForDetail = Pick<
   chapters?: Pick<Chapter, 'id' | 'index' | 'heading' | 'body_md' | 'status' | 'char_count' | 'version' | 'updated_at'>[];
   jobs?: Pick<Job, 'id' | 'kind' | 'status' | 'started_at' | 'finished_at' | 'created_at' | 'error' | 'retries'>[];
   revisionComments?: Pick<RevisionComment, 'id' | 'book_id' | 'target_kind' | 'target_id' | 'range_json' | 'body' | 'priority' | 'status' | 'created_at' | 'applied_at'>[];
+  covers?: Array<{ id: string; status: string; created_at: Date; generation_meta_json: unknown }>;
 };
 
 export function serializeBookDetail(raw: RawBookForDetail): BookDetailSerialized {
@@ -297,6 +309,21 @@ export function serializeBookDetail(raw: RawBookForDetail): BookDetailSerialized
     .map(serializeJob);
 
   const comments = (raw.revisionComments ?? []).map(serializeRevisionComment);
+
+  const covers = (raw.covers ?? [])
+    .slice()
+    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    .map((cv): BookCoverSerialized => {
+      const meta = (cv.generation_meta_json ?? {}) as { cost_jpy?: unknown };
+      const cost = typeof meta.cost_jpy === 'number' ? meta.cost_jpy : null;
+      return {
+        id: cv.id,
+        status: cv.status,
+        imageUrl: `/api/covers/${cv.id}/image`,
+        costJpy: cost,
+        created_at: new Date(cv.created_at).toISOString(),
+      };
+    });
 
   return {
     id: raw.id,
@@ -320,6 +347,7 @@ export function serializeBookDetail(raw: RawBookForDetail): BookDetailSerialized
     chapters,
     jobs,
     comments,
+    covers,
   };
 }
 

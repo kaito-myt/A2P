@@ -865,6 +865,10 @@ export const messages = {
     cover: {
       sectionTitle: 'カバー',
       placeholder: 'このタブは SP-05 で実装予定です',
+      empty: 'カバー画像はまだ生成されていません。',
+      adopted: '採用',
+      candidateLabel: (n: number) => `候補 ${n}`,
+      altLabel: (n: number) => `カバー候補 ${n}`,
     },
     metadata: {
       sectionTitle: 'メタデータ',

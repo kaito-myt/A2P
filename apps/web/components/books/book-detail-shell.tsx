@@ -32,6 +32,7 @@ import type { CostBreakdownSummary } from '@/lib/cost-view';
 
 import { OutlineTab } from './outline-tab';
 import { ChaptersTab } from './chapters-tab';
+import { CoverTab } from './cover-tab';
 import { CostTab } from './cost-tab';
 import { JobHistoryTab } from './job-history-tab';
 import { EvaluationHistoryTable } from './evaluation-history-table';
@@ -233,7 +234,7 @@ export function BookDetailShell({ book, costBreakdown, evalResults }: BookDetail
         </TabsContent>
 
         <TabsContent value="cover">
-          <PlaceholderTab message={m.cover.placeholder} />
+          <CoverTab covers={book.covers} />
         </TabsContent>
 
         <TabsContent value="metadata">
