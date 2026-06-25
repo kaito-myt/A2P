@@ -1317,6 +1317,8 @@ export const messages = {
   commentsPage: {
     pageTitle: '修正コメント一覧',
     pageSubtitle: '複数書籍・種別の修正コメントを横断確認し、一括反映を実行します',
+    checkboxHint:
+      'チェックは「反映対象の選択」です。未消化(pending)のコメントだけ選べます。選択後、下部のバーから〈選択を一括反映〉(本文をAIが再修正→対応済みに)・〈優先度変更〉・〈削除〉ができます。',
     breadcrumbHome: 'ホーム',
     breadcrumbBooks: '書籍',
     breadcrumbComments: '修正コメント一覧',

@@ -283,7 +283,11 @@ export function serializeChecklistBook(
     coverImageUrl: cover?.url ?? null,
     priceJpy: book.kdpMetadata?.price_jpy ?? null,
     metadataMissing,
-    hasBlockingComments: book.has_blocking_comments,
+    // ブロック状態は「未消化 (pending) の must コメントが存在するか」で都度算出する。
+    // 旧実装は Book.has_blocking_comments フラグを使っていたが、コメントを対応済みに
+    // しても入稿チェックに「残コメントあり」が残る同期ズレがあった。実コメントから
+    // 導出することで、対応済みになれば即座にブロック解除される。
+    hasBlockingComments: mustComments.length > 0,
     mustCommentCount: mustComments.length,
     mustComments,
     fields,

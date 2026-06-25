@@ -18,6 +18,8 @@ import {
   type BookOption,
 } from '@/lib/comments-view';
 
+import { messages } from '@/lib/messages';
+
 import { CommentsBulkActionBar } from './comments-bulk-action-bar';
 import { CommentsFilterBar } from './comments-filter-bar';
 import { CommentsSummaryKpi } from './comments-summary-kpi';
@@ -32,7 +34,9 @@ export function CommentsPageShell({
   rows,
   bookOptions,
 }: CommentsPageShellProps) {
-  const [filter, setFilter] = useState<CommentsPageFilter>({});
+  // 既定は「完了以外」= 未消化(pending) のみ表示。対応済み(applied/not_applicable)は
+  // ステータスフィルタを「すべて」等に切り替えると見られる。
+  const [filter, setFilter] = useState<CommentsPageFilter>({ status: 'pending' });
   const [groupBy, setGroupBy] = useState<GroupByKey>('book');
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -109,6 +113,10 @@ export function CommentsPageShell({
         onGroupByChange={setGroupBy}
         bookOptions={bookOptions}
       />
+
+      <p className="text-caption text-muted" data-testid="comments-checkbox-hint">
+        {messages.commentsPage.checkboxHint}
+      </p>
 
       <CommentsTable
         groups={groups}

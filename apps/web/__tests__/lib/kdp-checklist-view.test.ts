@@ -186,11 +186,14 @@ describe('serializeChecklistBook — checklist state hydration', () => {
 
 describe('computeOverallCompletion', () => {
   it('複数書籍の checkedCount / readyCount を正しく集計する', () => {
-    const book1 = serializeChecklistBook(BASE_BOOK); // checkedCount=1, !blocking
+    const book1 = serializeChecklistBook({ ...BASE_BOOK, revisionComments: [] }); // checkedCount=1, !blocking
     const book2 = serializeChecklistBook({
       ...BASE_BOOK,
       id: 'book_2',
-      has_blocking_comments: true,
+      // 未消化 must コメントがあるとブロック扱い (実コメントから導出)
+      revisionComments: [
+        { id: 'rc_b2', body: '必須修正', priority: 'must', status: 'pending', target_kind: 'chapter' },
+      ],
       kdpSubmissionProgress: null,
     }); // checkedCount=0, blocking
 
@@ -214,12 +217,14 @@ describe('computeOverallCompletion', () => {
 
 describe('isBookReady', () => {
   it('blocking なし + metadata あり → true', () => {
-    const book = serializeChecklistBook(BASE_BOOK);
+    // 未消化 must コメントが無ければブロックなし
+    const book = serializeChecklistBook({ ...BASE_BOOK, revisionComments: [] });
     expect(isBookReady(book)).toBe(true);
   });
 
-  it('blocking あり → false', () => {
-    const book = serializeChecklistBook({ ...BASE_BOOK, has_blocking_comments: true });
+  it('blocking あり (未消化 must コメント) → false', () => {
+    // BASE_BOOK は rc_1 (pending must) を含むのでブロック扱い
+    const book = serializeChecklistBook({ ...BASE_BOOK });
     expect(isBookReady(book)).toBe(false);
   });
 
