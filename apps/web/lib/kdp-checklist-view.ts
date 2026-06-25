@@ -14,8 +14,14 @@ import type { ChecklistStateJson, ChecklistFieldState } from './kdp-checklist-co
 
 export const CHECKLIST_FIELDS = [
   'title',
+  'title_kana',
+  'title_romaji',
   'subtitle',
+  'subtitle_kana',
+  'subtitle_romaji',
   'author',
+  'author_kana',
+  'author_romaji',
   'description',
   'category1',
   'category2',
@@ -68,6 +74,8 @@ export interface ChecklistBookView {
   priceJpy: number | null;
   /** true = メタデータ生成が未完了 */
   metadataMissing: boolean;
+  /** true = メタデータはあるが読み (フリガナ/ローマ字) が未生成 */
+  readingsMissing: boolean;
   /** Book.has_blocking_comments */
   hasBlockingComments: boolean;
   mustCommentCount: number;
@@ -103,6 +111,12 @@ export interface PrismaBookForChecklist {
     categories: string[];
     keywords: string[];
     price_jpy: number;
+    title_kana: string | null;
+    title_romaji: string | null;
+    subtitle_kana: string | null;
+    subtitle_romaji: string | null;
+    author_kana: string | null;
+    author_romaji: string | null;
   } | null;
   covers: Array<{
     id: string;
@@ -192,10 +206,22 @@ function buildFields(
     switch (field) {
       case 'title':
         return { ...base, value: meta ? book.title : null };
+      case 'title_kana':
+        return { ...base, value: meta?.title_kana ?? null };
+      case 'title_romaji':
+        return { ...base, value: meta?.title_romaji ?? null };
       case 'subtitle':
         return { ...base, value: meta ? (book.subtitle ?? '') : null };
+      case 'subtitle_kana':
+        return { ...base, value: meta?.subtitle_kana ?? null };
+      case 'subtitle_romaji':
+        return { ...base, value: meta?.subtitle_romaji ?? null };
       case 'author':
         return { ...base, value: meta ? book.account.pen_name : null };
+      case 'author_kana':
+        return { ...base, value: meta?.author_kana ?? null };
+      case 'author_romaji':
+        return { ...base, value: meta?.author_romaji ?? null };
       case 'description':
         return { ...base, value: meta ? meta.description : null };
       case 'category1':
@@ -236,8 +262,14 @@ function buildFields(
 function fieldLabel(field: ChecklistField): string {
   const labels: Record<ChecklistField, string> = {
     title: 'タイトル',
+    title_kana: 'タイトル（カタカナ）',
+    title_romaji: 'タイトル（ローマ字）',
     subtitle: 'サブタイトル',
+    subtitle_kana: 'サブタイトル（カタカナ）',
+    subtitle_romaji: 'サブタイトル（ローマ字）',
     author: '著者名',
+    author_kana: '著者名（カタカナ）',
+    author_romaji: '著者名（ローマ字）',
     description: '紹介文',
     category1: 'カテゴリ 1',
     category2: 'カテゴリ 2',
@@ -258,6 +290,10 @@ export function serializeChecklistBook(
   const totalFieldCount = CHECKLIST_FIELDS.length;
 
   const metadataMissing = book.kdpMetadata === null;
+  // メタデータはあるが読みが未生成 (タイトル読みが空) かどうか。
+  const readingsMissing =
+    book.kdpMetadata !== null &&
+    (!book.kdpMetadata.title_kana || !book.kdpMetadata.title_romaji);
 
   const mustComments = book.revisionComments
     .filter((c) => c.priority === 'must' && c.status === 'pending')
@@ -283,6 +319,7 @@ export function serializeChecklistBook(
     coverImageUrl: cover?.url ?? null,
     priceJpy: book.kdpMetadata?.price_jpy ?? null,
     metadataMissing,
+    readingsMissing,
     // ブロック状態は「未消化 (pending) の must コメントが存在するか」で都度算出する。
     // 旧実装は Book.has_blocking_comments フラグを使っていたが、コメントを対応済みに
     // しても入稿チェックに「残コメントあり」が残る同期ズレがあった。実コメントから

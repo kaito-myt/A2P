@@ -17,6 +17,7 @@ import { enqueueJob } from '@/lib/graphile-client';
 import { messages } from '@/lib/messages';
 
 const THUMBNAIL_TEXT_TASK = 'pipeline.book.thumbnail.text';
+const READINGS_GENERATE_TASK = 'pipeline.book.readings.generate';
 
 const UpdatePublishStatusSchema = z.object({
   book_id: z.string().min(1),
@@ -72,6 +73,57 @@ export async function updateBookPublishStatus(
   } catch (err) {
     if (isA2PError(err)) return err.toActionResult();
     return fail('unknown', messages.books.publish.updateError);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 読み (フリガナ/ローマ字) 生成: KDP 入稿用にタイトル/サブタイトル/著者名の
+// カタカナ読みを AI 生成しローマ字へ変換して KdpMetadata に保存する (F-020b)。
+// ---------------------------------------------------------------------------
+
+const GenerateReadingsSchema = z.object({ book_id: z.string().min(1) });
+
+export async function generateBookReadings(
+  input: unknown,
+): Promise<ActionResult<{ book_id: string; job_id: string }>> {
+  try {
+    await getSessionOrThrow();
+  } catch (err) {
+    if (isA2PError(err)) return err.toActionResult();
+    return fail('unknown', messages.kdpChecklist.readings.error);
+  }
+
+  const parsed = GenerateReadingsSchema.safeParse(input);
+  if (!parsed.success) return fail('validation', messages.kdpChecklist.readings.error);
+  const { book_id } = parsed.data;
+
+  try {
+    const book = await prisma.book.findUnique({
+      where: { id: book_id },
+      select: { id: true, kdpMetadata: { select: { id: true } } },
+    });
+    if (!book) return fail('not_found', messages.kdpChecklist.readings.error);
+    if (!book.kdpMetadata) return fail('conflict', messages.kdpChecklist.readings.noMetadata);
+
+    const existing = await prisma.job.findFirst({
+      where: { book_id, kind: READINGS_GENERATE_TASK, status: { in: ['queued', 'running'] } },
+      select: { id: true },
+    });
+    let jobId = existing?.id ?? null;
+    if (!jobId) {
+      const job = await prisma.job.create({
+        data: { kind: READINGS_GENERATE_TASK, book_id, status: 'queued', payload_json: { book_id } },
+      });
+      jobId = job.id;
+      await enqueueJob(READINGS_GENERATE_TASK, { book_id, job_id: jobId });
+    }
+
+    revalidatePath('/kdp/checklist');
+    revalidatePath(`/kdp/checklist/${book_id}`);
+    return ok({ book_id, job_id: jobId });
+  } catch (err) {
+    if (isA2PError(err)) return err.toActionResult();
+    return fail('unknown', messages.kdpChecklist.readings.error);
   }
 }
 

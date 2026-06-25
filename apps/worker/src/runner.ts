@@ -64,6 +64,10 @@ import {
   pipelineBookCoverRecheckTask,
 } from './tasks/pipeline-book-cover-recheck.js';
 import {
+  PIPELINE_BOOK_READINGS_GENERATE_TASK_NAME,
+  pipelineBookReadingsGenerateTask,
+} from './tasks/pipeline-book-readings-generate.js';
+import {
   PIPELINE_THEME_GENERATE_TASK_NAME,
   pipelineThemeGenerateTask,
 } from './tasks/pipeline-theme-generate.js';
@@ -148,6 +152,7 @@ export function buildTaskList(): TaskList {
     [PIPELINE_BOOK_THUMBNAIL_TEXT_TASK_NAME]: pipelineBookThumbnailTextTask,
     [PIPELINE_BOOK_THUMBNAIL_IMAGE_TASK_NAME]: pipelineBookThumbnailImageTask,
     [PIPELINE_BOOK_COVER_RECHECK_TASK_NAME]: pipelineBookCoverRecheckTask,
+    [PIPELINE_BOOK_READINGS_GENERATE_TASK_NAME]: pipelineBookReadingsGenerateTask,
     [PIPELINE_BOOK_JUDGE_TASK_NAME]: pipelineBookJudgeTask,
     [PIPELINE_BOOK_EXPORT_TASK_NAME]: pipelineBookExportTask,
     [REVISION_BOOK_APPLY_TASK_NAME]: revisionBookApplyTask,

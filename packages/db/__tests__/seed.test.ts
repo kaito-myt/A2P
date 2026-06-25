@@ -136,11 +136,11 @@ describe('buildAppSettingsSeed', () => {
 describe('buildPromptSeeds', () => {
   const seeds = buildPromptSeeds();
 
-  it('produces 9 roles × 4 genre axes (= 36 rows) per SP-01 §3 / T-01-04 (+cover_text_check)', () => {
-    expect(PROMPT_ROLES.length).toBe(9);
+  it('produces 10 roles × 4 genre axes (= 40 rows) (+cover_text_check +readings)', () => {
+    expect(PROMPT_ROLES.length).toBe(10);
     expect(PROMPT_GENRE_AXES.length).toBe(4);
     expect(seeds.length).toBe(PROMPT_ROLES.length * PROMPT_GENRE_AXES.length);
-    expect(seeds.length).toBe(36);
+    expect(seeds.length).toBe(40);
   });
 
   it('every role gets one row for each of {practical, business, self_help, null}', () => {
@@ -188,7 +188,7 @@ describe('buildModelAssignmentSeeds', () => {
   });
 
   it('writer/editor/judge/thumbnail_text/cover_text_check use claude-sonnet-4-6', () => {
-    for (const role of ['writer', 'editor', 'judge', 'thumbnail_text', 'cover_text_check'] as const) {
+    for (const role of ['writer', 'editor', 'judge', 'thumbnail_text', 'cover_text_check', 'readings'] as const) {
       expect(seeds.find((s) => s.role === role)?.model).toBe('claude-sonnet-4-6');
       expect(seeds.find((s) => s.role === role)?.provider).toBe('anthropic');
     }

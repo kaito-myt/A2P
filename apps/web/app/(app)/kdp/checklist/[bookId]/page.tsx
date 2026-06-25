@@ -43,6 +43,12 @@ export default async function KdpChecklistDetailPage({
           categories: true,
           keywords: true,
           price_jpy: true,
+          title_kana: true,
+          title_romaji: true,
+          subtitle_kana: true,
+          subtitle_romaji: true,
+          author_kana: true,
+          author_romaji: true,
         },
       },
       covers: {

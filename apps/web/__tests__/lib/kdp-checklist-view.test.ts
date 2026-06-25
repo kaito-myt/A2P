@@ -38,6 +38,12 @@ const BASE_BOOK: PrismaBookForChecklist = {
     categories: ['ビジネス・経済 > 個人投資・副業', 'コンピュータ・IT > 人工知能'],
     keywords: ['副業', 'AI', 'ChatGPT', '月5万', '実践', '初心者', 'ガイド'],
     price_jpy: 499,
+    title_kana: null,
+    title_romaji: null,
+    subtitle_kana: null,
+    subtitle_romaji: null,
+    author_kana: null,
+    author_romaji: null,
   },
   covers: [
     { id: 'cover_1', r2_key: 'covers/book_1/v1.png', status: 'adopted' },

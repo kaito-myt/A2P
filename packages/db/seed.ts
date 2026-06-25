@@ -32,6 +32,7 @@ export const PROMPT_ROLES = [
   'thumbnail_text',
   'thumbnail_image',
   'cover_text_check',
+  'readings',
   'judge',
   'optimizer',
 ] as const;
@@ -176,6 +177,8 @@ function buildPromptBody(role: PromptRole, genre: PromptGenre | null): string {
       return buildThumbnailImagePromptBody(genre);
     case 'cover_text_check':
       return buildCoverTextCheckPromptBody(genre);
+    case 'readings':
+      return buildReadingsPromptBody(genre);
     default:
       return `# ${role} prompt (v1)\n\nあなたは ${role} です。ユーザーメッセージの指示と出力形式に厳密に従ってください。`;
   }
@@ -544,6 +547,33 @@ function buildCoverTextCheckPromptBody(_genre: PromptGenre | null): string {
 指定された JSON スキーマに厳密に従って構造化出力してください。`;
 }
 
+/**
+ * readings — タイトル/サブタイトル/著者名のカタカナ読み (フリガナ) 生成。
+ * 対象テキストはユーザーメッセージで渡すため、システムプロンプトはペルソナ +
+ * 出力規約に専念する (プレースホルダ無し)。
+ */
+function buildReadingsPromptBody(_genre: PromptGenre | null): string {
+  return `# 読み (フリガナ) 生成 (v1)
+
+あなたは日本語書籍の KDP 入稿担当者です。タイトル・サブタイトル・著者名の
+**カタカナのヨミ（フリガナ）** を正確に生成します。
+
+## ルール
+
+- 出力はすべて**全角カタカナ**。ひらがな・漢字・ローマ字・記号を混ぜない。
+- 漢字は文脈に最も合う一般的な読みを選ぶ。固有名詞・人名は自然な読みを推定する。
+- 英単語・略語・数字は一般的な日本語読みのカタカナにする
+  (例: AI→エーアイ, ChatGPT→チャットジーピーティー, 5→ゴ, 100→ヒャク)。
+- 記号や装飾 (・/「」!? 等) は読まない。
+- 読みが不要・不能な項目 (記号のみ等) は空文字 "" にする。
+- ローマ字は生成しない（システム側で別途変換する）。
+
+## 出力形式
+
+指定された JSON スキーマ (title_kana / subtitle_kana / author_kana) に厳密に従って
+構造化出力する。各値は全角カタカナまたは空文字。`;
+}
+
 const ROLE_PLACEHOLDERS: Record<PromptRole, string[]> = {
   marketer: ['account_brief', 'genre_policy', 'competitor_signals'],
   marketer_plan: ['months', 'target_count', 'published_books', 'sales_trend'],
@@ -552,6 +582,7 @@ const ROLE_PLACEHOLDERS: Record<PromptRole, string[]> = {
   thumbnail_text: ['title', 'subtitle', 'target_reader'],
   thumbnail_image: ['cover_text', 'style_hint'],
   cover_text_check: [],
+  readings: [],
   judge: [
     'theme_title',
     'theme_subtitle',
@@ -608,6 +639,8 @@ export function buildModelAssignmentSeeds(): ModelAssignmentSeed[] {
     { role: 'thumbnail_image', genre: null, provider: 'openai', model: 'gpt-image-1', status: 'active', created_by: 'system' },
     // cover_text_check はビジョン対応モデル (Claude Sonnet 4.6 は画像入力可) を使う。
     { role: 'cover_text_check', genre: null, provider: 'anthropic', model: 'claude-sonnet-4-6', status: 'active', created_by: 'system' },
+    // readings (フリガナ生成) は軽量タスク。Sonnet で十分。
+    { role: 'readings', genre: null, provider: 'anthropic', model: 'claude-sonnet-4-6', status: 'active', created_by: 'system' },
   ];
 }
 

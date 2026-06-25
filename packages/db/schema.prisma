@@ -261,6 +261,13 @@ model KdpMetadata {
   categories  String[] // KDP 2 カテゴリ
   keywords    String[] // 最大 7 個
   price_jpy   Int
+  // KDP 入稿用フリガナ/ローマ字 (F-020b)。AI 生成カタカナ + ローマ字自動変換。null=未生成。
+  title_kana       String?
+  title_romaji     String?
+  subtitle_kana    String?
+  subtitle_romaji  String?
+  author_kana      String?
+  author_romaji    String?
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 

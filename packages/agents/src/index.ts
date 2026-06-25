@@ -114,6 +114,14 @@ export {
 } from './thumbnail/text-check.js';
 
 export {
+  generateReadings,
+  type GenerateReadingsDeps,
+  type ReadingsResult,
+} from './readings/index.js';
+
+export { kanaToRomaji } from './lib/kana-to-romaji.js';
+
+export {
   judgeBook,
   type JudgeBookDeps,
 } from './judge/index.js';
