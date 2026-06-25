@@ -16,23 +16,23 @@ function createTestImage(width: number, height: number): Promise<Buffer> {
 }
 
 describe('resizeCover', () => {
-  it('upscales a small image to default KDP dimensions (2560x1600)', async () => {
+  it('upscales a small image to default KDP dimensions (1600x2560)', async () => {
     const input = await createTestImage(256, 160);
     const output = await resizeCover(input);
     const meta = await sharp(output).metadata();
 
-    expect(meta.width).toBe(2560);
-    expect(meta.height).toBe(1600);
+    expect(meta.width).toBe(1600);
+    expect(meta.height).toBe(2560);
     expect(meta.format).toBe('jpeg');
   });
 
-  it('downscales a large image to default KDP dimensions (2560x1600)', async () => {
+  it('downscales a large image to default KDP dimensions (1600x2560)', async () => {
     const input = await createTestImage(5120, 3200);
     const output = await resizeCover(input);
     const meta = await sharp(output).metadata();
 
-    expect(meta.width).toBe(2560);
-    expect(meta.height).toBe(1600);
+    expect(meta.width).toBe(1600);
+    expect(meta.height).toBe(2560);
     expect(meta.format).toBe('jpeg');
   });
 
@@ -60,8 +60,8 @@ describe('resizeCover', () => {
     const output = await resizeCover(input);
     const meta = await sharp(output).metadata();
 
-    expect(meta.width).toBe(2560);
-    expect(meta.height).toBe(1600);
+    expect(meta.width).toBe(1600);
+    expect(meta.height).toBe(2560);
   });
 
   it('produces a valid JPEG buffer', async () => {
