@@ -197,7 +197,7 @@ function makeDefaultFixtures(opts?: { jobStatus?: string }): {
 
 function makeImageOutput(coverId = 'cover_001'): ThumbnailImageOutput {
   return {
-    r2Key: `books/book_1/covers/raw/${coverId}.png`,
+    r2Key: `books/book_1/covers/raw/${coverId}.jpg`,
     promptUsed: 'test prompt',
     coverId,
   };

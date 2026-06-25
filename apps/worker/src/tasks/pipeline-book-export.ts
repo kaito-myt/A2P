@@ -355,9 +355,10 @@ export async function runPipelineBookExport(
         );
       } else {
         const resizedBuffer = await resizeCoverFn(rawCoverBuffer);
-        const coverFilename = `${adoptedCover.id}-2560x1600.png`;
+        // サムネ/カバーは JPEG 出力 (KDP 表紙要件)。Artifact.kind は既存値 'cover_png' を維持。
+        const coverFilename = `${adoptedCover.id}-2560x1600.jpg`;
         const coverKey = bookArtifact(bookId, 'cover_png', coverFilename);
-        const coverUpload = await uploadBufferFn(coverKey, resizedBuffer, 'image/png');
+        const coverUpload = await uploadBufferFn(coverKey, resizedBuffer, 'image/jpeg');
         const coverArtifact = await prisma.artifact.create({
           data: {
             book_id: bookId,

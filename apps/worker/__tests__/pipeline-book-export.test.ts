@@ -250,7 +250,7 @@ function makeDefaultFixtures(opts?: { jobStatus?: string }): {
       id: 'cover_adopted_1',
       book_id: 'book_1',
       status: 'adopted',
-      r2_key: 'books/book_1/covers/raw/cover_adopted_1.png',
+      r2_key: 'books/book_1/covers/raw/cover_adopted_1.jpg',
     },
   ];
   return { job, book, chapters, covers };
@@ -421,7 +421,7 @@ describe('runPipelineBookExport happy path (3 artifacts)', () => {
     // Cover download + resize
     expect(downloadCalls).toHaveLength(1);
     expect(downloadCalls[0]).toMatchObject({
-      key: 'books/book_1/covers/raw/cover_adopted_1.png',
+      key: 'books/book_1/covers/raw/cover_adopted_1.jpg',
     });
     expect(resizeCoverCalls).toHaveLength(1);
 
@@ -431,7 +431,8 @@ describe('runPipelineBookExport happy path (3 artifacts)', () => {
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     );
     expect(uploadCalls[1]?.contentType).toBe('application/pdf');
-    expect(uploadCalls[2]?.contentType).toBe('image/png');
+    expect(uploadCalls[2]?.contentType).toBe('image/jpeg');
+    expect(uploadCalls[2]?.key).toMatch(/\.jpg$/);
 
     // 3 Artifact INSERTs
     expect(captures.artifactCreates).toHaveLength(3);

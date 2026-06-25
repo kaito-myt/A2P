@@ -23,7 +23,7 @@ describe('resizeCover', () => {
 
     expect(meta.width).toBe(2560);
     expect(meta.height).toBe(1600);
-    expect(meta.format).toBe('png');
+    expect(meta.format).toBe('jpeg');
   });
 
   it('downscales a large image to default KDP dimensions (2560x1600)', async () => {
@@ -33,7 +33,7 @@ describe('resizeCover', () => {
 
     expect(meta.width).toBe(2560);
     expect(meta.height).toBe(1600);
-    expect(meta.format).toBe('png');
+    expect(meta.format).toBe('jpeg');
   });
 
   it('resizes to custom dimensions when specified', async () => {
@@ -64,15 +64,15 @@ describe('resizeCover', () => {
     expect(meta.height).toBe(1600);
   });
 
-  it('produces a valid PNG buffer', async () => {
+  it('produces a valid JPEG buffer', async () => {
     const input = await createTestImage(400, 250);
     const output = await resizeCover(input);
 
     expect(output).toBeInstanceOf(Buffer);
     expect(output.length).toBeGreaterThan(0);
-    expect(output[0]).toBe(0x89);
-    expect(output[1]).toBe(0x50);
-    expect(output[2]).toBe(0x4e);
-    expect(output[3]).toBe(0x47);
+    // JPEG SOI マーカー (FF D8 FF)
+    expect(output[0]).toBe(0xff);
+    expect(output[1]).toBe(0xd8);
+    expect(output[2]).toBe(0xff);
   });
 });

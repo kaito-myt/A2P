@@ -1,8 +1,8 @@
 /**
  * GET /api/covers/[id]/image — カバー画像の R2 署名付き URL リダイレクト。
  *
- * カバー画像は R2 (非公開バケット) に `books/{book_id}/covers/raw/{cover_id}.png`
- * として保存される。UI (チェックリストのサムネ / サムネ承認グリッド・比較ビュー) は
+ * カバー画像は R2 (非公開バケット) に `books/{book_id}/covers/raw/{cover_id}.jpg`
+ * (JPEG) として保存される。UI (チェックリストのサムネ / サムネ承認グリッド・比較ビュー) は
  * `<img src="/api/covers/{id}/image">` でこのルートを参照する。
  *
  * - 認証必須 (ブラウザの <img> リクエストは Cookie を伴うため middleware を通過する)

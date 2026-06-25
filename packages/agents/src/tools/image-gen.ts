@@ -23,6 +23,12 @@ import { classifyProviderError, isNonRetryable } from '../lib/errors.js';
  */
 export type ImageQuality = 'low' | 'medium' | 'high' | 'auto';
 
+/**
+ * gpt-image-1 の出力フォーマット。`output_format` にそのまま渡す。
+ * 既定 (未指定) は OpenAI 側の既定 = PNG。
+ */
+export type ImageOutputFormat = 'png' | 'jpeg' | 'webp';
+
 export interface GenerateImageArgs {
   /** 画像生成プロンプト (日本語可)。 */
   prompt: string;
@@ -34,10 +40,14 @@ export interface GenerateImageArgs {
   count?: number;
   /** OpenAI 品質オプション。既定 'standard'。 */
   quality?: ImageQuality;
+  /** 出力フォーマット (png | jpeg | webp)。未指定なら OpenAI 既定 (PNG)。 */
+  outputFormat?: ImageOutputFormat;
+  /** jpeg/webp の圧縮率 0-100 (高いほど高品質)。outputFormat が jpeg/webp の時のみ有効。 */
+  outputCompression?: number;
 }
 
 export interface GenerateImageResult {
-  /** 生成された PNG バイナリ (base64 デコード後)。 */
+  /** 生成された画像バイナリ (base64 デコード後)。フォーマットは outputFormat に従う (既定 PNG)。 */
   images: Buffer[];
   /** 単体呼出では常に 0。実コストは `withImageLogging` が算出する。 */
   costJpy: number;
@@ -58,6 +68,8 @@ export interface OpenAIImagesClient {
       size: string;
       n: number;
       quality?: ImageQuality;
+      output_format?: ImageOutputFormat;
+      output_compression?: number;
     }): Promise<{
       data?: Array<{ b64_json?: string | null } | null> | null;
     }>;
@@ -232,6 +244,10 @@ export async function generateImage(
       size,
       n: count,
       ...(args.quality !== undefined ? { quality: args.quality } : {}),
+      ...(args.outputFormat !== undefined ? { output_format: args.outputFormat } : {}),
+      ...(args.outputCompression !== undefined
+        ? { output_compression: args.outputCompression }
+        : {}),
     }),
   );
 

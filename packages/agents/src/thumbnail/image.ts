@@ -5,8 +5,8 @@
  *  1. Build an image-gen prompt from the cover text proposal (title/subtitle)
  *     and the style guide
  *  2. Call `generateImage` (via `withImageLogging` for token_usage recording)
- *     to get raw PNG buffer from gpt-image-1
- *  3. Upload raw image to R2 at `books/{book_id}/covers/raw/{cover_id}.png`
+ *     to get a raw JPEG buffer from gpt-image-1 (output_format='jpeg')
+ *  3. Upload raw image to R2 at `books/{book_id}/covers/raw/{cover_id}.jpg`
  *  4. INSERT a `Cover` row (r2_key, width, height, prompt_used,
  *     generation_meta_json, status='generated')
  *  5. Return { r2Key, promptUsed, coverId }
@@ -152,7 +152,7 @@ function defaultGenerateId(): string {
  * F-007: Generate a single cover image for a book.
  *
  * Calls gpt-image-1 via `generateImage` (wrapped with `withImageLogging`
- * for token_usage recording), uploads the raw PNG to R2, and creates a
+ * for token_usage recording), uploads the raw JPEG to R2, and creates a
  * `Cover` DB row.
  *
  * @throws ProviderError  gpt-image-1 API failure (after retries)
@@ -185,6 +185,10 @@ export async function generateCoverImage(
       count: 1,
       // 高品質設定で「AI っぽさ」を抑え、タイポグラフィの破綻を減らす。
       quality: 'high',
+      // サムネ画像は JPEG で出力する (KDP 表紙は JPEG/TIFF。ファイルも軽量)。
+      // 圧縮率はタイポグラフィの劣化を避けるため高め。
+      outputFormat: 'jpeg',
+      outputCompression: 92,
     },
     deps.imageGenDeps,
   );
@@ -194,11 +198,11 @@ export async function generateCoverImage(
   // --- 4. Generate cover ID and R2 key ---
   const coverId = (deps.generateId ?? defaultGenerateId)();
 
-  const r2Key = bookArtifact(parsed.bookId, 'cover_source', `${coverId}.png`);
+  const r2Key = bookArtifact(parsed.bookId, 'cover_source', `${coverId}.jpg`);
 
   // --- 5. Upload to R2 ---
   const upload = deps.uploadBuffer ?? defaultUploadBuffer;
-  await upload(r2Key, imageBuffer, 'image/png');
+  await upload(r2Key, imageBuffer, 'image/jpeg');
 
   // --- 6. INSERT Cover row ---
   const coverRepo = deps.prisma?.cover ?? await defaultCoverRepo();
@@ -210,6 +214,7 @@ export async function generateCoverImage(
     width: parsed.width,
     height: parsed.height,
     image_size_bytes: imageBuffer.byteLength,
+    format: 'jpeg',
   };
 
   await coverRepo.create({

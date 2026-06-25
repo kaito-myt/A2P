@@ -168,6 +168,26 @@ describe('generateImage — 正常系', () => {
     await generateImage(baseArgs({ quality: 'high' }), deps(client));
     expect(calls[0]!.quality).toBe('high');
   });
+
+  it('outputFormat / outputCompression を output_format / output_compression として渡せる', async () => {
+    const { client, calls } = makeStubOpenAI({
+      responseQueue: [{ data: [{ b64_json: dummyB64('j') }] }],
+    });
+    await generateImage(
+      baseArgs({ outputFormat: 'jpeg', outputCompression: 92 }),
+      deps(client),
+    );
+    expect(calls[0]!.output_format).toBe('jpeg');
+    expect(calls[0]!.output_compression).toBe(92);
+  });
+
+  it('outputFormat 未指定なら output_format は送らない (OpenAI 既定=PNG)', async () => {
+    const { client, calls } = makeStubOpenAI({
+      responseQueue: [{ data: [{ b64_json: dummyB64('p') }] }],
+    });
+    await generateImage(baseArgs(), deps(client));
+    expect(calls[0]!.output_format).toBeUndefined();
+  });
 });
 
 // ===========================================================================

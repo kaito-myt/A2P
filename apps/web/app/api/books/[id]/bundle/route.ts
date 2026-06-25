@@ -4,7 +4,7 @@
  * 同梱物:
  *   - 本文 Word  : `<title>.docx`   (artifacts.kind='docx')
  *   - 本文 PDF   : `<title>.pdf`    (artifacts.kind='pdf')
- *   - カバー画像 : `<title>_cover.png` (covers の adopted、無ければ最初の generated)
+ *   - カバー画像 : `<title>_cover.jpg` (covers の adopted、無ければ最初の generated)
  *
  * 認証必須。R2 から実体を取得し JSZip で固めてストリーム返却する。
  */
@@ -65,7 +65,7 @@ export async function GET(
   if (pdf) targets.push({ key: pdf.r2_key, name: `${safeTitle}.pdf` });
   const cover =
     book.covers.find((c) => c.status === 'adopted') ?? book.covers[0] ?? null;
-  if (cover) targets.push({ key: cover.r2_key, name: `${safeTitle}_cover.png` });
+  if (cover) targets.push({ key: cover.r2_key, name: `${safeTitle}_cover.jpg` });
 
   if (targets.length === 0) {
     return new NextResponse('No downloadable assets for this book', { status: 404 });

@@ -43,7 +43,8 @@ export async function GET(
   }
 
   // ブラウザで開かず即ダウンロードさせるため、本タイトル付き filename を渡す。
-  const ext = artifact.kind === 'pdf' ? 'pdf' : artifact.kind === 'docx' ? 'docx' : 'png';
+  // cover_png は内容が JPEG (KDP 表紙要件)。kind 名は互換のため維持しつつ拡張子は jpg。
+  const ext = artifact.kind === 'pdf' ? 'pdf' : artifact.kind === 'docx' ? 'docx' : 'jpg';
   const safeTitle = (artifact.book?.title ?? 'book').replace(/[\\/:*?"<>|]/g, '_');
   const filename = `${safeTitle}.${ext}`;
 

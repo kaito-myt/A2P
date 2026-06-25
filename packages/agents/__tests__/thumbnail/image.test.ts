@@ -8,7 +8,7 @@
  *  1. happy path: image generated + R2 upload + Cover INSERT + output shape
  *  2. prompt includes title and subtitle
  *  3. prompt includes style guide
- *  4. R2 key follows `books/{bookId}/covers/raw/{coverId}.png` pattern
+ *  4. R2 key follows `books/{bookId}/covers/raw/{coverId}.jpg` pattern
  *  5. Cover INSERT has correct fields
  *  6. token_usage recorded via withImageLogging
  *  7. jobId forwarded to ImageLoggingContext
@@ -126,7 +126,7 @@ describe('generateCoverImage -- happy path', () => {
     const result = await generateCoverImage(input, deps);
 
     expect(result.coverId).toBe('test-cover-id');
-    expect(result.r2Key).toBe('books/book-1/covers/raw/test-cover-id.png');
+    expect(result.r2Key).toBe('books/book-1/covers/raw/test-cover-id.jpg');
     expect(result.promptUsed).toContain('副業で月5万円稼ぐ方法');
 
     expect(deps.generateImage).toHaveBeenCalledTimes(1);
@@ -189,13 +189,13 @@ describe('generateCoverImage -- prompt construction', () => {
 // ---------------------------------------------------------------------------
 
 describe('generateCoverImage -- R2 key', () => {
-  it('follows books/{bookId}/covers/raw/{coverId}.png pattern', async () => {
+  it('follows books/{bookId}/covers/raw/{coverId}.jpg pattern', async () => {
     const input = baseInput({ bookId: 'mybook123' });
     const deps = baseDeps({ generateId: () => 'coverABC' });
 
     const result = await generateCoverImage(input, deps);
 
-    expect(result.r2Key).toBe('books/mybook123/covers/raw/coverABC.png');
+    expect(result.r2Key).toBe('books/mybook123/covers/raw/coverABC.jpg');
   });
 });
 
@@ -227,7 +227,7 @@ describe('generateCoverImage -- Cover INSERT', () => {
       id: 'cover-Z',
       book_id: 'book-X',
       cover_text_id: 'ctp-Y',
-      r2_key: 'books/book-X/covers/raw/cover-Z.png',
+      r2_key: 'books/book-X/covers/raw/cover-Z.jpg',
       width: 1024,
       height: 1536,
       status: 'generated',
@@ -401,6 +401,8 @@ describe('generateCoverImage -- dimension defaults', () => {
     const callArgs = (genImage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as GenerateImageArgs;
     expect(callArgs.width).toBe(1024);
     expect(callArgs.height).toBe(1536);
+    // サムネは JPEG で生成する。
+    expect(callArgs.outputFormat).toBe('jpeg');
   });
 });
 
@@ -453,7 +455,8 @@ describe('generateCoverImage -- upload buffer', () => {
     expect(uploadBuf).toHaveBeenCalledTimes(1);
     const [key, buf, contentType] = uploadBuf.mock.calls[0]!;
     expect(key).toContain('covers/raw/');
+    expect(key).toMatch(/\.jpg$/);
     expect(buf).toBe(imageBuffer);
-    expect(contentType).toBe('image/png');
+    expect(contentType).toBe('image/jpeg');
   });
 });
