@@ -105,3 +105,48 @@ export async function regenerateCoverText(
   }
   return result;
 }
+
+const COVER_RECHECK_TASK = 'pipeline.book.cover.recheck';
+
+/**
+ * recheckBookCovers — 既存カバーの文字崩れを後追い検証し、崩れた候補を
+ * 自動再生成する裏側ジョブ (pipeline.book.cover.recheck) を起動する (F-007b)。
+ */
+export async function recheckBookCovers(
+  input: unknown,
+): Promise<ActionResult<{ book_id: string; job_id: string }>> {
+  try {
+    await getSessionOrThrow();
+  } catch (err) {
+    return authFail(err);
+  }
+
+  const bookId =
+    typeof input === 'object' && input !== null && 'book_id' in input
+      ? String((input as { book_id: unknown }).book_id)
+      : '';
+  if (!bookId) return fail('validation', messages.covers.errors.unknown);
+
+  try {
+    // 二重起動防止: queued/running の recheck ジョブがあれば再利用。
+    const existing = await prisma.job.findFirst({
+      where: { book_id: bookId, kind: COVER_RECHECK_TASK, status: { in: ['queued', 'running'] } },
+      select: { id: true },
+    });
+    let jobId = existing?.id ?? null;
+    if (!jobId) {
+      const job = await prisma.job.create({
+        data: { kind: COVER_RECHECK_TASK, book_id: bookId, status: 'queued', payload_json: { book_id: bookId } },
+      });
+      jobId = job.id;
+      await enqueueJob(COVER_RECHECK_TASK, { book_id: bookId, job_id: jobId });
+    }
+
+    revalidatePath('/covers');
+    revalidatePath('/books');
+    return { ok: true, data: { book_id: bookId, job_id: jobId } };
+  } catch (err) {
+    if (isA2PError(err)) return err.toActionResult();
+    return fail('unknown', messages.covers.errors.unknown);
+  }
+}

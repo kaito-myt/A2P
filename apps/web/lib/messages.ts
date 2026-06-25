@@ -1209,6 +1209,8 @@ export const messages = {
       backToList: '一覧に戻る',
       prevBook: '前の書籍',
       nextBook: '次の書籍',
+      recheckButton: '文字崩れを再チェック',
+      recheckStarted: '文字崩れチェックを開始しました（崩れた候補は自動で作り直します。数分後に再読込してください）',
     },
     coverText: {
       sectionTitle: 'カバーテキスト案',

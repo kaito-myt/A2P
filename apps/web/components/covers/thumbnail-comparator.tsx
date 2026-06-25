@@ -20,7 +20,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, useCallback, useTransition, type MouseEvent } from 'react';
 
-import { bulkAdoptCovers } from '@/app/actions/covers';
+import { bulkAdoptCovers, recheckBookCovers } from '@/app/actions/covers';
 import { Button } from '@/components/ui/button';
 import { CommentAffordance } from '@/components/comments/comment-affordance';
 import { CommentBadge } from '@/components/comments/comment-badge';
@@ -59,6 +59,16 @@ export function ThumbnailComparator({
   onCommentChange,
 }: ThumbnailComparatorProps) {
   const { book, covers, coverTextProposals, comments } = group;
+  const [recheckPending, startRecheck] = useTransition();
+  const [recheckInfo, setRecheckInfo] = useState<string | null>(null);
+
+  function handleRecheck() {
+    setRecheckInfo(null);
+    startRecheck(async () => {
+      const res = await recheckBookCovers({ book_id: book.id });
+      if (res.ok) setRecheckInfo(m.comparator.recheckStarted);
+    });
+  }
 
   return (
     <div
@@ -76,6 +86,15 @@ export function ThumbnailComparator({
           {m.comparator.backToList}
         </button>
         <div className="flex items-center gap-space-snug">
+          <button
+            type="button"
+            onClick={handleRecheck}
+            disabled={recheckPending}
+            className="inline-flex items-center rounded-card border border-border-warm bg-cream px-3 py-1.5 text-button-sm text-charcoal hover:bg-charcoal-04 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            data-testid="covers-recheck-text"
+          >
+            {m.comparator.recheckButton}
+          </button>
           <Button
             type="button"
             variant="ghost"
@@ -101,6 +120,15 @@ export function ThumbnailComparator({
           </Button>
         </div>
       </div>
+
+      {recheckInfo && (
+        <p
+          className="rounded-card border border-success bg-success-bg/40 px-3 py-2 text-button-sm text-success"
+          data-testid="covers-recheck-info"
+        >
+          {recheckInfo}
+        </p>
+      )}
 
       {/* Book title */}
       <h2 className="text-sub-heading text-foreground">{book.title}</h2>
