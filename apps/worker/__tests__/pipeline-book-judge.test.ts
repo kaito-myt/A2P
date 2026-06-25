@@ -457,8 +457,8 @@ describe('runPipelineBookJudge — EvalResult INSERT', () => {
 // (b) score_total >= 80 で pipeline.book.export が enqueue される
 // ---------------------------------------------------------------------------
 
-describe('runPipelineBookJudge — score >= 80 → export enqueue', () => {
-  it('(b) score_total >= 80 で Book.status=exporting + pipeline.book.export enqueue', async () => {
+describe('runPipelineBookJudge — score >= 80 → サムネ承認ゲート', () => {
+  it('(b) score_total >= 80 で Book.status=thumbnail (承認待ち) + export は自動起動しない', async () => {
     const { job, book, theme, chapters, payload } = makeBaseData();
     const judgeOutput = makeDefaultJudgeOutput(85);
     const { prisma, captures } = buildPrisma({ jobs: [job], books: [book], themes: [theme], chapters });
@@ -467,14 +467,14 @@ describe('runPipelineBookJudge — score >= 80 → export enqueue', () => {
 
     await runPipelineBookJudge(payload, addJob, deps);
 
-    // Book.status = 'exporting'
-    const bookUpdate = captures.bookUpdates.find((u) => u.data.status === 'exporting');
+    // 合格でも自動 export せず、Book.status='thumbnail' (カバー採用待ち) で停止する。
+    const bookUpdate = captures.bookUpdates.find((u) => u.data.status === 'thumbnail');
     expect(bookUpdate).toBeDefined();
 
-    // pipeline.book.export が enqueue される
-    expect(addJobCalls.some((c) => c.identifier === 'pipeline.book.export')).toBe(true);
+    // pipeline.book.export は enqueue されない (採用時に bulkAdoptCovers が起動する)。
+    expect(addJobCalls.some((c) => c.identifier === 'pipeline.book.export')).toBe(false);
 
-    // judgeBook が呼ばれた
+    // judgeBook が呼ばれた (採点は実施)
     expect(judgeCalls).toHaveLength(1);
 
     // Job が done になる

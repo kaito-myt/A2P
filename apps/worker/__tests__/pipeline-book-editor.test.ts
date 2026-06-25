@@ -100,6 +100,7 @@ interface PrismaCaptures {
   jobFindFirstCalls: Array<{ where: Record<string, unknown> }>;
   revisionCreates: Array<{ data: Record<string, unknown> }>;
   chapterUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
+  bookUpdates: Array<{ id: string; status?: string }>;
   txCalls: number;
   executeRawCalls: Array<{ sql: string; values: unknown[] }>;
 }
@@ -140,6 +141,7 @@ function buildPrisma(args: BuildPrismaArgs): {
     jobFindFirstCalls: [],
     revisionCreates: [],
     chapterUpdates: [],
+    bookUpdates: [],
     txCalls: 0,
     executeRawCalls: [],
   };
@@ -273,6 +275,10 @@ function buildPrisma(args: BuildPrismaArgs): {
               subtitle: b.subtitle,
             }
           : null;
+      },
+      update: async (a: { where: { id: string }; data: { status?: string } }) => {
+        captures.bookUpdates.push({ id: a.where.id, status: a.data.status });
+        return {};
       },
     },
     themeCandidate: {
@@ -587,24 +593,13 @@ describe('runPipelineBookEditor happy path', () => {
       expect(c.version).toBe(2);
     });
 
-    // thumbnail.text enqueue
-    expect(captures.jobCreates).toHaveLength(1);
-    expect(captures.jobCreates[0]?.data).toMatchObject({
-      kind: 'pipeline.book.thumbnail.text',
-      book_id: 'book_1',
-      parent_job_id: 'job_editor_1',
-      status: 'queued',
-      payload_json: { book_id: 'book_1' },
-    });
-    expect(addJobCalls).toHaveLength(2);
-    expect(addJobCalls[0]?.identifier).toBe('pipeline.book.thumbnail.text');
-    expect(addJobCalls[0]?.payload).toMatchObject({
-      book_id: 'book_1',
-      job_id: 'thumbnail_job_1',
-    });
-    // cost check enqueue (F-034 / T-07-02)
-    expect(addJobCalls[1]?.identifier).toBe('alert.cost.check');
-    expect(addJobCalls[1]?.payload).toEqual({ scope: 'per_book', book_id: 'book_1' });
+    // 本文承認ゲート: thumbnail.text は自動起動せず、Book.status='content_review' で停止する。
+    expect(captures.jobCreates).toHaveLength(0);
+    expect(captures.bookUpdates).toContainEqual({ id: 'book_1', status: 'content_review' });
+    // cost check のみ enqueue (F-034 / T-07-02)、thumbnail は起動しない。
+    expect(addJobCalls).toHaveLength(1);
+    expect(addJobCalls[0]?.identifier).toBe('alert.cost.check');
+    expect(addJobCalls[0]?.payload).toEqual({ scope: 'per_book', book_id: 'book_1' });
 
     // Job done + result_json
     const doneCall = captures.jobUpdates.find((c) => c.data.status === 'done');
@@ -614,7 +609,7 @@ describe('runPipelineBookEditor happy path', () => {
       result_json: {
         revisions_count: 7,
         ai_disclosure_appended: true,
-        thumbnail_text_job_id: 'thumbnail_job_1',
+        thumbnail_text_job_id: null,
       },
     });
 
@@ -629,16 +624,15 @@ describe('runPipelineBookEditor happy path', () => {
     });
   });
 
-  it('既存 thumbnail.text Job が存在 → 重複 enqueue しない (thumbnail_text_job_id=null)', async () => {
+  it('校閲後は本文承認ゲートで停止 (content_review) し thumbnail.text を起動しない', async () => {
     const { job, book, theme, chapters } = makeJobBookThemeChapters({ chapterCount: 7 });
     const { prisma, captures } = buildPrisma({
       jobs: [job],
       books: [book],
       themes: [theme],
       chapters,
-      existingThumbnailJob: { id: 'thumbnail_existing' },
     });
-    const { deps, loggerCalls } = buildDeps(prisma);
+    const { deps } = buildDeps(prisma);
     const { addJob, calls: addJobCalls } = makeAddJob();
 
     await runPipelineBookEditor(
@@ -647,11 +641,11 @@ describe('runPipelineBookEditor happy path', () => {
       deps,
     );
 
+    // thumbnail.text の Job 作成も enqueue もしない。
     expect(captures.jobCreates).toHaveLength(0);
-    // cost check enqueue only (F-034 / T-07-02), thumbnail skipped
-    expect(addJobCalls).toHaveLength(1);
-    expect(addJobCalls[0]?.identifier).toBe('alert.cost.check');
-    expect(addJobCalls[0]?.payload).toEqual({ scope: 'per_book', book_id: 'book_1' });
+    expect(addJobCalls.some((c) => c.identifier === 'pipeline.book.thumbnail.text')).toBe(false);
+    // Book は content_review で停止。
+    expect(captures.bookUpdates).toContainEqual({ id: 'book_1', status: 'content_review' });
 
     const doneCall = captures.jobUpdates.find((c) => c.data.status === 'done');
     expect(doneCall?.data).toMatchObject({
@@ -660,11 +654,6 @@ describe('runPipelineBookEditor happy path', () => {
         thumbnail_text_job_id: null,
       },
     });
-
-    const skipLog = loggerCalls.find((c) =>
-      c.msg.includes('thumbnail.text Job already enqueued'),
-    );
-    expect(skipLog).toBeDefined();
   });
 
   it('feedback を editBook へ forward', async () => {

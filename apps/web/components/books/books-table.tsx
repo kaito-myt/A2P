@@ -38,6 +38,7 @@ const STATUS_OPTIONS: Array<{ value: BookStatus | 'all'; label: string }> = [
   { value: 'queued', label: m.status.queued },
   { value: 'running', label: m.status.running },
   { value: 'editing', label: m.status.editing },
+  { value: 'content_review', label: m.status.content_review },
   { value: 'judging', label: m.status.judging },
   { value: 'thumbnail', label: m.status.thumbnail },
   { value: 'exporting', label: m.status.exporting },

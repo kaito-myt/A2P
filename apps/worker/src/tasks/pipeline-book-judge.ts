@@ -463,59 +463,23 @@ export async function runPipelineBookJudge(
     let nextJobId: string | null = null;
 
     if (judgeOutput.score_total >= 80) {
-      // A. 合格 → exporting + pipeline.book.export enqueue
+      // A. 合格 → サムネ承認ゲート (人手)。自動で export せず Book.status='thumbnail'
+      //    にして停止する。運営者が /covers でカバーを採用すると pipeline.book.export
+      //    が enqueue され出版データ生成へ進む (bulkAdoptCovers SA)。
       await prisma.book.update({
         where: { id: bookId },
-        data: { status: 'exporting', updated_at: now() },
+        data: { status: 'thumbnail', updated_at: now() },
       });
-
-      const existingExportJob = await prisma.job.findFirst({
-        where: {
-          book_id: bookId,
-          kind: PIPELINE_BOOK_EXPORT_TASK_NAME,
-          status: { in: ['queued', 'running', 'done'] },
+      nextJobId = null;
+      log.info(
+        {
+          task: PIPELINE_BOOK_JUDGE_TASK_NAME,
+          jobId,
+          bookId,
+          scoreTotal: judgeOutput.score_total,
         },
-        select: { id: true },
-      });
-
-      if (existingExportJob) {
-        log.info(
-          {
-            task: PIPELINE_BOOK_JUDGE_TASK_NAME,
-            jobId,
-            bookId,
-            existingExportJobId: existingExportJob.id,
-          },
-          'export Job already enqueued for this book — skipping duplicate',
-        );
-        nextJobId = existingExportJob.id;
-      } else {
-        const exportJob = await prisma.job.create({
-          data: {
-            kind: PIPELINE_BOOK_EXPORT_TASK_NAME,
-            book_id: bookId,
-            parent_job_id: jobId,
-            status: 'queued',
-            payload_json: { book_id: bookId },
-          },
-        });
-        await addJob(
-          PIPELINE_BOOK_EXPORT_TASK_NAME,
-          { book_id: bookId, job_id: exportJob.id },
-          { maxAttempts: 3 },
-        );
-        nextJobId = exportJob.id;
-        log.info(
-          {
-            task: PIPELINE_BOOK_JUDGE_TASK_NAME,
-            jobId,
-            bookId,
-            scoreTotal: judgeOutput.score_total,
-            exportJobId: exportJob.id,
-          },
-          'score >= 80 — pipeline.book.export enqueued',
-        );
-      }
+        'score >= 80 — awaiting human cover adoption (status=thumbnail)',
+      );
 
       notifyPhase = 'judge_done';
     } else if (retryCount < 2) {

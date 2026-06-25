@@ -18,6 +18,7 @@ export type BookStatus =
   | 'queued'
   | 'running'
   | 'editing'
+  | 'content_review'
   | 'judging'
   | 'thumbnail'
   | 'exporting'
@@ -31,6 +32,7 @@ const KNOWN_BOOK_STATUSES = new Set<string>([
   'queued',
   'running',
   'editing',
+  'content_review',
   'judging',
   'thumbnail',
   'exporting',

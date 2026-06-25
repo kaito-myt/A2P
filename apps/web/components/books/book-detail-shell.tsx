@@ -32,6 +32,7 @@ import type { CostBreakdownSummary } from '@/lib/cost-view';
 
 import { OutlineTab } from './outline-tab';
 import { ChaptersTab } from './chapters-tab';
+import { ContentApprovalBanner } from './content-approval-banner';
 import { CoverTab } from './cover-tab';
 import { CostTab } from './cost-tab';
 import { JobHistoryTab } from './job-history-tab';
@@ -195,6 +196,10 @@ export function BookDetailShell({ book, costBreakdown, evalResults }: BookDetail
   return (
     <div className="flex flex-col gap-space-loose" data-testid="book-detail-shell">
       <BookHeader book={book} />
+
+      {book.status === 'content_review' && (
+        <ContentApprovalBanner bookId={book.id} />
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} data-testid="book-tabs">
         <TabsList className="flex-wrap" data-testid="book-tabs-list">

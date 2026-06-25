@@ -163,6 +163,10 @@ export interface PipelineBookEditorPrisma {
       title: string;
       subtitle: string | null;
     } | null>;
+    update: (args: {
+      where: { id: string };
+      data: { status?: string; updated_at?: Date };
+    }) => Promise<unknown>;
   };
   themeCandidate: {
     findUnique: (args: {
@@ -469,44 +473,15 @@ export async function runPipelineBookEditor(
       revisionsCount += 1;
     }
 
-    // 7. 完了で pipeline.book.thumbnail.text を enqueue (docs/05 §5.3.5)
-    //    重複防止: 既存 queued/running/done を除外
-    let thumbnailJobId: string | null = null;
-    const existingThumbnail = await prisma.job.findFirst({
-      where: {
-        book_id: bookId,
-        kind: PIPELINE_BOOK_THUMBNAIL_TEXT_TASK_NAME,
-        status: { in: ['queued', 'running', 'done'] },
-      },
-      select: { id: true },
+    // 7. 本文承認ゲート (人手): 校閲完了後は自動でサムネ生成へ進めず、
+    //    Book.status='content_review' (本文承認待ち) にして停止する。
+    //    運営者が書籍詳細で「本文を承認」すると thumbnail.text が enqueue され先へ進む
+    //    (approveBookContent SA)。
+    const thumbnailJobId: string | null = null;
+    await prisma.book.update({
+      where: { id: bookId },
+      data: { status: 'content_review', updated_at: now() },
     });
-    if (existingThumbnail) {
-      log.info(
-        {
-          task: PIPELINE_BOOK_EDITOR_TASK_NAME,
-          jobId,
-          bookId,
-          existingThumbnailJobId: existingThumbnail.id,
-        },
-        'thumbnail.text Job already enqueued for this book — skipping duplicate',
-      );
-    } else {
-      const thumbnailJob = await prisma.job.create({
-        data: {
-          kind: PIPELINE_BOOK_THUMBNAIL_TEXT_TASK_NAME,
-          book_id: bookId,
-          parent_job_id: jobId,
-          status: 'queued',
-          payload_json: { book_id: bookId },
-        },
-      });
-      await addJob(
-        PIPELINE_BOOK_THUMBNAIL_TEXT_TASK_NAME,
-        { book_id: bookId, job_id: thumbnailJob.id },
-        { maxAttempts: 3 },
-      );
-      thumbnailJobId = thumbnailJob.id;
-    }
 
     // 8. 内部 Job を done に遷移
     await prisma.job.update({
