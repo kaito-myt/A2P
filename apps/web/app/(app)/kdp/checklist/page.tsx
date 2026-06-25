@@ -27,9 +27,13 @@ const m = messages.kdpChecklist;
 export default async function KdpChecklistPage() {
   // 入稿対象 = done 状態の書籍 + metadata あり/なし 両方含む (運営者が確認できるよう全件)
   // 失敗/取消/アーカイブは除外
+  // 入稿リストの掲載条件: done / needs_human_review かつ「出版済み」でない。
+  // 運営者が詳細で入稿/出版ステータスを「出版済み」にすると、このリストから外れる
+  // (= 入稿作業が完了したものを自動的に片付ける)。「入稿済み」はまだ表示し続ける。
   const booksRaw = await prisma.book.findMany({
     where: {
       status: { in: ['done', 'needs_human_review'] },
+      publish_status: { not: 'published' },
     },
     orderBy: { done_at: 'desc' },
     select: {

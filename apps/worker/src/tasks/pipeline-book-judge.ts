@@ -119,6 +119,7 @@ export interface PipelineBookJudgePrisma {
         theme_id: true;
         title: true;
         subtitle: true;
+        status: true;
       };
     }) => Promise<{
       id: string;
@@ -126,6 +127,7 @@ export interface PipelineBookJudgePrisma {
       theme_id: string | null;
       title: string;
       subtitle: string | null;
+      status: string;
     } | null>;
     update: (args: {
       where: { id: string };
@@ -345,6 +347,7 @@ export async function runPipelineBookJudge(
         theme_id: true,
         title: true,
         subtitle: true,
+        status: true,
       },
     });
     if (!book) {
@@ -466,20 +469,33 @@ export async function runPipelineBookJudge(
       // A. 合格 → サムネ承認ゲート (人手)。自動で export せず Book.status='thumbnail'
       //    にして停止する。運営者が /covers でカバーを採用すると pipeline.book.export
       //    が enqueue され出版データ生成へ進む (bulkAdoptCovers SA)。
-      await prisma.book.update({
-        where: { id: bookId },
-        data: { status: 'thumbnail', updated_at: now() },
-      });
-      nextJobId = null;
-      log.info(
-        {
-          task: PIPELINE_BOOK_JUDGE_TASK_NAME,
-          jobId,
-          bookId,
-          scoreTotal: judgeOutput.score_total,
-        },
-        'score >= 80 — awaiting human cover adoption (status=thumbnail)',
-      );
+      //
+      // ただし、既に出版データ生成まで完了 (status='done') した書籍の再採点
+      // (revision.book.apply の re-score 等) では、サムネ承認ゲートに差し戻さない。
+      // 差し戻すと「サムネ承認したのにライブラリのステータスが thumbnail に戻る」
+      // 不具合になるため、done はそのまま維持する。
+      if (book.status === 'done') {
+        nextJobId = null;
+        log.info(
+          { task: PIPELINE_BOOK_JUDGE_TASK_NAME, jobId, bookId, scoreTotal: judgeOutput.score_total },
+          'score >= 80 but book already done — keeping status=done (re-score, no gate revert)',
+        );
+      } else {
+        await prisma.book.update({
+          where: { id: bookId },
+          data: { status: 'thumbnail', updated_at: now() },
+        });
+        nextJobId = null;
+        log.info(
+          {
+            task: PIPELINE_BOOK_JUDGE_TASK_NAME,
+            jobId,
+            bookId,
+            scoreTotal: judgeOutput.score_total,
+          },
+          'score >= 80 — awaiting human cover adoption (status=thumbnail)',
+        );
+      }
 
       notifyPhase = 'judge_done';
     } else if (retryCount < 2) {

@@ -54,6 +54,7 @@ interface BookRecord {
   theme_id: string | null;
   title: string;
   subtitle: string | null;
+  status?: string;
 }
 
 interface ThemeRecord {
@@ -204,6 +205,7 @@ function buildPrisma(args: BuildPrismaArgs): {
               theme_id: b.theme_id,
               title: b.title,
               subtitle: b.subtitle,
+              status: b.status ?? 'judging',
             }
           : null;
       },
