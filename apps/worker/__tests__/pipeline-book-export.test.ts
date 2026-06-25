@@ -196,6 +196,15 @@ function buildPrisma(args: BuildPrismaArgs): {
       },
     },
     artifact: {
+      deleteMany: async ({ where }: { where: { book_id: string; kind: { in: string[] } } }) => {
+        const before = artifacts.length;
+        for (let i = artifacts.length - 1; i >= 0; i--) {
+          if (artifacts[i]!.book_id === where.book_id && where.kind.in.includes(artifacts[i]!.kind)) {
+            artifacts.splice(i, 1);
+          }
+        }
+        return { count: before - artifacts.length };
+      },
       create: async ({ data }) => {
         captures.artifactCreates.push({ data: data as unknown as Record<string, unknown> });
         artifactCounter += 1;

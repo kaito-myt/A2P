@@ -126,6 +126,9 @@ export interface PipelineBookExportPrisma {
     }) => Promise<{ id: string; r2_key: string } | null>;
   };
   artifact: {
+    deleteMany: (args: {
+      where: { book_id: string; kind: { in: string[] } };
+    }) => Promise<{ count: number }>;
     create: (args: {
       data: {
         book_id: string;
@@ -281,6 +284,13 @@ export async function runPipelineBookExport(
     }
 
     const artifactIds: string[] = [];
+
+    // 4b. 既存 artifact を削除して再出力を冪等にする。
+    //     r2_key は book/kind 決定論的なため、再出版 (カバー採用やり直し等) で
+    //     create のみだと一意制約に衝突する。古い行を消してから作り直す。
+    await prisma.artifact.deleteMany({
+      where: { book_id: bookId, kind: { in: ['docx', 'pdf', 'cover_png'] } },
+    });
 
     // 5. Build docx
     const docxBuffer = await buildDocxFn(
