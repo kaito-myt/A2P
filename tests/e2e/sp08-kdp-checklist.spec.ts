@@ -282,20 +282,22 @@ test.describe('S-015 KDP 入稿チェックリスト', () => {
     // ページ要素が表示される
     await expect(page.locator('[data-testid="kdp-checklist-page"]')).toBeVisible();
 
-    // 3 冊のブックタブが表示
+    // 3 冊が一覧 (カード) で表示
     for (const book of seed.books) {
-      await expect(page.locator(`[data-testid="book-tab-${book.bookId}"]`)).toBeVisible();
-      await expect(page.locator(`[data-testid="book-tab-${book.bookId}"]`)).toContainText(book.title);
+      const item = page.locator(`[data-testid="checklist-list-item-${book.bookId}"]`);
+      await expect(item).toBeVisible();
+      await expect(item).toContainText(book.title);
     }
-
-    // チェックリストテーブルが表示される
-    await expect(page.locator('[data-testid="submission-checklist-table"]')).toBeVisible();
 
     // 「KDP を新規タブで開く」リンク存在
     const kdpLink = page.locator('[data-testid="kdp-open-link"]');
     await expect(kdpLink).toBeVisible();
     expect(await kdpLink.getAttribute('href')).toBe('https://kdp.amazon.co.jp/bookshelf');
     expect(await kdpLink.getAttribute('target')).toBe('_blank');
+
+    // クリックで詳細に遷移し、チェックリストテーブルが表示される
+    await page.locator(`[data-testid="checklist-list-item-${seed.books[0]!.bookId}"]`).click();
+    await expect(page.locator('[data-testid="submission-checklist-table"]')).toBeVisible();
   });
 
   test('2. コピー・チェック操作 — チェックボックス状態と persistent 状態が更新される', async ({ page }) => {
@@ -303,9 +305,8 @@ test.describe('S-015 KDP 入稿チェックリスト', () => {
 
     await page.goto('/kdp/checklist');
 
-    // Book 1 を選択（最初はデフォルト選択）
-    const book1Tab = page.locator(`[data-testid="book-tab-${seed.books[0]!.bookId}"]`);
-    await book1Tab.click();
+    // Book 1 の詳細へ遷移
+    await page.locator(`[data-testid="checklist-list-item-${seed.books[0]!.bookId}"]`).click();
 
     // title フィールドのチェックボックスを確認
     const titleCheckbox = page.locator('[data-testid="checkbox-title"]');
@@ -333,9 +334,12 @@ test.describe('S-015 KDP 入稿チェックリスト', () => {
 
     await page.goto('/kdp/checklist');
 
-    // Book 2 (ブロック済み) タブをクリック
-    const book2Tab = page.locator(`[data-testid="book-tab-${blockedBook.bookId}"]`);
-    await book2Tab.click();
+    // 一覧で Book 2 (ブロック済み) のカードに blocked バッジが出る
+    const book2Item = page.locator(`[data-testid="checklist-list-item-${blockedBook.bookId}"]`);
+    await expect(book2Item).toContainText(/blocked:|ブロック/i);
+
+    // 詳細へ遷移
+    await book2Item.click();
 
     // ブロック理由バナーが表示される
     const blockBanner = page.locator('[data-testid="block-reason-banner"]');
@@ -347,37 +351,27 @@ test.describe('S-015 KDP 入稿チェックリスト', () => {
     // submit ボタンは常に disabled (Phase 3 機能)
     const submitButton = page.locator('[data-testid="submit-to-kdp-btn"]');
     await expect(submitButton).toBeDisabled();
-
-    // タブバッジに「ブロック」表示 (must N 件)
-    await expect(book2Tab).toContainText(/blocked:|ブロック/i);
   });
 
-  test('4. 複数冊の切替 — Book 1 から Book 2 へタブ切替、状態分離', async ({ page }) => {
+  test('4. 複数冊の独立性 — Book 1 詳細でチェック、Book 2 は未チェック、再訪で保持', async ({ page }) => {
     const seed = await seedKdpChecklistBooks('multi-book-switch');
+    const book1Id = seed.books[0]!.bookId;
+    const book2Id = seed.books[1]!.bookId;
 
-    await page.goto('/kdp/checklist');
-
-    // Book 1 を選択
-    const book1Tab = page.locator(`[data-testid="book-tab-${seed.books[0]!.bookId}"]`);
-    const book2Tab = page.locator(`[data-testid="book-tab-${seed.books[1]!.bookId}"]`);
-
-    await book1Tab.click();
-
-    // Book 1 の title チェックボックスをクリック
+    // Book 1 詳細で title をチェック
+    await page.goto(`/kdp/checklist/${book1Id}`);
     const titleCheckbox1 = page.locator('[data-testid="checkbox-title"]');
     await titleCheckbox1.click();
     await expect(titleCheckbox1).toBeChecked();
 
-    // Book 2 に切替
-    await book2Tab.click();
-
-    // Book 2 の title チェックボックスは未チェック (状態分離)
+    // Book 2 詳細では未チェック (状態分離)
+    await page.goto(`/kdp/checklist/${book2Id}`);
     const titleCheckbox2 = page.locator('[data-testid="checkbox-title"]');
     await expect(titleCheckbox2).not.toBeChecked();
 
-    // Book 1 に戻るとチェック状態が保持されている
-    await book1Tab.click();
-    await expect(titleCheckbox1).toBeChecked();
+    // Book 1 に戻ると DB から復元されチェック状態が保持されている
+    await page.goto(`/kdp/checklist/${book1Id}`);
+    await expect(page.locator('[data-testid="checkbox-title"]')).toBeChecked();
   });
 
   test('5. メタデータ欠落時の表示 — メタデータなし書籍は「未生成」メッセージ', async ({ page }) => {
@@ -410,9 +404,8 @@ test.describe('S-015 KDP 入稿チェックリスト', () => {
       },
     });
 
-    await page.goto('/kdp/checklist');
-
-    // メタデータ未生成メッセージが表示される
+    // 詳細ページでメタデータ未生成メッセージが表示される
+    await page.goto(`/kdp/checklist/${bookNoMeta.id}`);
     const metaMissingState = page.locator('[data-testid="metadata-missing-state"]');
     await expect(metaMissingState).toBeVisible();
 

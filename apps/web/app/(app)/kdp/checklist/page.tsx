@@ -14,7 +14,7 @@ import { prisma } from '@a2p/db';
 import { messages } from '@/lib/messages';
 import { serializeChecklistPage } from '@/lib/kdp-checklist-view';
 import { EmptyState } from '@/components/common/empty-state';
-import { ChecklistPageShell } from '@/components/kdp-checklist/checklist-page-shell';
+import { ChecklistList } from '@/components/kdp-checklist/checklist-list';
 
 export const metadata: Metadata = {
   title: `${messages.kdpChecklist.pageTitle} | ${messages.brand.appName}`,
@@ -142,7 +142,7 @@ export default async function KdpChecklistPage() {
         </a>
       </header>
 
-      <ChecklistPageShell data={data} />
+      <ChecklistList books={data.books} />
     </div>
   );
 }

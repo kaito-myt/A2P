@@ -1842,6 +1842,8 @@ export const messages = {
     openKdpAriaLabel: 'KDP ブックシェルフを新規タブで開く',
     tabReadyBadge: 'ready',
     tabBlockedBadge: (n: number) => `blocked: must ${n} 件`,
+    backToList: '一覧に戻る',
+    listMetadataMissing: 'メタデータ未生成',
     updateSuccess: 'チェックリストを更新しました',
     copySuccess: 'コピー済み',
     copyAriaLabel: (field: string) => `${field} をコピー`,
