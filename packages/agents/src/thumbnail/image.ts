@@ -85,40 +85,40 @@ export interface GenerateCoverImageDeps {
 
 function buildImagePrompt(input: ThumbnailImageInput): string {
   // gpt-image-1 はアートディレクションを英語で詳細に与えると追従性が高い。
-  // 「AI 生成っぽさ」(過度なグロス/3D/ファンタジー調・崩れた日本語・余計な文字) を
-  // 明示的に禁止し、日本の実用書・ビジネス書として書店に並ぶ水準のデザインを指示する。
+  // 方針: 親しみやすく手に取られやすい「日本のライトノベル風イラスト表紙」。
+  // ただし崩れた日本語・余計な文字・崩れた手指などの「安っぽい AI 感」は明確に排除する。
   const lines: string[] = [
-    'Design a professional Japanese non-fiction / business book cover (KDP), portrait orientation.',
+    'Create a Japanese light-novel style illustrated book cover (ライトノベル風), portrait orientation,',
+    'high-quality professional anime/manga illustration as if published by a major light-novel label.',
     '',
-    'Exact text to typeset on the cover (use these characters verbatim, nothing else):',
-    `- Main title (largest, dominant): 「${input.title}」`,
+    'Exact text to place on the cover (use these characters verbatim, and NO other text):',
+    `- Main title (large, bold, dominant): 「${input.title}」`,
   ];
   if (input.subtitle) {
     lines.push(`- Subtitle (smaller, secondary): 「${input.subtitle}」`);
   }
   lines.push(
     '',
-    'Art direction:',
-    '- Modern, clean editorial design like a real bestselling Japanese practical/business book.',
-    '- Flat, sophisticated composition with a strong typographic hierarchy and generous margins.',
-    '- Restrained, refined color palette of 2–3 colors with high contrast; tasteful, not flashy.',
-    '- A single simple, relevant graphic motif or subtle abstract/geometric element that hints at the topic; keep it minimal and uncluttered.',
-    '- The cover must read clearly even as a small thumbnail.',
+    'Illustration direction:',
+    '- Appealing anime/manga illustration: clean confident line art, soft cel shading, vibrant yet tasteful colors, bright lighting.',
+    '- Feature an attractive, expressive anime-style character (and/or an evocative scene) that fits the book topic implied by the title.',
+    '- Dynamic, eye-catching composition with depth; polished, modern light-novel aesthetic that makes readers want to pick it up.',
+    '- Leave clear space at the top or bottom so the title typography sits cleanly over the artwork and stays readable as a small thumbnail.',
     '',
     'Typography (critical):',
-    '- Render the Japanese title in crisp, perfectly legible type with CORRECT kanji and kana.',
+    '- Render the Japanese title in crisp, perfectly legible type with CORRECT kanji and kana, well integrated with the illustration.',
     '- Absolutely no garbled, distorted, mojibake, or invented characters.',
     '- Do NOT add any text other than the title and subtitle above (no fake author lines, no logos, no labels, no lorem text).',
     '',
-    'Strictly avoid (these make it look AI-generated):',
-    '- 3D renders, glossy digital-painting, fantasy/sci-fi or surreal imagery, neon glow.',
-    '- Uncanny human faces or hands, fake brand logos, stock-photo collage look.',
-    '- Oversaturated rainbow gradients, busy backgrounds, watermarks, borders or frames.',
+    'Quality guardrails (avoid the cheap AI look):',
+    '- Correct anatomy: natural hands, fingers, eyes and faces; no extra or fused limbs.',
+    '- No watermarks, no borders or frames, no signature, no UI elements, no stock-photo collage.',
+    '- Avoid muddy or oversaturated rainbow gradients and cluttered backgrounds; keep it crisp and intentional.',
   );
   if (input.styleGuide) {
     lines.push('', `Additional style guidance: ${input.styleGuide}`);
   }
-  lines.push('', 'Output: a print-ready, sharp, high-quality vertical book cover.');
+  lines.push('', 'Output: a print-ready, sharp, high-quality vertical light-novel cover illustration.');
   return lines.join('\n');
 }
 
