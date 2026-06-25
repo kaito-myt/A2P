@@ -18,6 +18,12 @@ const publishLabel: Record<ChecklistBookView['publishStatus'], string> = {
   published: messages.books.publish.published,
 };
 
+const publishVariant: Record<ChecklistBookView['publishStatus'], 'neutral' | 'may' | 'success'> = {
+  unlisted: 'neutral',
+  submitted: 'may',
+  published: 'success',
+};
+
 export function ChecklistList({ books }: { books: ChecklistBookView[] }) {
   return (
     <ul className="flex flex-col gap-space-snug" data-testid="checklist-list">
@@ -39,12 +45,12 @@ export function ChecklistList({ books }: { books: ChecklistBookView[] }) {
                   <span>
                     {m.completionRate(book.checkedCount, book.totalFieldCount)}
                   </span>
-                  <span className="text-charcoal-82">
-                    {messages.books.publish.label}: {publishLabel[book.publishStatus]}
-                  </span>
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                <Badge variant={publishVariant[book.publishStatus]}>
+                  {publishLabel[book.publishStatus]}
+                </Badge>
                 {book.metadataMissing ? (
                   <Badge variant="should">{m.listMetadataMissing}</Badge>
                 ) : book.hasBlockingComments ? (
