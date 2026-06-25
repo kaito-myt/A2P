@@ -22,6 +22,7 @@ import {
 
 import { ArtifactDownloadGroup } from './artifact-download-group';
 import { BookStatusBadge } from './book-status-badge';
+import { PublishStatusControl } from './publish-status-control';
 
 const m = messages.books;
 
@@ -112,6 +113,7 @@ export function BooksTable({
               <Th>{m.table.account}</Th>
               <Th>{m.table.genre}</Th>
               <Th>{m.table.status}</Th>
+              <Th>{m.table.publishStatus}</Th>
               <Th align="right">{m.table.costJpy}</Th>
               <Th>{m.table.commentCount}</Th>
               <Th>{m.table.updatedAt}</Th>
@@ -151,6 +153,9 @@ export function BooksTable({
                   <Td>{formatGenre(row.genre) ?? '—'}</Td>
                   <Td>
                     <BookStatusBadge status={row.status} />
+                  </Td>
+                  <Td>
+                    <PublishStatusControl bookId={row.id} value={row.publish_status} />
                   </Td>
                   <Td align="right">
                     <span

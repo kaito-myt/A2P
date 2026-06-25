@@ -117,6 +117,8 @@ model Book {
   // | needs_human_review | failed | cancelled | paused_cost
   status                    String    @default("queued")
   cost_status               String    @default("normal") // normal | warn | paused | exceeded
+  // Amazon KDP 出版ステータス (運営者が手動管理): unlisted=未対応 | published=出版済み
+  publish_status            String    @default("unlisted")
   cost_jpy_total            Decimal   @default(0) @db.Decimal(10, 2)
   // type: Record<role, prompt_id> このジョブ実行時の active バージョン
   prompt_version_ids_json   Json

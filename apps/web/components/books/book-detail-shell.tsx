@@ -83,11 +83,20 @@ function BookHeader({ book }: { book: BookDetailSerialized }) {
 
   return (
     <div data-testid="book-header" className="flex flex-col gap-space-snug">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-sub-heading text-foreground">{book.title}</h1>
-        {book.subtitle && (
-          <p className="text-body text-muted">{book.subtitle}</p>
-        )}
+      <div className="flex flex-wrap items-start justify-between gap-space-snug">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-sub-heading text-foreground">{book.title}</h1>
+          {book.subtitle && (
+            <p className="text-body text-muted">{book.subtitle}</p>
+          )}
+        </div>
+        <a
+          href={`/api/books/${book.id}/bundle`}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-card border border-border-warm bg-charcoal px-3 py-1.5 text-button-sm text-cream-light no-underline hover:opacity-80"
+          data-testid="book-bundle-download"
+        >
+          {m.header.bundleDownload}
+        </a>
       </div>
 
       <div

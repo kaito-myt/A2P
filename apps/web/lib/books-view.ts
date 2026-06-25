@@ -110,10 +110,13 @@ export interface BookArtifactSerialized {
   kind: string;
 }
 
+export type PublishStatus = 'unlisted' | 'published';
+
 export interface BookRowSerialized {
   id: string;
   title: string;
   status: BookStatus;
+  publish_status: PublishStatus;
   cost_status: CostStatus;
   cost_jpy_total: number;
   has_pending_comments: boolean;
@@ -133,6 +136,7 @@ type RawBookForRow = Pick<
   | 'id'
   | 'title'
   | 'status'
+  | 'publish_status'
   | 'cost_status'
   | 'cost_jpy_total'
   | 'has_pending_comments'
@@ -150,6 +154,7 @@ export function serializeBookRow(raw: RawBookForRow): BookRowSerialized {
     id: raw.id,
     title: raw.title,
     status: normalizeBookStatus(raw.status),
+    publish_status: raw.publish_status === 'published' ? 'published' : 'unlisted',
     cost_status: normalizeCostStatus(raw.cost_status),
     cost_jpy_total: Number(raw.cost_jpy_total),
     has_pending_comments: raw.has_pending_comments,

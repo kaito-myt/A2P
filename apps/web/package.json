@@ -36,7 +36,8 @@
     "react-markdown": "^9.0.1",
     "remark-gfm": "^4.0.0",
     "tailwind-merge": "^2.5.4",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "jszip": "^3.10.1"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.15",

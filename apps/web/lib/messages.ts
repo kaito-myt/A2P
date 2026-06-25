@@ -736,6 +736,7 @@ export const messages = {
       account: 'アカウント',
       genre: 'ジャンル',
       status: 'ステータス',
+      publishStatus: '出版',
       costJpy: '累計コスト',
       costUnit: '円',
       commentCount: 'コメント',
@@ -746,6 +747,12 @@ export const messages = {
       detailLink: '詳細',
       noThumbnail: '—',
       totalCount: (n: number) => `全 ${n} 冊`,
+    },
+    publish: {
+      label: 'Amazon 出版ステータス',
+      unlisted: '未対応',
+      published: '出版済み',
+      updateError: '出版ステータスの更新に失敗しました',
     },
     filter: {
       statusLabel: 'ステータス',
@@ -785,6 +792,7 @@ export const messages = {
       costThresholdWarn: '¥500 閾値',
       costThresholdPause: '¥750 閾値',
       createdAtLabel: '作成日時',
+      bundleDownload: '一括ダウンロード (Word/PDF/カバー)',
     },
     status: {
       queued: '待機中',
