@@ -131,6 +131,13 @@ export interface AuditLogRepo {
   create(args: { data: Prisma.AuditLogUncheckedCreateInput }): Promise<unknown>;
 }
 
+/** prisma.job の最小サブセット — revision.book.apply の app Job 行作成用。 */
+export interface JobRepo {
+  create(args: {
+    data: Prisma.JobUncheckedCreateInput;
+  }): Promise<{ id: string }>;
+}
+
 export type EnqueueJobFn = (
   taskName: string,
   payload: unknown,
@@ -149,6 +156,7 @@ export interface RevisionRunsDeps {
   bookLockRepo: BookLockRepo;
   revisionRunRepo: RevisionRunRepo;
   auditLogRepo: AuditLogRepo;
+  jobRepo: JobRepo;
   runTransaction: RunTransactionFn;
   session: AuthenticatedSession;
   enqueueJob: EnqueueJobFn;
@@ -627,10 +635,28 @@ export async function createRevisionRunCore(
     }
 
     for (const [bookId, commentIds] of commentsByBook) {
+      // revision.book.apply タスクは payload に { run_id, book_id, comment_ids, job_id }
+      // を要求し、job_id を子ジョブ (再採点 judge) の parent_job_id (FK) に使う。
+      // そのため実在する app Job 行を 1 件作成してから enqueue する。
+      // (旧実装は revision_run_id というキー名で job_id 無しに enqueue しており、
+      //  「payload が不正です」で全件リトライ地獄になっていた。)
+      const appJob = await deps.jobRepo.create({
+        data: {
+          kind: REVISION_BOOK_APPLY_TASK_NAME,
+          book_id: bookId,
+          status: 'queued',
+          payload_json: {
+            run_id: txResult.runId,
+            book_id: bookId,
+            comment_ids: commentIds,
+          } as unknown as Prisma.InputJsonValue,
+        },
+      });
       await deps.enqueueJob(REVISION_BOOK_APPLY_TASK_NAME, {
-        revision_run_id: txResult.runId,
+        run_id: txResult.runId,
         book_id: bookId,
         comment_ids: commentIds,
+        job_id: appJob.id,
       });
     }
 

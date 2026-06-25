@@ -109,6 +109,9 @@ function makeDeps(opts: {
     auditLogRepo: {
       create: auditCreate,
     },
+    jobRepo: {
+      create: vi.fn(async () => ({ id: 'apply-job-1' })),
+    },
     runTransaction: async (fn) =>
       fn({
         commentRepo: {
@@ -199,11 +202,15 @@ describe('createRevisionRunCore', () => {
 
     // Only 1 enqueue call (book-B)
     expect(spies.enqueue).toHaveBeenCalledTimes(1);
+    // payload は worker タスク (run_id / book_id / comment_ids / job_id) に一致させる。
+    // job_id は事前に作成した app Job 行の id (FK)。
     expect(spies.enqueue).toHaveBeenCalledWith(
       REVISION_BOOK_APPLY_TASK_NAME,
       expect.objectContaining({
+        run_id: 'run-1',
         book_id: 'book-B',
         comment_ids: ['c2'],
+        job_id: 'apply-job-1',
       }),
     );
   });

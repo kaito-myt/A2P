@@ -54,6 +54,7 @@ async function buildDeps(): Promise<RevisionRunsDeps> {
     bookLockRepo: prisma.bookLock,
     revisionRunRepo: prisma.revisionRun,
     auditLogRepo: prisma.auditLog,
+    jobRepo: prisma.job,
     runTransaction: realRunTransaction,
     session,
     enqueueJob,
