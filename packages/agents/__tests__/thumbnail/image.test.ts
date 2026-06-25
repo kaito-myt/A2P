@@ -88,12 +88,26 @@ function baseInput(overrides: Partial<ThumbnailImageInput> = {}): ThumbnailImage
   };
 }
 
+function makeFakeVerify(ok = true) {
+  return vi.fn(async (_input: unknown) => ({
+    ok,
+    title_legible: ok,
+    title_matches: ok,
+    garbled_text_detected: !ok,
+    extra_text_detected: false,
+    transcribed_text: 'タイトル',
+    issues: ok ? [] : ['タイトル文字が崩れています'],
+    confidence: 0.9,
+  }));
+}
+
 function baseDeps(overrides: Partial<GenerateCoverImageDeps> = {}): GenerateCoverImageDeps {
   return {
     generateImage: overrides.generateImage ?? makeFakeGenerateImage(),
     uploadBuffer: overrides.uploadBuffer ?? makeFakeUploadBuffer(),
     prisma: overrides.prisma ?? { cover: makeFakeCoverRepo() },
     generateId: overrides.generateId ?? (() => 'test-cover-id'),
+    verifyCoverText: overrides.verifyCoverText ?? makeFakeVerify(true),
     withImageLoggingDeps: overrides.withImageLoggingDeps ?? {
       prisma: {
         tokenUsage: { create: vi.fn() },
@@ -220,7 +234,7 @@ describe('generateCoverImage -- Cover INSERT', () => {
     await generateCoverImage(input, deps);
 
     expect(coverRepo.create).toHaveBeenCalledTimes(1);
-    const createCall = coverRepo.create.mock.calls[0]![0] as {
+    const createCall = coverRepo.create.mock.calls[0]![0] as unknown as {
       data: Record<string, unknown>;
     };
     expect(createCall.data).toMatchObject({
@@ -423,7 +437,7 @@ describe('generateCoverImage -- generation_meta_json', () => {
 
     await generateCoverImage(input, deps);
 
-    const createArg = coverRepo.create.mock.calls[0]![0] as {
+    const createArg = coverRepo.create.mock.calls[0]![0] as unknown as {
       data: Record<string, unknown>;
     };
     const meta = createArg.data.generation_meta_json as Record<string, unknown>;
@@ -458,5 +472,133 @@ describe('generateCoverImage -- upload buffer', () => {
     expect(key).toMatch(/\.jpg$/);
     expect(buf).toBe(imageBuffer);
     expect(contentType).toBe('image/jpeg');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 15. Cover text verification (文字崩れチェック)
+// ---------------------------------------------------------------------------
+
+describe('generateCoverImage -- cover text verification', () => {
+  it('verifies the generated image and records the verdict in generation_meta_json', async () => {
+    const verify = makeFakeVerify(true);
+    const coverRepo = makeFakeCoverRepo();
+    const deps = baseDeps({ verifyCoverText: verify, prisma: { cover: coverRepo } });
+
+    await generateCoverImage(baseInput(), deps);
+
+    expect(verify).toHaveBeenCalledTimes(1);
+    // 検証入力に画像 base64 と期待タイトルが渡る。
+    const verifyArg = verify.mock.calls[0]![0] as unknown as {
+      title: string;
+      imageBase64: string;
+      mimeType: string;
+    };
+    expect(verifyArg.title).toBe('副業で月5万円稼ぐ方法');
+    expect(verifyArg.mimeType).toBe('image/jpeg');
+    expect(verifyArg.imageBase64.length).toBeGreaterThan(0);
+
+    const meta = (coverRepo.create.mock.calls[0]![0] as unknown as { data: { generation_meta_json: Record<string, unknown> } })
+      .data.generation_meta_json;
+    expect(meta.text_check_ok).toBe(true);
+    expect(meta.image_attempts).toBe(1);
+    expect(meta.text_check).toMatchObject({ ok: true });
+  });
+
+  it('regenerates when text is garbled, up to maxImageAttempts', async () => {
+    const genImage = makeFakeGenerateImage();
+    // 1 回目は崩れ (ok=false)、2 回目は OK。
+    const verify = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        title_legible: false,
+        title_matches: false,
+        garbled_text_detected: true,
+        extra_text_detected: false,
+        transcribed_text: '副業で月5万円稼ぐ方珐',
+        issues: ['「法」が崩れている'],
+        confidence: 0.8,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        title_legible: true,
+        title_matches: true,
+        garbled_text_detected: false,
+        extra_text_detected: false,
+        transcribed_text: '副業で月5万円稼ぐ方法',
+        issues: [],
+        confidence: 0.95,
+      });
+    const coverRepo = makeFakeCoverRepo();
+    const deps = baseDeps({
+      generateImage: genImage,
+      verifyCoverText: verify,
+      prisma: { cover: coverRepo },
+      maxImageAttempts: 3,
+    });
+
+    await generateCoverImage(baseInput(), deps);
+
+    expect(genImage).toHaveBeenCalledTimes(2);
+    expect(verify).toHaveBeenCalledTimes(2);
+    const meta = (coverRepo.create.mock.calls[0]![0] as unknown as { data: { generation_meta_json: Record<string, unknown> } })
+      .data.generation_meta_json;
+    expect(meta.image_attempts).toBe(2);
+    expect(meta.text_check_ok).toBe(true);
+  });
+
+  it('stops at maxImageAttempts even if still garbled (best-effort) and records ok=false', async () => {
+    const genImage = makeFakeGenerateImage();
+    const verify = makeFakeVerify(false); // 常に崩れ
+    const coverRepo = makeFakeCoverRepo();
+    const deps = baseDeps({
+      generateImage: genImage,
+      verifyCoverText: verify,
+      prisma: { cover: coverRepo },
+      maxImageAttempts: 2,
+    });
+
+    await generateCoverImage(baseInput(), deps);
+
+    expect(genImage).toHaveBeenCalledTimes(2);
+    expect(verify).toHaveBeenCalledTimes(2);
+    const meta = (coverRepo.create.mock.calls[0]![0] as unknown as { data: { generation_meta_json: Record<string, unknown> } })
+      .data.generation_meta_json;
+    expect(meta.image_attempts).toBe(2);
+    expect(meta.text_check_ok).toBe(false);
+  });
+
+  it('checkCoverText=false skips verification entirely', async () => {
+    const verify = makeFakeVerify(true);
+    const coverRepo = makeFakeCoverRepo();
+    const deps = baseDeps({
+      verifyCoverText: verify,
+      checkCoverText: false,
+      prisma: { cover: coverRepo },
+    });
+
+    await generateCoverImage(baseInput(), deps);
+
+    expect(verify).not.toHaveBeenCalled();
+    const meta = (coverRepo.create.mock.calls[0]![0] as unknown as { data: { generation_meta_json: Record<string, unknown> } })
+      .data.generation_meta_json;
+    expect(meta.text_check).toBeNull();
+    expect(meta.text_check_ok).toBeNull();
+  });
+
+  it('verifier failure is non-fatal: cover is still created with text_check_error', async () => {
+    const verify = vi.fn().mockRejectedValue(new Error('vision model down'));
+    const coverRepo = makeFakeCoverRepo();
+    const deps = baseDeps({ verifyCoverText: verify, prisma: { cover: coverRepo } });
+
+    const result = await generateCoverImage(baseInput(), deps);
+
+    expect(result.coverId).toBeTruthy();
+    expect(verify).toHaveBeenCalledTimes(1);
+    const meta = (coverRepo.create.mock.calls[0]![0] as unknown as { data: { generation_meta_json: Record<string, unknown> } })
+      .data.generation_meta_json;
+    expect(meta.text_check).toBeNull();
+    expect(meta.text_check_error).toContain('vision model down');
   });
 });

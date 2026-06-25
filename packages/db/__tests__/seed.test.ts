@@ -136,11 +136,11 @@ describe('buildAppSettingsSeed', () => {
 describe('buildPromptSeeds', () => {
   const seeds = buildPromptSeeds();
 
-  it('produces 8 roles × 4 genre axes (= 32 rows) per SP-01 §3 / T-01-04', () => {
-    expect(PROMPT_ROLES.length).toBe(8);
+  it('produces 9 roles × 4 genre axes (= 36 rows) per SP-01 §3 / T-01-04 (+cover_text_check)', () => {
+    expect(PROMPT_ROLES.length).toBe(9);
     expect(PROMPT_GENRE_AXES.length).toBe(4);
     expect(seeds.length).toBe(PROMPT_ROLES.length * PROMPT_GENRE_AXES.length);
-    expect(seeds.length).toBe(32);
+    expect(seeds.length).toBe(36);
   });
 
   it('every role gets one row for each of {practical, business, self_help, null}', () => {
@@ -187,8 +187,8 @@ describe('buildModelAssignmentSeeds', () => {
     expect(seeds.find((s) => s.role === 'optimizer')?.model).toBe('claude-opus-4-7');
   });
 
-  it('writer/editor/judge/thumbnail_text use claude-sonnet-4-6', () => {
-    for (const role of ['writer', 'editor', 'judge', 'thumbnail_text'] as const) {
+  it('writer/editor/judge/thumbnail_text/cover_text_check use claude-sonnet-4-6', () => {
+    for (const role of ['writer', 'editor', 'judge', 'thumbnail_text', 'cover_text_check'] as const) {
       expect(seeds.find((s) => s.role === role)?.model).toBe('claude-sonnet-4-6');
       expect(seeds.find((s) => s.role === role)?.provider).toBe('anthropic');
     }

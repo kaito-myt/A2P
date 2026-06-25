@@ -109,6 +109,11 @@ export {
 } from './thumbnail/image.js';
 
 export {
+  verifyCoverText,
+  type VerifyCoverTextDeps,
+} from './thumbnail/text-check.js';
+
+export {
   judgeBook,
   type JudgeBookDeps,
 } from './judge/index.js';

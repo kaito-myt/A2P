@@ -71,16 +71,57 @@ function makeModel(opts: AISdkClientOptions): LanguageModel {
   }
 }
 
+type LLMMessageImage = NonNullable<LLMCompleteArgs['messages'][number]['images']>[number];
+
+/** AI SDK のメッセージ content (文字列 or マルチモーダル parts)。 */
+type CoreContent =
+  | string
+  | Array<
+      | { type: 'text'; text: string }
+      | { type: 'image'; image: string; mediaType?: string }
+    >;
+
+interface RestMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  images?: LLMMessageImage[];
+}
+
 function splitMessages(messages: LLMCompleteArgs['messages']): {
   system?: string;
-  rest: Array<{ role: 'user' | 'assistant'; content: string }>;
+  rest: RestMessage[];
 } {
   const systems = messages.filter((m) => m.role === 'system').map((m) => m.content);
   const rest = messages
-    .filter((m): m is { role: 'user' | 'assistant'; content: string } => m.role !== 'system')
-    .map((m) => ({ role: m.role, content: m.content }));
+    .filter((m): m is LLMCompleteArgs['messages'][number] & { role: 'user' | 'assistant' } =>
+      m.role !== 'system',
+    )
+    .map((m) => {
+      const msg: RestMessage = { role: m.role, content: m.content };
+      if (m.images && m.images.length > 0) msg.images = m.images;
+      return msg;
+    });
   const system = systems.length > 0 ? systems.join('\n\n') : undefined;
   return system !== undefined ? { system, rest } : { rest };
+}
+
+/**
+ * RestMessage を AI SDK の CoreMessage 形へ変換する。
+ * 画像添付があれば content を text + image parts の配列にする (ビジョン入力)。
+ */
+function toCoreMessages(
+  rest: RestMessage[],
+): Array<{ role: 'user' | 'assistant'; content: CoreContent }> {
+  return rest.map((m) => {
+    if (!m.images || m.images.length === 0) {
+      return { role: m.role, content: m.content };
+    }
+    const parts: Exclude<CoreContent, string> = [{ type: 'text', text: m.content }];
+    for (const img of m.images) {
+      parts.push({ type: 'image', image: img.data, mediaType: img.mimeType });
+    }
+    return { role: m.role, content: parts };
+  });
 }
 
 /**
@@ -91,9 +132,9 @@ function splitMessages(messages: LLMCompleteArgs['messages']): {
  */
 function buildCachedMessages(
   system: string | undefined,
-  rest: Array<{ role: 'user' | 'assistant'; content: string }>,
-): Array<{ role: 'system' | 'user' | 'assistant'; content: string; providerOptions?: Record<string, Record<string, unknown>> }> {
-  const result: Array<{ role: 'system' | 'user' | 'assistant'; content: string; providerOptions?: Record<string, Record<string, unknown>> }> = [];
+  rest: RestMessage[],
+): Array<{ role: 'system' | 'user' | 'assistant'; content: CoreContent; providerOptions?: Record<string, Record<string, unknown>> }> {
+  const result: Array<{ role: 'system' | 'user' | 'assistant'; content: CoreContent; providerOptions?: Record<string, Record<string, unknown>> }> = [];
   if (system !== undefined) {
     result.push({
       role: 'system',
@@ -101,7 +142,7 @@ function buildCachedMessages(
       providerOptions: { anthropic: { cacheControl: { type: 'ephemeral' } } },
     });
   }
-  result.push(...rest);
+  result.push(...toCoreMessages(rest));
   return result;
 }
 
@@ -170,7 +211,7 @@ export class AISdkClient implements LLMClient {
             model,
             schema: args.responseSchema,
             ...(system !== undefined ? { system } : {}),
-            messages: rest,
+            messages: toCoreMessages(rest) as never,
             ...(args.maxOutputTokens !== undefined
               ? { maxOutputTokens: args.maxOutputTokens }
               : {}),
@@ -210,7 +251,7 @@ export class AISdkClient implements LLMClient {
         generateTextArgs = {
           model,
           ...(system !== undefined ? { system } : {}),
-          messages: rest,
+          messages: toCoreMessages(rest) as never,
           ...(tools !== undefined ? { tools: tools as never } : {}),
           ...(args.maxOutputTokens !== undefined
             ? { maxOutputTokens: args.maxOutputTokens }

@@ -104,3 +104,54 @@ export const ThumbnailImageOutputSchema = z.object({
   coverId: z.string(),
 });
 export type ThumbnailImageOutput = z.infer<typeof ThumbnailImageOutputSchema>;
+
+// ---------------------------------------------------------------------------
+// Cover Text Check (F-007b) — 生成カバー画像のタイポグラフィ検証
+// ---------------------------------------------------------------------------
+
+/**
+ * Input for `verifyCoverText` — 生成済みカバー画像に描画された日本語タイトルが
+ * 崩れていない (mojibake / 余分な文字 / 判読不能) ことをビジョンモデルで検証する。
+ */
+export const CoverTextCheckInputSchema = z.object({
+  /** graphile-worker.jobs.id -- worker only (token_usage trace)。 */
+  jobId: z.string().optional(),
+  /** `Book.id` -- token_usage.book_id。 */
+  bookId: z.string(),
+  /** Genre (null = 全ジャンル既定プロンプト fallback)。 */
+  genre: z.enum(['practical', 'business', 'self_help']).nullable().optional(),
+  /** カバーに描画されているはずのタイトル (verbatim 期待値)。 */
+  title: z.string().min(1),
+  /** カバーに描画されているはずの副題 (任意)。 */
+  subtitle: z.string().optional(),
+  /** 検証対象画像の base64 (data: プレフィックス無し)。 */
+  imageBase64: z.string().min(1),
+  /** 画像の MIME タイプ (例: image/jpeg)。 */
+  mimeType: z.string().default('image/jpeg'),
+});
+export type CoverTextCheckInput = z.infer<typeof CoverTextCheckInputSchema>;
+
+/**
+ * Output of `verifyCoverText`.
+ *
+ * `ok` = タイトルが判読でき、期待タイトルと一致し、崩れた文字が無い、の総合判定。
+ */
+export const CoverTextCheckOutputSchema = z.object({
+  /** 総合判定: タイトルが正しく読め、崩れ・余分文字が無いか。 */
+  ok: z.boolean(),
+  /** タイトル文字が判読可能か。 */
+  title_legible: z.boolean(),
+  /** 読み取れたタイトルが期待タイトルと一致するか。 */
+  title_matches: z.boolean(),
+  /** 崩れた/不正な/存在しない文字 (mojibake) が検出されたか。 */
+  garbled_text_detected: z.boolean(),
+  /** 期待していない余分なテキスト (偽の著者名・ロゴ・ラベル等) が描画されているか。 */
+  extra_text_detected: z.boolean(),
+  /** モデルが画像から実際に読み取った全テキスト。 */
+  transcribed_text: z.string(),
+  /** 問題点の箇条書き (日本語)。 */
+  issues: z.array(z.string()),
+  /** 判定の確信度 0-1。 */
+  confidence: z.number().min(0).max(1),
+});
+export type CoverTextCheckOutput = z.infer<typeof CoverTextCheckOutputSchema>;

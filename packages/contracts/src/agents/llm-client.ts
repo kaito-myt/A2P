@@ -20,8 +20,18 @@ export type AgentRole =
   | 'judge'
   | 'thumbnail_text'
   | 'thumbnail_image'
+  | 'cover_text_check'
   | 'optimizer'
   | 'revision';
+
+/**
+ * マルチモーダル入力用の画像添付。`content` (テキスト) と併せてユーザーメッセージに付与する。
+ * `data` は base64 (data: プレフィックス無し) / data URL / http(s) URL のいずれか。
+ */
+export interface LLMMessageImage {
+  data: string;
+  mimeType: string;
+}
 
 /** docs/02 / docs/05 §6.3 — 対応ジャンル 3 種。 */
 export type Genre = 'practical' | 'business' | 'self_help';
@@ -40,7 +50,12 @@ export interface LLMTool {
 export interface LLMCompleteArgs {
   role: AgentRole;
   genre?: Genre | null;
-  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+  messages: Array<{
+    role: 'system' | 'user' | 'assistant';
+    content: string;
+    /** マルチモーダル: ユーザーメッセージに添付する画像 (ビジョンモデル用)。 */
+    images?: LLMMessageImage[];
+  }>;
   tools?: LLMTool[];
   responseSchema?: z.ZodSchema;
   bookId?: string;

@@ -21,6 +21,8 @@ import {
   ThumbnailImageOutputSchema,
   type ThumbnailImageInput,
   type ThumbnailImageOutput,
+  type CoverTextCheckInput,
+  type CoverTextCheckOutput,
 } from '@a2p/contracts/agents/thumbnail';
 
 import { bookArtifact } from '@a2p/storage/keys';
@@ -35,6 +37,10 @@ import {
   type ImageLoggingContext,
   type WithImageLoggingDeps,
 } from '../lib/with-image-logging.js';
+import {
+  verifyCoverText as defaultVerifyCoverText,
+  type VerifyCoverTextDeps,
+} from './text-check.js';
 
 // ---------------------------------------------------------------------------
 // DI interfaces (minimal surface for testability)
@@ -77,6 +83,20 @@ export interface GenerateCoverImageDeps {
   prisma?: { cover: CoverRepo };
   /** Override ID generator (default: crypto.randomUUID). */
   generateId?: () => string;
+  /** Override cover-text verifier (default: real `verifyCoverText`). */
+  verifyCoverText?: (
+    input: CoverTextCheckInput,
+    deps?: VerifyCoverTextDeps,
+  ) => Promise<CoverTextCheckOutput>;
+  /** Inner DI for the verifier. */
+  verifyCoverTextDeps?: VerifyCoverTextDeps;
+  /** 文字崩れチェックを有効にするか (既定 true)。false で従来挙動 (検証なし)。 */
+  checkCoverText?: boolean;
+  /**
+   * 文字崩れ時に再生成する最大試行回数 (既定 2 = 1 回リトライ)。
+   * コスト保護のため上限を設ける。最終試行で崩れていても best-effort で採用する。
+   */
+  maxImageAttempts?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -176,24 +196,68 @@ export async function generateCoverImage(
   };
   const wrappedFn = withImageLogging(baseFn, loggingCtx, deps.withImageLoggingDeps);
 
-  // --- 3. Generate image ---
-  const result = await wrappedFn(
-    {
-      prompt,
-      width: parsed.width,
-      height: parsed.height,
-      count: 1,
-      // 高品質設定で「AI っぽさ」を抑え、タイポグラフィの破綻を減らす。
-      quality: 'high',
-      // サムネ画像は JPEG で出力する (KDP 表紙は JPEG/TIFF。ファイルも軽量)。
-      // 圧縮率はタイポグラフィの劣化を避けるため高め。
-      outputFormat: 'jpeg',
-      outputCompression: 92,
-    },
-    deps.imageGenDeps,
-  );
+  // --- 3. Generate image, verify cover text, regenerate on garbled text ---
+  // gpt-image-1 は日本語タイトルを崩すことがあるため、生成→ビジョン検証→
+  // 崩れていれば再生成 (上限 maxAttempts) のループにする。最終試行でも崩れて
+  // いれば best-effort で採用し、検証結果を generation_meta_json に残す。
+  const verify = deps.verifyCoverText ?? defaultVerifyCoverText;
+  const checkEnabled = deps.checkCoverText !== false;
+  const maxAttempts = Math.max(1, deps.maxImageAttempts ?? 2);
 
-  const imageBuffer = result.images[0]!;
+  let imageBuffer!: Buffer;
+  let totalCostJpy = 0;
+  let attemptsMade = 0;
+  let textCheck: CoverTextCheckOutput | null = null;
+  let textCheckError: string | undefined;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    attemptsMade = attempt;
+    const result = await wrappedFn(
+      {
+        prompt,
+        width: parsed.width,
+        height: parsed.height,
+        count: 1,
+        // 高品質設定で「AI っぽさ」を抑え、タイポグラフィの破綻を減らす。
+        quality: 'high',
+        // サムネ画像は JPEG で出力する (KDP 表紙は JPEG/TIFF。ファイルも軽量)。
+        // 圧縮率はタイポグラフィの劣化を避けるため高め。
+        outputFormat: 'jpeg',
+        outputCompression: 92,
+      },
+      deps.imageGenDeps,
+    );
+    imageBuffer = result.images[0]!;
+    totalCostJpy += result.costJpy;
+
+    if (!checkEnabled) {
+      textCheck = null;
+      break;
+    }
+
+    try {
+      const verifyInput: CoverTextCheckInput = {
+        bookId: parsed.bookId,
+        genre: null,
+        title: parsed.title,
+        imageBase64: imageBuffer.toString('base64'),
+        mimeType: 'image/jpeg',
+        ...(parsed.jobId !== undefined ? { jobId: parsed.jobId } : {}),
+        ...(parsed.subtitle !== undefined ? { subtitle: parsed.subtitle } : {}),
+      };
+      textCheck = await verify(verifyInput, deps.verifyCoverTextDeps);
+      textCheckError = undefined;
+    } catch (err) {
+      // 検証自体が失敗した場合は best-effort: カバー生成は止めず、
+      // 検証できないのでリトライもせず打ち切る。
+      textCheck = null;
+      textCheckError = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+      break;
+    }
+
+    // 文字 OK → このカバーを採用。崩れていて、かつ再試行が残っていれば再生成。
+    if (textCheck.ok) break;
+  }
 
   // --- 4. Generate cover ID and R2 key ---
   const coverId = (deps.generateId ?? defaultGenerateId)();
@@ -210,11 +274,16 @@ export async function generateCoverImage(
   const generationMeta = {
     provider: 'openai',
     model: 'gpt-image-1',
-    cost_jpy: result.costJpy,
+    cost_jpy: totalCostJpy,
     width: parsed.width,
     height: parsed.height,
     image_size_bytes: imageBuffer.byteLength,
     format: 'jpeg',
+    image_attempts: attemptsMade,
+    // 文字崩れチェック結果 (null = 検証なし/失敗)。
+    text_check: textCheck,
+    text_check_ok: textCheck ? textCheck.ok : null,
+    ...(textCheckError ? { text_check_error: textCheckError } : {}),
   };
 
   await coverRepo.create({

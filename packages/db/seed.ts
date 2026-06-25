@@ -31,6 +31,7 @@ export const PROMPT_ROLES = [
   'editor',
   'thumbnail_text',
   'thumbnail_image',
+  'cover_text_check',
   'judge',
   'optimizer',
 ] as const;
@@ -173,6 +174,8 @@ function buildPromptBody(role: PromptRole, genre: PromptGenre | null): string {
       return buildThumbnailTextPromptBody(genre);
     case 'thumbnail_image':
       return buildThumbnailImagePromptBody(genre);
+    case 'cover_text_check':
+      return buildCoverTextCheckPromptBody(genre);
     default:
       return `# ${role} prompt (v1)\n\nあなたは ${role} です。ユーザーメッセージの指示と出力形式に厳密に従ってください。`;
   }
@@ -495,6 +498,52 @@ function buildOptimizerPromptBody(_genre: PromptGenre | null): string {
 `;
 }
 
+/**
+ * cover_text_check — 生成カバー画像のタイトル文字崩れを検証するビジョンエージェント。
+ * 画像と期待タイトルはユーザーメッセージ側で与えるため、システムプロンプトは
+ * ペルソナ + 検証基準 + 出力規約に専念する (プレースホルダ無し)。
+ */
+function buildCoverTextCheckPromptBody(_genre: PromptGenre | null): string {
+  return `# カバー文字チェック (v1)
+
+あなたは日本語書籍カバーの校正担当者です。生成 AI が作成した KDP 電子書籍の
+表紙画像を受け取り、表紙に描画された**日本語タイトル文字が崩れていないか**を
+厳密に検証します。
+
+## 重要な前提
+
+- 画像生成 AI は日本語 (漢字・かな) を苦手とし、存在しない文字・崩れた字形・
+  余分な点画・mojibake をしばしば描画します。あなたの仕事はそれを見逃さないことです。
+- ユーザーメッセージで「このカバーに描かれているべきタイトル/副題」が与えられます。
+  画像から実際に読み取れる文字と照合してください。
+
+## 検証基準
+
+- **title_legible**: タイトル文字が人間にとってはっきり判読できるか。
+- **title_matches**: 読み取れたタイトルが、与えられた期待タイトルと文字単位で一致するか。
+  わずかでも異なる漢字・脱字・誤字があれば false。
+- **garbled_text_detected**: 崩れた・歪んだ・存在しない漢字/かな、不自然な合字、
+  欠損・重複した画があるか。少しでも怪しければ true。
+- **extra_text_detected**: 期待していない余分な文字 (偽の著者名・英字ロゴ・帯の
+  ダミー文・意味不明な文字列) が描かれているか。
+- **transcribed_text**: 画像から実際に読み取れた全テキストをそのまま記載。
+- **issues**: 問題点を日本語で簡潔に列挙 (無ければ空配列)。
+- **confidence**: 判定全体の確信度 (0.0-1.0)。
+- **ok**: 「タイトルが判読でき、期待タイトルと一致し、崩れ文字も余分文字も無い」
+  場合のみ true。少しでも崩れ・不一致・余分文字があれば false。
+
+## 判定方針
+
+- 迷ったら **false (不合格)** に倒してください。崩れたカバーを通過させるより、
+  正常なカバーを念のため再生成させる方が安全です。
+- 装飾的なロゴ風タイトルでも、文字として正しく読めれば garbled ではありません。
+  「読めるが期待タイトルと違う」場合は title_matches=false で扱ってください。
+
+## 出力形式
+
+指定された JSON スキーマに厳密に従って構造化出力してください。`;
+}
+
 const ROLE_PLACEHOLDERS: Record<PromptRole, string[]> = {
   marketer: ['account_brief', 'genre_policy', 'competitor_signals'],
   marketer_plan: ['months', 'target_count', 'published_books', 'sales_trend'],
@@ -502,6 +551,7 @@ const ROLE_PLACEHOLDERS: Record<PromptRole, string[]> = {
   editor: ['draft_chapters', 'ai_disclosure_text'],
   thumbnail_text: ['title', 'subtitle', 'target_reader'],
   thumbnail_image: ['cover_text', 'style_hint'],
+  cover_text_check: [],
   judge: [
     'theme_title',
     'theme_subtitle',
@@ -556,6 +606,8 @@ export function buildModelAssignmentSeeds(): ModelAssignmentSeed[] {
     { role: 'optimizer', genre: null, provider: 'anthropic', model: 'claude-opus-4-7', status: 'active', created_by: 'system' },
     { role: 'thumbnail_text', genre: null, provider: 'anthropic', model: 'claude-sonnet-4-6', status: 'active', created_by: 'system' },
     { role: 'thumbnail_image', genre: null, provider: 'openai', model: 'gpt-image-1', status: 'active', created_by: 'system' },
+    // cover_text_check はビジョン対応モデル (Claude Sonnet 4.6 は画像入力可) を使う。
+    { role: 'cover_text_check', genre: null, provider: 'anthropic', model: 'claude-sonnet-4-6', status: 'active', created_by: 'system' },
   ];
 }
 
