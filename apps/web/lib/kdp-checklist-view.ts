@@ -60,6 +60,8 @@ export interface ChecklistBookView {
   title: string;
   subtitle: string | null;
   author: string | null;
+  /** Amazon 入稿/出版ステータス (unlisted=未対応 / submitted=入稿済み / published=出版済み) */
+  publishStatus: 'unlisted' | 'submitted' | 'published';
   /** カバー画像 R2 キー → `/api/covers/{id}/image` */
   coverImageUrl: string | null;
   /** KdpMetadata.price_jpy */
@@ -91,6 +93,7 @@ export interface PrismaBookForChecklist {
   id: string;
   title: string;
   subtitle: string | null;
+  publish_status: string;
   has_blocking_comments: boolean;
   account: {
     pen_name: string;
@@ -271,6 +274,12 @@ export function serializeChecklistBook(
     title: book.title,
     subtitle: book.subtitle,
     author: book.account.pen_name,
+    publishStatus:
+      book.publish_status === 'published'
+        ? 'published'
+        : book.publish_status === 'submitted'
+          ? 'submitted'
+          : 'unlisted',
     coverImageUrl: cover?.url ?? null,
     priceJpy: book.kdpMetadata?.price_jpy ?? null,
     metadataMissing,

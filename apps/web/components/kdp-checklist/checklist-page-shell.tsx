@@ -13,6 +13,8 @@ import { computeOverallCompletion } from '@/lib/kdp-checklist-view';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 
+import { PublishStatusControl } from '@/components/books/publish-status-control';
+
 import { BookInfoHeader } from './book-info-header';
 import { BlockReasonBanner } from './block-reason-banner';
 import { SubmissionChecklistTable } from './submission-checklist-table';
@@ -113,9 +115,22 @@ export function ChecklistPageShell({ data }: ChecklistPageShellProps) {
                 onFieldUpdate={handleFieldUpdate}
               />
 
-              {/* Per-book submit button */}
-              <div className="flex justify-end">
-                <SubmitToKdpButton disabled />
+              {/* Per-book footer: 入稿/出版ステータス + 一括DL + 自動入稿 */}
+              <div className="flex flex-wrap items-center justify-between gap-space-snug">
+                <div className="flex items-center gap-space-snug">
+                  <span className="text-button-sm text-muted">{messages.books.publish.label}</span>
+                  <PublishStatusControl bookId={book.id} value={book.publishStatus} />
+                </div>
+                <div className="flex items-center gap-space-snug">
+                  <a
+                    href={`/api/books/${book.id}/bundle`}
+                    className="inline-flex items-center gap-1.5 rounded-card border border-border-warm bg-cream px-3 py-1.5 text-button-sm text-charcoal hover:bg-charcoal-04 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    data-testid={`checklist-bundle-download-${book.id}`}
+                  >
+                    {messages.books.header.bundleDownload}
+                  </a>
+                  <SubmitToKdpButton disabled />
+                </div>
               </div>
             </div>
           </TabsContent>

@@ -20,7 +20,7 @@ const THUMBNAIL_TEXT_TASK = 'pipeline.book.thumbnail.text';
 
 const UpdatePublishStatusSchema = z.object({
   book_id: z.string().min(1),
-  publish_status: z.enum(['unlisted', 'published']),
+  publish_status: z.enum(['unlisted', 'submitted', 'published']),
 });
 
 export async function updateBookPublishStatus(

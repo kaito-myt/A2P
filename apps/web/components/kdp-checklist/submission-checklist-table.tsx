@@ -146,7 +146,7 @@ function FieldRow({ fieldView, bookId, onFieldUpdate }: FieldRowProps) {
         {value === null ? (
           <span className="text-muted">{m.noValue}</span>
         ) : isKeywords && fieldView.keywords ? (
-          <KeywordsChips keywords={fieldView.keywords} />
+          <KeywordsChips keywords={fieldView.keywords} onCopied={handleCopied} />
         ) : fieldView.field === 'description' ? (
           <DescriptionCell value={value} />
         ) : fieldView.field === 'price' ? (
@@ -262,7 +262,7 @@ function FieldRowMobile({ fieldView, bookId, onFieldUpdate }: FieldRowProps) {
         {value === null ? (
           <span className="text-muted">{m.noValue}</span>
         ) : isKeywords && fieldView.keywords ? (
-          <KeywordsChips keywords={fieldView.keywords} />
+          <KeywordsChips keywords={fieldView.keywords} onCopied={handleCopied} />
         ) : fieldView.field === 'description' ? (
           <DescriptionCell value={value} />
         ) : fieldView.field === 'price' ? (
@@ -279,18 +279,58 @@ function FieldRowMobile({ fieldView, bookId, onFieldUpdate }: FieldRowProps) {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function KeywordsChips({ keywords }: { keywords: string[] }) {
+function KeywordsChips({
+  keywords,
+  onCopied,
+}: {
+  keywords: string[];
+  /** いずれかのキーワードがコピーされたら親へ通知 (copied/checked を立てる) */
+  onCopied?: () => void;
+}) {
   return (
-    <div className="flex flex-wrap gap-1">
-      {keywords.map((kw) => (
-        <span
-          key={kw}
-          className="inline-flex items-center rounded-pill border border-border-warm bg-cream px-2 py-0.5 text-caption text-charcoal"
-        >
-          {kw}
-        </span>
-      ))}
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap gap-1">
+        {keywords.map((kw) => (
+          <KeywordChip key={kw} keyword={kw} onCopied={onCopied} />
+        ))}
+      </div>
+      <span className="text-caption text-muted">{m.keywordCopyHint}</span>
     </div>
+  );
+}
+
+/** 1 語だけクリップボードにコピーするチップ (KDP はキーワードを 1 枠ずつ入力する)。 */
+function KeywordChip({ keyword, onCopied }: { keyword: string; onCopied?: () => void }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(keyword);
+      setCopied(true);
+      onCopied?.();
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // insecure context — silent
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      aria-label={m.copyKeywordAriaLabel(keyword)}
+      data-testid={`keyword-chip-${keyword}`}
+      className={`inline-flex items-center gap-1 rounded-pill border px-2 py-0.5 text-caption transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+        copied
+          ? 'border-success bg-success-bg/40 text-success'
+          : 'border-border-warm bg-cream text-charcoal hover:bg-charcoal-04'
+      }`}
+    >
+      <span>{keyword}</span>
+      <span aria-hidden="true" className="text-muted">
+        {copied ? '✓' : '⧉'}
+      </span>
+    </button>
   );
 }
 

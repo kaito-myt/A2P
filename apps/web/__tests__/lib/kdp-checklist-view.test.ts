@@ -30,6 +30,7 @@ const BASE_BOOK: PrismaBookForChecklist = {
   id: 'book_1',
   title: '副業 × AI で月 5 万円稼ぐ実践ガイド',
   subtitle: '初心者でも今日から始められる実践 7 ステップ',
+  publish_status: 'unlisted',
   has_blocking_comments: false,
   account: { pen_name: 'テスト太郎' },
   kdpMetadata: {

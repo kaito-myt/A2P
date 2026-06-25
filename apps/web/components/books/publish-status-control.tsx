@@ -48,10 +48,13 @@ export function PublishStatusControl({
       className={`rounded-pill border px-2 py-0.5 text-button-sm ${
         current === 'published'
           ? 'border-success bg-success-bg/40 text-success'
-          : 'border-border-warm bg-cream text-charcoal-82'
+          : current === 'submitted'
+            ? 'border-accent bg-accent-bg/40 text-accent'
+            : 'border-border-warm bg-cream text-charcoal-82'
       }`}
     >
       <option value="unlisted">{m.unlisted}</option>
+      <option value="submitted">{m.submitted}</option>
       <option value="published">{m.published}</option>
     </select>
   );
