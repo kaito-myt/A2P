@@ -171,7 +171,7 @@ async function dispatchSinglePlan(
   if (items.length === 0) {
     log.info(
       { task: BATCH_PLAN_DISPATCHER_TASK_NAME, planId },
-      'no pending items — marking plan as running (already kicked or empty)',
+      'no pending items — marking plan as done (already kicked or empty)',
     );
   }
 
@@ -279,13 +279,16 @@ async function dispatchSinglePlan(
     }
   }
 
-  // 4. BatchPlan.status='running' + kicked_at + audit_log
-  //    1 item でも kicked 化したら plan は running に進める。
+  // 4. BatchPlan.status='done' (= dispatch 完了) + kicked_at + audit_log
+  //    dispatcher の責務は「本を kick off する」ことなので、全 pending item を
+  //    kick したら plan は完了扱い ('done')。以降の各書籍の進捗は書籍ごとの
+  //    pipeline (kickoff→…→export) で管理する。旧実装は 'running' のままにして
+  //    いたため、バッチが永遠に「実行中」に見える不具合になっていた。
   //    全 item 失敗の場合 (kickedCount=0 && items.length>0) は status を変えず次 tick で再試行。
   if (kickedCount > 0 || items.length === 0) {
     await prisma.batchPlan.update({
       where: { id: planId },
-      data: { status: 'running', kicked_at: now },
+      data: { status: 'done', kicked_at: now },
     });
 
     await prisma.auditLog.create({
@@ -300,7 +303,7 @@ async function dispatchSinglePlan(
         } as Prisma.InputJsonValue,
         after_json: {
           batch_id: planId,
-          status: 'running',
+          status: 'done',
           kicked_at: now.toISOString(),
           kicked_count: kickedCount,
           failed_item_count: failedItemCount,

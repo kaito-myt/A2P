@@ -380,7 +380,7 @@ describe('batch_plan.dispatcher task', () => {
     // BatchPlan.status='running' + kicked_at
     expect(captures.planUpdates).toHaveLength(1);
     expect(captures.planUpdates[0]!.where.id).toBe('plan_1');
-    expect(captures.planUpdates[0]!.data.status).toBe('running');
+    expect(captures.planUpdates[0]!.data.status).toBe('done');
     expect(captures.planUpdates[0]!.data.kicked_at).toEqual(NOW);
 
     // audit_log 1 件 (action='batch_plan.cron_kick', actor_id=null)
@@ -392,7 +392,7 @@ describe('batch_plan.dispatcher task', () => {
     expect(al.target_id).toBe('plan_1');
     const after = al.after_json as Record<string, unknown>;
     expect(after.batch_id).toBe('plan_1');
-    expect(after.status).toBe('running');
+    expect(after.status).toBe('done');
     expect(after.kicked_count).toBe(3);
     expect(after.failed_item_count).toBe(0);
     expect((after.job_ids as string[]).length).toBe(3);
@@ -489,7 +489,7 @@ describe('batch_plan.dispatcher task', () => {
     expect(captures.itemUpdates).toHaveLength(0);
     // plan は status='running' に遷移
     expect(captures.planUpdates).toHaveLength(1);
-    expect(captures.planUpdates[0]!.data.status).toBe('running');
+    expect(captures.planUpdates[0]!.data.status).toBe('done');
   });
 
   // -------------------------------------------------------------------------
@@ -672,7 +672,7 @@ describe('batch_plan.dispatcher task', () => {
     expect(kickedItemIds).toEqual(['item_a', 'item_c']);
     // plan は running に進む (1 件以上 kicked 化済)
     expect(captures.planUpdates).toHaveLength(1);
-    expect(captures.planUpdates[0]!.data.status).toBe('running');
+    expect(captures.planUpdates[0]!.data.status).toBe('done');
     // audit_log の failed_item_count=1
     expect(captures.auditLogCreates).toHaveLength(1);
     const al = captures.auditLogCreates[0]!.after_json as Record<string, unknown>;
