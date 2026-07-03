@@ -39,6 +39,7 @@ export const navSections: readonly NavSection[] = [
       { key: 'themes', label: m.itemThemes, href: '/themes', enabled: true },
       { key: 'batch', label: m.itemBatchPlan, href: '/batches', enabled: true },
       { key: 'outlines', label: m.itemOutlines, href: '/outlines', enabled: true },
+      { key: 'content-review', label: m.itemContentReview, href: '/content-review', enabled: true },
       { key: 'thumbnails', label: m.itemThumbnails, href: '/covers', enabled: true },
       { key: 'kdp', label: m.itemKdpChecklist, href: '/kdp/checklist', enabled: true },
     ],

@@ -63,6 +63,7 @@ export const messages = {
     itemThemes: 'テーマ候補',
     itemBatchPlan: '新規プロジェクト / バッチ計画',
     itemOutlines: 'アウトライン承認',
+    itemContentReview: '本文承認',
     itemThumbnails: 'サムネ承認',
     itemKdpChecklist: 'KDP 入稿',
     itemBookLibrary: '書籍ライブラリ',
@@ -601,6 +602,22 @@ export const messages = {
       forceHint: '有効にすると月次予算超過状態でもキックを続行します',
     },
   },
+  contentReview: {
+    pageTitle: '本文承認',
+    pageSubtitle: '本文の執筆・校閲が完了した書籍を承認し、サムネ生成へ進めます',
+    breadcrumbHome: 'ホーム',
+    breadcrumbPipeline: '出版パイプライン',
+    breadcrumbContentReview: '本文承認',
+    summary: (n: number) => `承認待ち ${n} 冊`,
+    approveButton: '本文を承認',
+    approving: '承認中…',
+    approveError: '本文承認に失敗しました',
+    openDetail: '本文を確認',
+    empty: {
+      title: '本文承認待ちの書籍はありません',
+      body: '本文の執筆・校閲が完了した書籍がここに表示されます。',
+    },
+  },
   outlines: {
     pageTitle: 'アウトライン承認',
     pageSubtitle: '生成されたアウトラインを一括承認 / 差戻しします',
@@ -698,6 +715,7 @@ export const messages = {
     actions: {
       themesPending: 'テーマ候補 未承認',
       outlinesPending: 'アウトライン 承認待ち',
+      contentReviewPending: '本文 承認待ち',
       thumbnailsPending: 'サムネ 採用待ち',
       commentsPending: '修正コメント 未反映',
       promptProposalsPending: 'プロンプト改訂提案',

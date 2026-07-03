@@ -125,9 +125,10 @@ export default async function DashboardPage() {
 
       {/* Section 2: アクション要求カード (6 枚) */}
       <Section title={m.actionsHeading}>
-        <div className="grid grid-cols-1 gap-space-snug sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-1 gap-space-snug sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <ActionCard label={m.actions.themesPending} />
           <ActionCard label={m.actions.outlinesPending} />
+          <ActionCard label={m.actions.contentReviewPending} />
           <ActionCard label={m.actions.thumbnailsPending} />
           <ActionCard label={m.actions.commentsPending} must={0} />
           <ActionCard label={m.actions.promptProposalsPending} />
