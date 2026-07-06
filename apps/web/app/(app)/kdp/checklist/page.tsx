@@ -45,6 +45,9 @@ export default async function KdpChecklistPage() {
       account: {
         select: { pen_name: true },
       },
+      theme: {
+        select: { authorName: { select: { name: true } } },
+      },
       kdpMetadata: {
         select: {
           description: true,

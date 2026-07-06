@@ -81,6 +81,7 @@ export const navSections: readonly NavSection[] = [
       { key: 'kdp-auto', label: m.itemKdpAutoSubmit, href: '/kdp/auto', enabled: false },
       { key: 'audit', label: m.itemAuditLog, href: '/audit', enabled: true },
       { key: 'accounts', label: m.itemAccounts, href: '/accounts', enabled: true },
+      { key: 'masters', label: m.itemMasters, href: '/masters', enabled: true },
       { key: 'settings', label: m.itemSettings, href: '/settings', enabled: true },
     ],
   },

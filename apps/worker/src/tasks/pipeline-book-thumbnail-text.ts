@@ -123,6 +123,8 @@ export interface PipelineBookThumbnailTextPrisma {
         subtitle: true;
         hook: true;
         target_reader: true;
+        authorName: { select: { name: true } };
+        labelName: { select: { name: true } };
       };
     }) => Promise<{
       id: string;
@@ -131,6 +133,8 @@ export interface PipelineBookThumbnailTextPrisma {
       subtitle: string | null;
       hook: string;
       target_reader: string | null;
+      authorName: { name: string } | null;
+      labelName: { name: string } | null;
     } | null>;
   };
   coverTextProposal: {
@@ -295,6 +299,8 @@ export async function runPipelineBookThumbnailText(
         subtitle: true,
         hook: true,
         target_reader: true,
+        authorName: { select: { name: true } },
+        labelName: { select: { name: true } },
       },
     });
     if (!theme) {
@@ -351,8 +357,10 @@ export async function runPipelineBookThumbnailText(
       artPrompts = [];
     }
 
-    // 著者名 (ペンネーム) — 合成タイポグラフィで表紙に焼き込む。
-    const penName = book.account?.pen_name?.trim() || undefined;
+    // 著者名 — 合成タイポグラフィで表紙に焼き込む。
+    // テーマにマスタ著者名が割り当てられていればそれを優先、無ければアカウントのペンネーム。
+    const penName =
+      theme.authorName?.name?.trim() || book.account?.pen_name?.trim() || undefined;
 
     // CoverTextProposal INSERT + pipeline.book.thumbnail.image enqueue
     const childJobIds: Array<{ cover_text_id: string; child_job_id: string }> = [];

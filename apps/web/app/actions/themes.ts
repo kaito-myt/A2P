@@ -13,8 +13,9 @@
  * 仕様根拠: docs/05 §4.3.3.
  */
 import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
 
-import { isA2PError, fail, type ActionResult } from '@a2p/contracts';
+import { isA2PError, fail, ok, type ActionResult } from '@a2p/contracts';
 import { prisma } from '@a2p/db';
 
 import { getSessionOrThrow } from '@/lib/auth-helpers';
@@ -94,4 +95,40 @@ export async function acceptThemesAndStageBatch(
   const result = await acceptThemesAndStageBatchCore(input, deps);
   if (result.ok) revalidatePath('/themes');
   return result;
+}
+
+/**
+ * テーマに著者名 / レーベル名 (マスタ) を割り当てる。
+ * 空文字 / undefined は「未選択 (null)」として扱う。表紙の著者名等に使用される。
+ */
+const UpdateThemeNamingSchema = z.object({
+  theme_id: z.string().min(1),
+  author_name_id: z.string().nullish(),
+  label_name_id: z.string().nullish(),
+});
+
+export async function updateThemeNaming(input: unknown): Promise<ActionResult<void>> {
+  try {
+    await getSessionOrThrow();
+  } catch (err) {
+    return authFail(err);
+  }
+  const parsed = UpdateThemeNamingSchema.safeParse(input);
+  if (!parsed.success) {
+    return fail('validation', messages.themes.errors.unknown, parsed.error.flatten());
+  }
+  try {
+    await prisma.themeCandidate.update({
+      where: { id: parsed.data.theme_id },
+      data: {
+        author_name_id: parsed.data.author_name_id ? parsed.data.author_name_id : null,
+        label_name_id: parsed.data.label_name_id ? parsed.data.label_name_id : null,
+      },
+    });
+    revalidatePath(`/themes/${parsed.data.theme_id}`);
+    revalidatePath('/themes');
+    return ok(undefined as void);
+  } catch (err) {
+    return authFail(err);
+  }
 }

@@ -22,6 +22,7 @@ import { prisma } from '@a2p/db';
 import { ActionButtonGroup } from '@/components/themes/action-button-group';
 import { CompetitorsTable } from '@/components/themes/competitors-table';
 import { ThemeDetailHeader } from '@/components/themes/theme-detail-header';
+import { ThemeNamingControl } from '@/components/themes/theme-naming-control';
 import { ThemeSummarySection } from '@/components/themes/theme-summary-section';
 import { WebSearchSnippetList } from '@/components/themes/web-search-snippet-list';
 import { messages } from '@/lib/messages';
@@ -43,6 +44,8 @@ export default async function ThemeDetailPage({ params }: ThemeDetailPageProps) 
   const raw = await prisma.themeCandidate.findUnique({
     where: { id },
     include: {
+      authorName: { select: { id: true } },
+      labelName: { select: { id: true } },
       books: {
         select: {
           id: true,
@@ -70,6 +73,20 @@ export default async function ThemeDetailPage({ params }: ThemeDetailPageProps) 
     notFound();
   }
 
+  // 著者名 / レーベル名マスタ (有効なもの) — プルダウン選択肢。
+  const [authorOptions, labelOptions] = await Promise.all([
+    prisma.authorName.findMany({
+      where: { status: 'active' },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    }),
+    prisma.labelName.findMany({
+      where: { status: 'active' },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    }),
+  ]);
+
   const detail = serializeThemeDetail(raw);
   const linkedBook = raw.books[0] ?? null;
   const themeComments: ThemeCommentSerialized[] = linkedBook
@@ -82,6 +99,14 @@ export default async function ThemeDetailPage({ params }: ThemeDetailPageProps) 
       className="flex flex-col gap-space-loose"
     >
       <ThemeDetailHeader detail={detail} />
+
+      <ThemeNamingControl
+        themeId={raw.id}
+        authorOptions={authorOptions}
+        labelOptions={labelOptions}
+        currentAuthorId={raw.author_name_id}
+        currentLabelId={raw.label_name_id}
+      />
 
       <ThemeSummarySection detail={detail} />
 

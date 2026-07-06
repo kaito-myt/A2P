@@ -191,6 +191,8 @@ function buildPrisma(args: BuildPrismaArgs): {
               subtitle: t.subtitle,
               hook: t.hook,
               target_reader: t.target_reader,
+              authorName: (t as { authorName?: { name: string } | null }).authorName ?? null,
+              labelName: (t as { labelName?: { name: string } | null }).labelName ?? null,
             }
           : null;
       },

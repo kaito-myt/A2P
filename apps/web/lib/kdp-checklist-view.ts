@@ -106,6 +106,10 @@ export interface PrismaBookForChecklist {
   account: {
     pen_name: string;
   };
+  // テーマにマスタ著者名が割り当てられていれば表紙・入稿の著者名に優先使用する。
+  theme?: {
+    authorName: { name: string } | null;
+  } | null;
   kdpMetadata: {
     description: string;
     categories: string[];
@@ -217,7 +221,10 @@ function buildFields(
       case 'subtitle_romaji':
         return { ...base, value: meta?.subtitle_romaji ?? null };
       case 'author':
-        return { ...base, value: meta ? book.account.pen_name : null };
+        return {
+          ...base,
+          value: meta ? (book.theme?.authorName?.name ?? book.account.pen_name) : null,
+        };
       case 'author_kana':
         return { ...base, value: meta?.author_kana ?? null };
       case 'author_romaji':
@@ -309,7 +316,7 @@ export function serializeChecklistBook(
     id: book.id,
     title: book.title,
     subtitle: book.subtitle,
-    author: book.account.pen_name,
+    author: book.theme?.authorName?.name ?? book.account.pen_name,
     publishStatus:
       book.publish_status === 'published'
         ? 'published'

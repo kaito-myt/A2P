@@ -86,6 +86,9 @@ model ThemeCandidate {
   subtitle         String?
   hook             String // 差別化要素
   target_reader    String?
+  // マスタから選択した著者名 / レーベル名 (任意)。表紙の著者名・出版レーベルに使用。
+  author_name_id   String?
+  label_name_id    String?
   // type: Array<{ asin?: string; title: string; url: string; rank?: number; review_summary?: string }>
   competitors_json Json
   // type: { search_volume?: number; rank_estimate?: number; sources: string[] }
@@ -95,12 +98,49 @@ model ThemeCandidate {
   created_at       DateTime  @default(now())
   decided_at       DateTime?
 
-  account Account @relation(fields: [account_id], references: [id], onDelete: Cascade)
-  books   Book[]
+  account    Account     @relation(fields: [account_id], references: [id], onDelete: Cascade)
+  authorName AuthorName? @relation(fields: [author_name_id], references: [id], onDelete: SetNull)
+  labelName  LabelName?  @relation(fields: [label_name_id], references: [id], onDelete: SetNull)
+  books      Book[]
 
   @@index([account_id, status, created_at], map: "theme_candidates_account_status_idx")
   @@index([theme_session_id], map: "theme_candidates_session_idx")
+  @@index([author_name_id], map: "theme_candidates_author_name_idx")
+  @@index([label_name_id], map: "theme_candidates_label_name_idx")
   @@map("theme_candidates")
+}
+
+// =====================================================================
+// 著者名マスタ / レーベル名マスタ — テーマ作成時にプルダウンで選択する
+// =====================================================================
+model AuthorName {
+  id          String   @id @default(cuid())
+  name        String
+  name_kana   String? // カタカナ読み (任意)
+  name_romaji String? // ローマ字 (任意)
+  note        String? // メモ (どんなジャンル向けか等)
+  status      String   @default("active") // active | archived
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  themeCandidates ThemeCandidate[]
+
+  @@index([status, name], map: "author_names_status_name_idx")
+  @@map("author_names")
+}
+
+model LabelName {
+  id         String   @id @default(cuid())
+  name       String
+  note       String? // メモ (ジャンル方針等)
+  status     String   @default("active") // active | archived
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  themeCandidates ThemeCandidate[]
+
+  @@index([status, name], map: "label_names_status_name_idx")
+  @@map("label_names")
 }
 
 // =====================================================================
