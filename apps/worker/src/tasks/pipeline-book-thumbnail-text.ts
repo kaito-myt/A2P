@@ -6,10 +6,12 @@ import {
   releaseBookLock as defaultReleaseBookLock,
 } from '@a2p/agents/lib/book-lock';
 import { generateCoverText as defaultGenerateCoverText } from '@a2p/agents/thumbnail/text';
+import { generateCoverArtDirection as defaultGenerateCoverArtDirection } from '@a2p/agents/art-direction';
 import type { Genre } from '@a2p/contracts/agents';
 import type {
   ThumbnailTextInput,
   ThumbnailTextOutput,
+  CoverArtDirectionInput,
 } from '@a2p/contracts/agents/thumbnail';
 import { NotFoundError, ValidationError } from '@a2p/contracts/errors';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
@@ -100,6 +102,7 @@ export interface PipelineBookThumbnailTextPrisma {
         theme_id: true;
         title: true;
         subtitle: true;
+        account: { select: { pen_name: true } };
       };
     }) => Promise<{
       id: string;
@@ -107,6 +110,7 @@ export interface PipelineBookThumbnailTextPrisma {
       theme_id: string | null;
       title: string;
       subtitle: string | null;
+      account: { pen_name: string | null } | null;
     } | null>;
   };
   themeCandidate: {
@@ -153,6 +157,7 @@ export interface PipelineBookThumbnailTextDeps {
   prisma?: PipelineBookThumbnailTextPrisma;
   logger?: Logger;
   generateCoverText?: typeof defaultGenerateCoverText;
+  generateCoverArtDirection?: typeof defaultGenerateCoverArtDirection;
   acquireLock?: typeof defaultAcquireBookLock;
   releaseLock?: typeof defaultReleaseBookLock;
   now?: () => Date;
@@ -188,6 +193,8 @@ export async function runPipelineBookThumbnailText(
   const log = deps.logger ?? createLogger(`worker.${PIPELINE_BOOK_THUMBNAIL_TEXT_TASK_NAME}`);
   const prisma = deps.prisma ?? (defaultPrisma as unknown as PipelineBookThumbnailTextPrisma);
   const generateCoverTextFn = deps.generateCoverText ?? defaultGenerateCoverText;
+  const generateCoverArtDirectionFn =
+    deps.generateCoverArtDirection ?? defaultGenerateCoverArtDirection;
   const acquireLock = deps.acquireLock ?? defaultAcquireBookLock;
   const releaseLock = deps.releaseLock ?? defaultReleaseBookLock;
   const notifyJobChangeFn = deps.notifyJobChange ?? defaultNotifyJobChange;
@@ -265,6 +272,7 @@ export async function runPipelineBookThumbnailText(
         theme_id: true,
         title: true,
         subtitle: true,
+        account: { select: { pen_name: true } },
       },
     });
     if (!book) {
@@ -321,9 +329,36 @@ export async function runPipelineBookThumbnailText(
     // 6. proposals を 3 件に切り詰め (generateCoverText は 3-5 案を返し得る)
     const proposals = result.proposals.slice(0, DEFAULT_PROPOSAL_COUNT);
 
+    // 6b. アート方向性 (Marketer 目線の「売れる」ビジュアル) を本ごとに生成。
+    //     文字は後で合成するので、ここでは「絵の内容」だけを決める。
+    //     失敗しても致命ではない (generateCoverImage 側の汎用フォールバックに委ねる)。
+    const artInput: CoverArtDirectionInput = {
+      jobId,
+      bookId,
+      genre,
+      themeContext,
+      count: proposals.length,
+    };
+    let artPrompts: string[] = [];
+    try {
+      const art = await generateCoverArtDirectionFn(artInput);
+      artPrompts = art.directions.map((d) => d.image_prompt);
+    } catch (artErr) {
+      log.warn(
+        { task: PIPELINE_BOOK_THUMBNAIL_TEXT_TASK_NAME, jobId, bookId, err: artErr },
+        'cover_art_direction generation failed — falling back to generic art direction',
+      );
+      artPrompts = [];
+    }
+
+    // 著者名 (ペンネーム) — 合成タイポグラフィで表紙に焼き込む。
+    const penName = book.account?.pen_name?.trim() || undefined;
+
     // CoverTextProposal INSERT + pipeline.book.thumbnail.image enqueue
     const childJobIds: Array<{ cover_text_id: string; child_job_id: string }> = [];
-    for (const proposal of proposals) {
+    for (let i = 0; i < proposals.length; i += 1) {
+      const proposal = proposals[i]!;
+      const artDirection = artPrompts[i] ?? artPrompts[0] ?? '';
       const coverText = await prisma.coverTextProposal.create({
         data: {
           book_id: bookId,
@@ -335,10 +370,13 @@ export async function runPipelineBookThumbnailText(
       });
 
       // 7. 各テキスト案で pipeline.book.thumbnail.image を enqueue
-      const childPayload = {
+      //    アート方向性 (art_direction) と著者名 (author) を payload で渡す。
+      const childPayload: Record<string, unknown> = {
         book_id: bookId,
         cover_text_id: coverText.id,
       };
+      if (artDirection) childPayload.art_direction = artDirection;
+      if (penName) childPayload.author = penName;
       const childJob = await prisma.job.create({
         data: {
           kind: PIPELINE_BOOK_THUMBNAIL_IMAGE_TASK_NAME,
@@ -354,6 +392,8 @@ export async function runPipelineBookThumbnailText(
           book_id: bookId,
           cover_text_id: coverText.id,
           job_id: childJob.id,
+          ...(artDirection ? { art_direction: artDirection } : {}),
+          ...(penName ? { author: penName } : {}),
         },
         { maxAttempts: 3 },
       );

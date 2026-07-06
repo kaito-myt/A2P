@@ -1,18 +1,24 @@
 /**
  * docs/05 ss6.3.4 / F-007 -- Thumbnail Designer (cover image generation).
  *
- * Flow:
- *  1. Build an image-gen prompt from the cover text proposal (title/subtitle)
- *     and the style guide
- *  2. Call `generateImage` (via `withImageLogging` for token_usage recording)
- *     to get a raw JPEG buffer from gpt-image-1 (output_format='jpeg')
- *  3. Upload raw image to R2 at `books/{book_id}/covers/raw/{cover_id}.jpg`
- *  4. INSERT a `Cover` row (r2_key, width, height, prompt_used,
- *     generation_meta_json, status='generated')
- *  5. Return { r2Key, promptUsed, coverId }
+ * 【文字化け根絶の設計】
+ * gpt-image-1 は日本語 (漢字/かな) を正しく描けない。そこで本実装は:
+ *   1. gpt-image-1 に **文字を一切含まないイラストだけ**を生成させる
+ *      (アート方向性 styleGuide = cover_art_direction エージェントの出力で駆動)。
+ *   2. その上にタイトル/サブタイトル/著者名を **本物の日本語フォントでベクター合成**
+ *      する (`composeCoverTypography` in @a2p/output-image)。
+ * これで日本語は 100% 正確・毎回同一品質になる (プロの書籍表紙と同じ「絵と文字は別レイヤー」)。
  *
- * DI: all external dependencies (generateImage, uploadBuffer, prisma, cuid)
- * are injectable via `deps` for testing without real API / DB / R2 calls.
+ * Flow:
+ *  1. アート方向性から「文字なし」画像生成プロンプトを構築
+ *  2. `generateImage` (via `withImageLogging`) で gpt-image-1 から文字なしイラストを取得
+ *  3. `composeCoverTypography` でタイトル等を焼き込み、最終 JPEG を得る
+ *  4. 最終画像を R2 に upload (`books/{book_id}/covers/raw/{cover_id}.jpg`)
+ *  5. `Cover` 行を INSERT (status='generated')
+ *  6. Return { r2Key, promptUsed, coverId }
+ *
+ * DI: すべての外部依存 (generateImage, composeTypography, uploadBuffer, prisma, cuid)
+ * は `deps` で差し替え可能 (実 API / DB / R2 に触れずテスト可能)。
  */
 import { randomUUID } from 'node:crypto';
 
@@ -21,11 +27,13 @@ import {
   ThumbnailImageOutputSchema,
   type ThumbnailImageInput,
   type ThumbnailImageOutput,
-  type CoverTextCheckInput,
-  type CoverTextCheckOutput,
 } from '@a2p/contracts/agents/thumbnail';
 
 import { bookArtifact } from '@a2p/storage/keys';
+import {
+  composeCoverTypography as defaultComposeCoverTypography,
+  type CoverText,
+} from '@a2p/output-image';
 
 import {
   generateImage as defaultGenerateImage,
@@ -37,10 +45,6 @@ import {
   type ImageLoggingContext,
   type WithImageLoggingDeps,
 } from '../lib/with-image-logging.js';
-import {
-  verifyCoverText as defaultVerifyCoverText,
-  type VerifyCoverTextDeps,
-} from './text-check.js';
 
 // ---------------------------------------------------------------------------
 // DI interfaces (minimal surface for testability)
@@ -70,6 +74,9 @@ interface UploadBufferFn {
   ): Promise<{ key: string; sha256: string; size: number; contentType: string }>;
 }
 
+/** タイポグラフィ合成関数の最小シグネチャ (テスト差し替え用)。 */
+export type ComposeTypographyFn = (image: Buffer, text: CoverText) => Promise<Buffer>;
+
 export interface GenerateCoverImageDeps {
   /** Override `generateImage` (default: real OpenAI call). */
   generateImage?: GenerateImageFn;
@@ -77,71 +84,47 @@ export interface GenerateCoverImageDeps {
   imageGenDeps?: ImageGenDeps;
   /** Override `withImageLogging` deps (prisma for token_usage, price snapshot). */
   withImageLoggingDeps?: WithImageLoggingDeps;
+  /** Override typography compositor (default: real `composeCoverTypography`). */
+  composeTypography?: ComposeTypographyFn;
   /** Override R2 upload function (default: `uploadBuffer` from @a2p/storage). */
   uploadBuffer?: UploadBufferFn;
   /** Override Prisma cover repo (default: real prisma.cover). */
   prisma?: { cover: CoverRepo };
   /** Override ID generator (default: crypto.randomUUID). */
   generateId?: () => string;
-  /** Override cover-text verifier (default: real `verifyCoverText`). */
-  verifyCoverText?: (
-    input: CoverTextCheckInput,
-    deps?: VerifyCoverTextDeps,
-  ) => Promise<CoverTextCheckOutput>;
-  /** Inner DI for the verifier. */
-  verifyCoverTextDeps?: VerifyCoverTextDeps;
-  /** 文字崩れチェックを有効にするか (既定 true)。false で従来挙動 (検証なし)。 */
-  checkCoverText?: boolean;
-  /**
-   * 文字崩れ時に再生成する最大試行回数 (既定 2 = 1 回リトライ)。
-   * コスト保護のため上限を設ける。最終試行で崩れていても best-effort で採用する。
-   */
-  maxImageAttempts?: number;
 }
 
 // ---------------------------------------------------------------------------
-// Prompt builder
+// Prompt builder — 「文字なし」イラストを生成する
 // ---------------------------------------------------------------------------
 
 function buildImagePrompt(input: ThumbnailImageInput): string {
-  // gpt-image-1 はアートディレクションを英語で詳細に与えると追従性が高い。
-  // 方針: 親しみやすく手に取られやすい「日本のライトノベル風イラスト表紙」。
-  // ただし崩れた日本語・余計な文字・崩れた手指などの「安っぽい AI 感」は明確に排除する。
+  // タイトル等は後で別レイヤー合成するので、AI には文字を描かせない。
+  // アート方向性 (styleGuide) が絵作りを主導する。空ならジャンル汎用のフォールバック。
+  const artDirection =
+    input.styleGuide && input.styleGuide.trim().length > 0
+      ? input.styleGuide.trim()
+      : `A clean, modern, commercially appealing book-cover artwork that visually evokes the theme of "${input.title}". Choose a tasteful, professional style appropriate to the topic (photographic, minimalist, symbolic, or illustrated).`;
+
   const lines: string[] = [
-    'Create a Japanese light-novel style illustrated book cover (ライトノベル風), portrait orientation,',
-    'high-quality professional anime/manga illustration as if published by a major light-novel label.',
+    'Create a professional, commercially appealing book-cover ARTWORK (illustration or photographic composition), portrait orientation, high quality, print-ready.',
     '',
-    'Exact text to place on the cover (use these characters verbatim, and NO other text):',
-    `- Main title (large, bold, dominant): 「${input.title}」`,
-  ];
-  if (input.subtitle) {
-    lines.push(`- Subtitle (smaller, secondary): 「${input.subtitle}」`);
-  }
-  lines.push(
+    'Art direction (follow this closely — it defines the visual concept, style, subject, composition, mood and palette):',
+    artDirection,
     '',
-    'Illustration direction:',
-    '- Appealing anime/manga illustration: clean confident line art, soft cel shading, vibrant yet tasteful colors, bright lighting.',
-    '- Feature an attractive, charming anime-style character (and/or an evocative scene) that fits the book topic implied by the title.',
-    '- The character should be alluring and a little sexy in a tasteful, classy way (charming pose, confident expression, flattering outfit)',
-    '  to catch the eye and make readers want to pick it up — but keep it SFW and appropriate for a general Amazon storefront',
-    '  (no nudity, no explicit or suggestive content, no underwear-only; commercial light-novel level of appeal at most).',
-    '- Dynamic, eye-catching composition with depth; polished, modern light-novel aesthetic.',
-    '- Leave clear space at the top or bottom so the title typography sits cleanly over the artwork and stays readable as a small thumbnail.',
-    '',
-    'Typography (critical):',
-    '- Render the Japanese title in crisp, perfectly legible type with CORRECT kanji and kana, well integrated with the illustration.',
-    '- Absolutely no garbled, distorted, mojibake, or invented characters.',
-    '- Do NOT add any text other than the title and subtitle above (no fake author lines, no logos, no labels, no lorem text).',
+    'ABSOLUTELY CRITICAL — NO TEXT:',
+    '- Do NOT render ANY text, letters, words, kanji, kana, numbers, titles, captions, labels, logos, watermarks or signatures ANYWHERE in the image.',
+    '- The title, subtitle and author name are added later as a separate typography layer. The artwork itself must be 100% text-free.',
+    '- Keep the LOWER third of the image relatively clean and simple (calmer, lower-detail, or a smooth area) so title text can be overlaid legibly on top.',
     '',
     'Quality guardrails (avoid the cheap AI look):',
-    '- Correct anatomy: natural hands, fingers, eyes and faces; no extra or fused limbs.',
-    '- No watermarks, no borders or frames, no signature, no UI elements, no stock-photo collage.',
-    '- Avoid muddy or oversaturated rainbow gradients and cluttered backgrounds; keep it crisp and intentional.',
-  );
-  if (input.styleGuide) {
-    lines.push('', `Additional style guidance: ${input.styleGuide}`);
-  }
-  lines.push('', 'Output: a print-ready, sharp, high-quality vertical light-novel cover illustration.');
+    '- Polished, intentional, professional composition with depth.',
+    '- If human characters appear: correct anatomy (natural hands, fingers, faces, eyes; no extra or fused limbs).',
+    '- No borders or frames, no UI elements, no stock-photo collage, no muddy/oversaturated rainbow gradients.',
+    '- Keep it SFW and appropriate for a general Amazon storefront.',
+    '',
+    'Output: a sharp, high-quality vertical book-cover artwork with NO text anywhere.',
+  ];
   return lines.join('\n');
 }
 
@@ -174,9 +157,8 @@ function defaultGenerateId(): string {
 /**
  * F-007: Generate a single cover image for a book.
  *
- * Calls gpt-image-1 via `generateImage` (wrapped with `withImageLogging`
- * for token_usage recording), uploads the raw JPEG to R2, and creates a
- * `Cover` DB row.
+ * gpt-image-1 で「文字なしイラスト」を生成し、タイトル/サブタイトル/著者名を
+ * 実フォントで合成して最終カバーを作り、R2 に upload、`Cover` 行を INSERT する。
  *
  * @throws ProviderError  gpt-image-1 API failure (after retries)
  * @throws StorageError   R2 upload failure
@@ -188,7 +170,7 @@ export async function generateCoverImage(
 ): Promise<ThumbnailImageOutput> {
   const parsed = ThumbnailImageInputSchema.parse(input);
 
-  // --- 1. Build prompt ---
+  // --- 1. Build prompt (文字なし) ---
   const prompt = buildImagePrompt(parsed);
 
   // --- 2. Prepare image generation function with token logging ---
@@ -199,94 +181,57 @@ export async function generateCoverImage(
   };
   const wrappedFn = withImageLogging(baseFn, loggingCtx, deps.withImageLoggingDeps);
 
-  // --- 3. Generate image, verify cover text, regenerate on garbled text ---
-  // gpt-image-1 は日本語タイトルを崩すことがあるため、生成→ビジョン検証→
-  // 崩れていれば再生成 (上限 maxAttempts) のループにする。最終試行でも崩れて
-  // いれば best-effort で採用し、検証結果を generation_meta_json に残す。
-  const verify = deps.verifyCoverText ?? defaultVerifyCoverText;
-  const checkEnabled = deps.checkCoverText !== false;
-  const maxAttempts = Math.max(1, deps.maxImageAttempts ?? 2);
+  // --- 3. Generate a text-free illustration ---
+  const genResult = await wrappedFn(
+    {
+      prompt,
+      width: parsed.width,
+      height: parsed.height,
+      count: 1,
+      // 高品質設定で「AI っぽさ」を抑える。
+      quality: 'high',
+      // JPEG 生成 (KDP 表紙は JPEG/TIFF、ファイルも軽量)。
+      outputFormat: 'jpeg',
+      outputCompression: 92,
+    },
+    deps.imageGenDeps,
+  );
+  const illustration = genResult.images[0]!;
+  const costJpy = genResult.costJpy;
 
-  let imageBuffer!: Buffer;
-  let totalCostJpy = 0;
-  let attemptsMade = 0;
-  let textCheck: CoverTextCheckOutput | null = null;
-  let textCheckError: string | undefined;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    attemptsMade = attempt;
-    const result = await wrappedFn(
-      {
-        prompt,
-        width: parsed.width,
-        height: parsed.height,
-        count: 1,
-        // 高品質設定で「AI っぽさ」を抑え、タイポグラフィの破綻を減らす。
-        quality: 'high',
-        // サムネ画像は JPEG で出力する (KDP 表紙は JPEG/TIFF。ファイルも軽量)。
-        // 圧縮率はタイポグラフィの劣化を避けるため高め。
-        outputFormat: 'jpeg',
-        outputCompression: 92,
-      },
-      deps.imageGenDeps,
-    );
-    imageBuffer = result.images[0]!;
-    totalCostJpy += result.costJpy;
-
-    if (!checkEnabled) {
-      textCheck = null;
-      break;
-    }
-
-    try {
-      const verifyInput: CoverTextCheckInput = {
-        bookId: parsed.bookId,
-        genre: null,
-        title: parsed.title,
-        imageBase64: imageBuffer.toString('base64'),
-        mimeType: 'image/jpeg',
-        ...(parsed.jobId !== undefined ? { jobId: parsed.jobId } : {}),
-        ...(parsed.subtitle !== undefined ? { subtitle: parsed.subtitle } : {}),
-      };
-      textCheck = await verify(verifyInput, deps.verifyCoverTextDeps);
-      textCheckError = undefined;
-    } catch (err) {
-      // 検証自体が失敗した場合は best-effort: カバー生成は止めず、
-      // 検証できないのでリトライもせず打ち切る。
-      textCheck = null;
-      textCheckError = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-      break;
-    }
-
-    // 文字 OK → このカバーを採用。崩れていて、かつ再試行が残っていれば再生成。
-    if (textCheck.ok) break;
+  // --- 4. Composite real Japanese typography over the illustration ---
+  const compose = deps.composeTypography ?? defaultComposeCoverTypography;
+  const coverText: CoverText = { title: parsed.title };
+  if (parsed.subtitle && parsed.subtitle.trim().length > 0) {
+    coverText.subtitle = parsed.subtitle;
   }
+  if (parsed.author && parsed.author.trim().length > 0) {
+    coverText.author = parsed.author;
+  }
+  const finalImage = await compose(illustration, coverText);
 
-  // --- 4. Generate cover ID and R2 key ---
+  // --- 5. Generate cover ID and R2 key ---
   const coverId = (deps.generateId ?? defaultGenerateId)();
-
   const r2Key = bookArtifact(parsed.bookId, 'cover_source', `${coverId}.jpg`);
 
-  // --- 5. Upload to R2 ---
+  // --- 6. Upload composited cover to R2 ---
   const upload = deps.uploadBuffer ?? defaultUploadBuffer;
-  await upload(r2Key, imageBuffer, 'image/jpeg');
+  await upload(r2Key, finalImage, 'image/jpeg');
 
-  // --- 6. INSERT Cover row ---
-  const coverRepo = deps.prisma?.cover ?? await defaultCoverRepo();
+  // --- 7. INSERT Cover row ---
+  const coverRepo = deps.prisma?.cover ?? (await defaultCoverRepo());
 
   const generationMeta = {
     provider: 'openai',
     model: 'gpt-image-1',
-    cost_jpy: totalCostJpy,
+    cost_jpy: costJpy,
     width: parsed.width,
     height: parsed.height,
-    image_size_bytes: imageBuffer.byteLength,
+    image_size_bytes: finalImage.byteLength,
     format: 'jpeg',
-    image_attempts: attemptsMade,
-    // 文字崩れチェック結果 (null = 検証なし/失敗)。
-    text_check: textCheck,
-    text_check_ok: textCheck ? textCheck.ok : null,
-    ...(textCheckError ? { text_check_error: textCheckError } : {}),
+    // 文字は AI ではなく実フォントで合成済 (文字化けは原理的に発生しない)。
+    text_overlay: true,
+    style_guide: parsed.styleGuide ?? '',
   };
 
   await coverRepo.create({
@@ -303,7 +248,7 @@ export async function generateCoverImage(
     },
   });
 
-  // --- 7. Validate and return ---
+  // --- 8. Validate and return ---
   const output: ThumbnailImageOutput = {
     r2Key,
     promptUsed: prompt,

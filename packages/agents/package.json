@@ -31,6 +31,7 @@
     "./editor": "./src/editor/index.ts",
     "./thumbnail/text": "./src/thumbnail/text.ts",
     "./thumbnail/image": "./src/thumbnail/image.ts",
+    "./art-direction": "./src/art-direction/index.ts",
     "./judge": "./src/judge/index.ts",
     "./optimizer": "./src/optimizer/index.ts"
   },
@@ -43,6 +44,7 @@
     "@a2p/contracts": "workspace:*",
     "@a2p/crypto": "workspace:*",
     "@a2p/db": "workspace:*",
+    "@a2p/output-image": "workspace:*",
     "@a2p/storage": "workspace:*",
     "@ai-sdk/anthropic": "^2.0.0",
     "@ai-sdk/google": "^2.0.0",

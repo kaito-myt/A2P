@@ -175,6 +175,7 @@ function buildPrisma(args: BuildPrismaArgs): {
               theme_id: b.theme_id,
               title: b.title,
               subtitle: b.subtitle,
+              account: { pen_name: (b as { pen_name?: string | null }).pen_name ?? null },
             }
           : null;
       },
@@ -296,6 +297,13 @@ function buildDeps(
       generateCalls.push(input);
       return makeCoverTextOutput(3);
     }) as unknown as PipelineBookThumbnailTextDeps['generateCoverText'],
+    generateCoverArtDirection: (async () => ({
+      directions: [
+        { concept: 'c1', image_prompt: 'art prompt 1' },
+        { concept: 'c2', image_prompt: 'art prompt 2' },
+        { concept: 'c3', image_prompt: 'art prompt 3' },
+      ],
+    })) as unknown as PipelineBookThumbnailTextDeps['generateCoverArtDirection'],
     notifyJobChange: (async (payload: unknown) => {
       notifyCalls.push({ payload });
       return { ok: true };

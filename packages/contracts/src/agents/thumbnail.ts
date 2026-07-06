@@ -80,7 +80,13 @@ export const ThumbnailImageInputSchema = z.object({
   title: z.string().min(1),
   /** Cover text subtitle (optional). */
   subtitle: z.string().optional(),
-  /** Free-form style guidance for the image prompt. */
+  /** 著者名/ペンネーム (任意)。合成タイポグラフィで表紙下部に焼き込む。 */
+  author: z.string().optional(),
+  /**
+   * Free-form style guidance for the image prompt.
+   * cover_art_direction エージェントが生成した「売れる」アート方向性 (英語) を
+   * ここに渡す。空なら generateCoverImage 側の汎用フォールバックを使う。
+   */
   styleGuide: z.string().default(''),
   /** Target width (px). */
   width: z.number().int().positive().default(1024),
@@ -155,3 +161,57 @@ export const CoverTextCheckOutputSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 export type CoverTextCheckOutput = z.infer<typeof CoverTextCheckOutputSchema>;
+
+// ---------------------------------------------------------------------------
+// Cover Art Direction — Marketer 目線で「売れる」表紙ビジュアル方向性を決める
+// ---------------------------------------------------------------------------
+
+/**
+ * Input for `generateCoverArtDirection`。
+ *
+ * 本の企画 (title/hook/target_reader/genre) を渡し、ジャンル・読者に刺さる
+ * 「売れる」表紙のアート方向性を `count` 案生成させる。画風は固定しない
+ * (ラノベ風とは限らない) — 実用書なら写真的/ミニマル/タイポ主体、自己啓発なら
+ * 象徴的なイメージ等、マーケ判断でベストな絵作りを選ばせる。
+ */
+export const CoverArtDirectionInputSchema = z.object({
+  /** graphile-worker.jobs.id -- worker only。 */
+  jobId: z.string().optional(),
+  /** `Book.id` -- token_usage.book_id。 */
+  bookId: z.string(),
+  /** Genre (null = 全ジャンル既定プロンプト fallback)。 */
+  genre: z.enum(['practical', 'business', 'self_help']).nullable(),
+  /** 企画コンテキスト (thumbnail_text と同じ最小セット)。 */
+  themeContext: z.object({
+    title: z.string().min(1).max(200),
+    subtitle: z.string().min(1).max(200).optional(),
+    hook: z.string().min(1).max(800),
+    target_reader: z.string().min(1).max(300),
+  }),
+  /** 生成する方向性の数 (3-5、既定 3 — テキスト案と 1:1 で対応)。 */
+  count: z.number().int().min(3).max(5).default(3),
+});
+export type CoverArtDirectionInput = z.infer<typeof CoverArtDirectionInputSchema>;
+
+/** 単一のアート方向性。`image_prompt` を gpt-image-1 に渡す (英語・文字なし)。 */
+export const CoverArtDirectionItemSchema = z.object({
+  /** この方向性が「売れる」理由の説明 (日本語・運営者向け)。 */
+  concept: z.string().min(1).max(600),
+  /**
+   * gpt-image-1 に渡す実際のアートディレクション (英語)。
+   * 画風・被写体・構図・雰囲気・配色を具体的に。文字は絶対に含めない指示は
+   * generateCoverImage 側で付与するので、ここでは純粋に絵の内容を書く。
+   */
+  image_prompt: z.string().min(1).max(1500),
+  /** 主要な配色 (任意・日本語/英語どちらでも)。 */
+  palette: z.string().max(200).optional(),
+  /** 画風ラベル (任意、例: "写真的" "ミニマル・タイポ" "3D レンダ" 等)。 */
+  style_label: z.string().max(80).optional(),
+});
+export type CoverArtDirectionItem = z.infer<typeof CoverArtDirectionItemSchema>;
+
+/** Output of `generateCoverArtDirection`。3-5 案。 */
+export const CoverArtDirectionOutputSchema = z.object({
+  directions: z.array(CoverArtDirectionItemSchema).min(3).max(5),
+});
+export type CoverArtDirectionOutput = z.infer<typeof CoverArtDirectionOutputSchema>;

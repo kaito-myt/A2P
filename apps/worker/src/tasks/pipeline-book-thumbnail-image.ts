@@ -49,6 +49,10 @@ export const PipelineBookThumbnailImagePayloadSchema = z.object({
   book_id: z.string().min(1),
   cover_text_id: z.string().min(1),
   job_id: z.string().min(1),
+  /** cover_art_direction エージェントが生成したアート方向性 (英語)。styleGuide へ。 */
+  art_direction: z.string().optional(),
+  /** 著者名/ペンネーム。合成タイポグラフィで表紙に焼き込む。 */
+  author: z.string().optional(),
 });
 export type PipelineBookThumbnailImagePayload = z.infer<
   typeof PipelineBookThumbnailImagePayloadSchema
@@ -167,7 +171,13 @@ export async function runPipelineBookThumbnailImage(
       details: { issues: parsed.error.issues },
     });
   }
-  const { book_id: bookId, cover_text_id: coverTextId, job_id: jobId } = parsed.data;
+  const {
+    book_id: bookId,
+    cover_text_id: coverTextId,
+    job_id: jobId,
+    art_direction: artDirection,
+    author,
+  } = parsed.data;
 
   const log = deps.logger ?? createLogger(`worker.${PIPELINE_BOOK_THUMBNAIL_IMAGE_TASK_NAME}`);
   const prisma = deps.prisma ?? (defaultPrisma as unknown as PipelineBookThumbnailImagePrisma);
@@ -239,7 +249,9 @@ export async function runPipelineBookThumbnailImage(
       coverTextId,
       title: coverText.title,
       subtitle: coverText.subtitle ?? undefined,
-      styleGuide: '',
+      author: author ?? undefined,
+      // アート方向性 (Marketer 目線の「売れる」ビジュアル)。空なら generateCoverImage が汎用フォールバック。
+      styleGuide: artDirection ?? '',
       width: 1024,
       height: 1536,
     };

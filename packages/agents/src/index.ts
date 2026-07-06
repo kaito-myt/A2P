@@ -119,6 +119,11 @@ export {
   type ReadingsResult,
 } from './readings/index.js';
 
+export {
+  generateCoverArtDirection,
+  type GenerateCoverArtDirectionDeps,
+} from './art-direction/index.js';
+
 export { kanaToRomaji } from './lib/kana-to-romaji.js';
 
 export {

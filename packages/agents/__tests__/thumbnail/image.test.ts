@@ -1,23 +1,24 @@
 /**
- * T-05-02 -- Thumbnail Designer (cover image) unit tests.
+ * Thumbnail Designer (cover image) unit tests.
  *
- * All external deps (generateImage, R2 upload, Prisma, ID generation)
- * are injected via `GenerateCoverImageDeps`. No real API, DB, or R2 calls.
+ * 【文字化け根絶の新設計】gpt-image-1 は「文字なしイラスト」だけ生成し、
+ * タイトル等は composeCoverTypography で実フォント合成する。全ての外部依存
+ * (generateImage, composeTypography, R2 upload, Prisma, ID) は DI で注入する。
  *
  * Coverage:
- *  1. happy path: image generated + R2 upload + Cover INSERT + output shape
- *  2. prompt includes title and subtitle
- *  3. prompt includes style guide
- *  4. R2 key follows `books/{bookId}/covers/raw/{coverId}.jpg` pattern
- *  5. Cover INSERT has correct fields
- *  6. token_usage recorded via withImageLogging
- *  7. jobId forwarded to ImageLoggingContext
- *  8. jobId omitted -> ctx.jobId undefined
- *  9. generateImage failure -> propagated
- * 10. R2 upload failure -> propagated
- * 11. Cover INSERT failure -> propagated
- * 12. custom generateId is used
- * 13. width/height defaults applied
+ *  1. happy path: 生成 → 合成 → R2 upload → Cover INSERT → output shape
+ *  2. prompt は「文字なし」指示 + アート方向性を含み、タイトルは含まない
+ *  3. styleGuide (アート方向性) が prompt に入る
+ *  4. title/subtitle/author が composeTypography に渡る
+ *  5. R2 key パターン
+ *  6. Cover INSERT フィールド (text_overlay=true)
+ *  7. token_usage 記録
+ *  8. jobId forwarding
+ *  9. エラー伝播 (generateImage / compose / upload / cover insert)
+ * 10. custom generateId
+ * 11. width/height 既定 + JPEG
+ * 12. generation_meta の image_size_bytes は合成後バッファ長
+ * 13. 合成後バッファが R2 に upload される
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -33,7 +34,10 @@ vi.mock('@a2p/db', () => ({
 }));
 
 const { generateCoverImage } = await import('../../src/thumbnail/image.js');
-import type { GenerateCoverImageDeps } from '../../src/thumbnail/image.js';
+import type {
+  GenerateCoverImageDeps,
+  ComposeTypographyFn,
+} from '../../src/thumbnail/image.js';
 import type {
   GenerateImageArgs,
   GenerateImageResult,
@@ -46,7 +50,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 function makeFakeGenerateImage(
-  imageBuffer: Buffer = Buffer.from('FAKE_PNG_DATA'),
+  imageBuffer: Buffer = Buffer.from('FAKE_ILLUSTRATION'),
   costJpy = 15.0,
 ): GenerateImageFn {
   return vi.fn(
@@ -58,15 +62,20 @@ function makeFakeGenerateImage(
   );
 }
 
-function makeFakeUploadBuffer() {
-  return vi.fn(
-    async (key: string, _buffer: Buffer, contentType: string) => ({
-      key,
-      sha256: 'abc123',
-      size: 1024,
-      contentType,
-    }),
+/** タイトル文言を埋め込んだ「合成後」バッファを返す fake。 */
+function makeFakeCompose(): ComposeTypographyFn {
+  return vi.fn(async (_img: Buffer, text) =>
+    Buffer.from(`COMPOSITED:${text.title}:${text.subtitle ?? ''}:${text.author ?? ''}`),
   );
+}
+
+function makeFakeUploadBuffer() {
+  return vi.fn(async (key: string, _buffer: Buffer, contentType: string) => ({
+    key,
+    sha256: 'abc123',
+    size: 1024,
+    contentType,
+  }));
 }
 
 function makeFakeCoverRepo() {
@@ -81,6 +90,7 @@ function baseInput(overrides: Partial<ThumbnailImageInput> = {}): ThumbnailImage
     coverTextId: overrides.coverTextId ?? 'ctp-1',
     title: overrides.title ?? '副業で月5万円稼ぐ方法',
     subtitle: overrides.subtitle,
+    author: overrides.author,
     styleGuide: overrides.styleGuide ?? 'minimalist Japanese business book',
     width: overrides.width ?? 1024,
     height: overrides.height ?? 1536,
@@ -88,26 +98,13 @@ function baseInput(overrides: Partial<ThumbnailImageInput> = {}): ThumbnailImage
   };
 }
 
-function makeFakeVerify(ok = true) {
-  return vi.fn(async (_input: unknown) => ({
-    ok,
-    title_legible: ok,
-    title_matches: ok,
-    garbled_text_detected: !ok,
-    extra_text_detected: false,
-    transcribed_text: 'タイトル',
-    issues: ok ? [] : ['タイトル文字が崩れています'],
-    confidence: 0.9,
-  }));
-}
-
 function baseDeps(overrides: Partial<GenerateCoverImageDeps> = {}): GenerateCoverImageDeps {
   return {
     generateImage: overrides.generateImage ?? makeFakeGenerateImage(),
+    composeTypography: overrides.composeTypography ?? makeFakeCompose(),
     uploadBuffer: overrides.uploadBuffer ?? makeFakeUploadBuffer(),
     prisma: overrides.prisma ?? { cover: makeFakeCoverRepo() },
     generateId: overrides.generateId ?? (() => 'test-cover-id'),
-    verifyCoverText: overrides.verifyCoverText ?? makeFakeVerify(true),
     withImageLoggingDeps: overrides.withImageLoggingDeps ?? {
       prisma: {
         tokenUsage: { create: vi.fn() },
@@ -133,7 +130,7 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('generateCoverImage -- happy path', () => {
-  it('generates image, uploads to R2, creates Cover, returns correct output', async () => {
+  it('generates textless illustration, composites text, uploads, creates Cover', async () => {
     const input = baseInput();
     const deps = baseDeps();
 
@@ -141,65 +138,79 @@ describe('generateCoverImage -- happy path', () => {
 
     expect(result.coverId).toBe('test-cover-id');
     expect(result.r2Key).toBe('books/book-1/covers/raw/test-cover-id.jpg');
-    expect(result.promptUsed).toContain('副業で月5万円稼ぐ方法');
 
     expect(deps.generateImage).toHaveBeenCalledTimes(1);
+    expect(deps.composeTypography).toHaveBeenCalledTimes(1);
     expect(deps.uploadBuffer).toHaveBeenCalledTimes(1);
     expect(deps.prisma!.cover.create).toHaveBeenCalledTimes(1);
   });
 });
 
 // ---------------------------------------------------------------------------
-// 2. prompt includes title and subtitle
+// 2-3. prompt construction (textless, art-direction driven)
 // ---------------------------------------------------------------------------
 
 describe('generateCoverImage -- prompt construction', () => {
-  it('prompt includes title and subtitle when provided', async () => {
-    const input = baseInput({
-      title: 'AI時代の副業術',
-      subtitle: '完全ガイド',
-    });
-    const deps = baseDeps();
+  it('prompt forbids text and does NOT embed the title (title is overlaid, not drawn)', async () => {
+    const input = baseInput({ title: 'AI時代の副業術' });
+    const result = await generateCoverImage(input, baseDeps());
 
-    const result = await generateCoverImage(input, deps);
-
-    expect(result.promptUsed).toContain('AI時代の副業術');
-    expect(result.promptUsed).toContain('完全ガイド');
+    expect(result.promptUsed).toContain('NO TEXT');
+    expect(result.promptUsed).not.toContain('AI時代の副業術');
   });
 
-  // 3. prompt includes style guide
-  it('prompt includes style guide', async () => {
-    const input = baseInput({
-      styleGuide: 'watercolor illustration, warm tones',
-    });
-    const deps = baseDeps();
-
-    const result = await generateCoverImage(input, deps);
+  it('prompt includes the style guide (art direction)', async () => {
+    const input = baseInput({ styleGuide: 'watercolor illustration, warm tones' });
+    const result = await generateCoverImage(input, baseDeps());
 
     expect(result.promptUsed).toContain('watercolor illustration, warm tones');
   });
 
-  it('prompt without subtitle does not include subtitle line', async () => {
-    const input = baseInput({ subtitle: undefined });
-    const deps = baseDeps();
+  it('empty styleGuide falls back to a generic art direction referencing the theme', async () => {
+    const input = baseInput({ title: 'テーマX', styleGuide: '' });
+    const result = await generateCoverImage(input, baseDeps());
 
-    const result = await generateCoverImage(input, deps);
-
-    expect(result.promptUsed).not.toContain('Subtitle:');
-  });
-
-  it('prompt without styleGuide does not include Style line', async () => {
-    const input = baseInput({ styleGuide: '' });
-    const deps = baseDeps();
-
-    const result = await generateCoverImage(input, deps);
-
-    expect(result.promptUsed).not.toContain('Style:');
+    expect(result.promptUsed).toContain('テーマX');
+    expect(result.promptUsed).toContain('NO TEXT');
   });
 });
 
 // ---------------------------------------------------------------------------
-// 4. R2 key pattern
+// 4. text passed to compositor
+// ---------------------------------------------------------------------------
+
+describe('generateCoverImage -- typography compositing', () => {
+  it('passes title/subtitle/author to composeTypography', async () => {
+    const compose = makeFakeCompose();
+    const input = baseInput({
+      title: 'メインタイトル',
+      subtitle: 'サブ',
+      author: 'ミヤタ カイト',
+    });
+    await generateCoverImage(input, baseDeps({ composeTypography: compose }));
+
+    expect(compose).toHaveBeenCalledTimes(1);
+    const [, text] = (compose as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(text).toMatchObject({
+      title: 'メインタイトル',
+      subtitle: 'サブ',
+      author: 'ミヤタ カイト',
+    });
+  });
+
+  it('omits subtitle/author when not provided', async () => {
+    const compose = makeFakeCompose();
+    const input = baseInput({ subtitle: undefined, author: undefined });
+    await generateCoverImage(input, baseDeps({ composeTypography: compose }));
+
+    const [, text] = (compose as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(text.subtitle).toBeUndefined();
+    expect(text.author).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5. R2 key pattern
 // ---------------------------------------------------------------------------
 
 describe('generateCoverImage -- R2 key', () => {
@@ -214,26 +225,17 @@ describe('generateCoverImage -- R2 key', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. Cover INSERT fields
+// 6. Cover INSERT fields
 // ---------------------------------------------------------------------------
 
 describe('generateCoverImage -- Cover INSERT', () => {
-  it('Cover row has correct fields', async () => {
-    const input = baseInput({
-      bookId: 'book-X',
-      coverTextId: 'ctp-Y',
-      width: 1024,
-      height: 1536,
-    });
+  it('Cover row has correct fields incl text_overlay=true', async () => {
+    const input = baseInput({ bookId: 'book-X', coverTextId: 'ctp-Y' });
     const coverRepo = makeFakeCoverRepo();
-    const deps = baseDeps({
-      prisma: { cover: coverRepo },
-      generateId: () => 'cover-Z',
-    });
+    const deps = baseDeps({ prisma: { cover: coverRepo }, generateId: () => 'cover-Z' });
 
     await generateCoverImage(input, deps);
 
-    expect(coverRepo.create).toHaveBeenCalledTimes(1);
     const createCall = coverRepo.create.mock.calls[0]![0] as unknown as {
       data: Record<string, unknown>;
     };
@@ -250,16 +252,17 @@ describe('generateCoverImage -- Cover INSERT', () => {
     expect(createCall.data.generation_meta_json).toMatchObject({
       provider: 'openai',
       model: 'gpt-image-1',
+      text_overlay: true,
     });
   });
 });
 
 // ---------------------------------------------------------------------------
-// 6. token_usage via withImageLogging
+// 7. token_usage via withImageLogging
 // ---------------------------------------------------------------------------
 
 describe('generateCoverImage -- token_usage', () => {
-  it('withImageLogging records token_usage for the image generation', async () => {
+  it('records token_usage for the image generation', async () => {
     const input = baseInput({ bookId: 'book-TOKEN', jobId: 'job-TOKEN' });
     const tokenCreate = vi.fn();
     const deps = baseDeps({
@@ -287,30 +290,10 @@ describe('generateCoverImage -- token_usage', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 7-8. jobId forwarding
+// 8. jobId forwarding
 // ---------------------------------------------------------------------------
 
 describe('generateCoverImage -- jobId', () => {
-  it('jobId specified -> forwarded to token_usage.job_id', async () => {
-    const input = baseInput({ jobId: 'job-999' });
-    const tokenCreate = vi.fn();
-    const deps = baseDeps({
-      withImageLoggingDeps: {
-        prisma: {
-          tokenUsage: { create: tokenCreate },
-          book: { update: vi.fn() },
-        } as never,
-        logger: { warn: vi.fn() },
-        fetchPriceSnapshot: async () => ({ snapshot: {}, costJpy: 10.0 }),
-      },
-    });
-
-    await generateCoverImage(input, deps);
-
-    const data = tokenCreate.mock.calls[0]![0].data;
-    expect(data.job_id).toBe('job-999');
-  });
-
   it('jobId omitted -> token_usage.job_id is null', async () => {
     const input = baseInput();
     const tokenCreate = vi.fn();
@@ -333,52 +316,59 @@ describe('generateCoverImage -- jobId', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 9. generateImage failure -> propagated
+// 9. error propagation
 // ---------------------------------------------------------------------------
 
 describe('generateCoverImage -- error propagation', () => {
-  it('generateImage failure propagates to caller', async () => {
+  it('generateImage failure propagates and skips compose/upload/insert', async () => {
     const failingGen = vi.fn(async () => {
       throw new Error('OpenAI API down');
     }) as unknown as GenerateImageFn;
-    const input = baseInput();
     const deps = baseDeps({ generateImage: failingGen });
 
-    await expect(generateCoverImage(input, deps)).rejects.toThrow('OpenAI API down');
+    await expect(generateCoverImage(baseInput(), deps)).rejects.toThrow('OpenAI API down');
+    expect(deps.composeTypography).not.toHaveBeenCalled();
     expect(deps.uploadBuffer).not.toHaveBeenCalled();
     expect(deps.prisma!.cover.create).not.toHaveBeenCalled();
   });
 
-  // 10. R2 upload failure
-  it('R2 upload failure propagates to caller', async () => {
-    const failingUpload = vi.fn(async () => {
-      throw new Error('R2 PUT failed');
-    });
-    const input = baseInput();
-    const deps = baseDeps({ uploadBuffer: failingUpload });
+  it('compose failure propagates and skips upload/insert', async () => {
+    const failingCompose = vi.fn(async () => {
+      throw new Error('sharp compose failed');
+    }) as unknown as ComposeTypographyFn;
+    const deps = baseDeps({ composeTypography: failingCompose });
 
-    await expect(generateCoverImage(input, deps)).rejects.toThrow('R2 PUT failed');
+    await expect(generateCoverImage(baseInput(), deps)).rejects.toThrow('sharp compose failed');
+    expect(deps.uploadBuffer).not.toHaveBeenCalled();
     expect(deps.prisma!.cover.create).not.toHaveBeenCalled();
   });
 
-  // 11. Cover INSERT failure
-  it('Cover INSERT failure propagates to caller', async () => {
+  it('R2 upload failure propagates', async () => {
+    const failingUpload = vi.fn(async () => {
+      throw new Error('R2 PUT failed');
+    });
+    const deps = baseDeps({ uploadBuffer: failingUpload });
+
+    await expect(generateCoverImage(baseInput(), deps)).rejects.toThrow('R2 PUT failed');
+    expect(deps.prisma!.cover.create).not.toHaveBeenCalled();
+  });
+
+  it('Cover INSERT failure propagates', async () => {
     const failingRepo = {
       create: vi.fn(async () => {
         throw new Error('Prisma constraint violation');
       }),
     };
-    const input = baseInput();
     const deps = baseDeps({ prisma: { cover: failingRepo } });
 
-    await expect(generateCoverImage(input, deps)).rejects.toThrow(
+    await expect(generateCoverImage(baseInput(), deps)).rejects.toThrow(
       'Prisma constraint violation',
     );
   });
 });
 
 // ---------------------------------------------------------------------------
-// 12. custom generateId
+// 10. custom generateId
 // ---------------------------------------------------------------------------
 
 describe('generateCoverImage -- custom ID generation', () => {
@@ -394,211 +384,53 @@ describe('generateCoverImage -- custom ID generation', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 13. width/height defaults
+// 11. width/height defaults + JPEG
 // ---------------------------------------------------------------------------
 
-describe('generateCoverImage -- dimension defaults', () => {
-  it('width defaults to 1024 and height to 1536', async () => {
-    const input: ThumbnailImageInput = {
-      bookId: 'book-def',
-      coverTextId: 'ctp-def',
-      title: 'テスト',
-      styleGuide: '',
-      width: 1024,
-      height: 1536,
-    };
+describe('generateCoverImage -- generation args', () => {
+  it('passes width/height and JPEG output to generateImage', async () => {
     const genImage = makeFakeGenerateImage();
     const deps = baseDeps({ generateImage: genImage });
 
-    await generateCoverImage(input, deps);
+    await generateCoverImage(baseInput({ width: 1024, height: 1536 }), deps);
 
     const callArgs = (genImage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as GenerateImageArgs;
     expect(callArgs.width).toBe(1024);
     expect(callArgs.height).toBe(1536);
-    // サムネは JPEG で生成する。
     expect(callArgs.outputFormat).toBe('jpeg');
   });
 });
 
 // ---------------------------------------------------------------------------
-// 14. generation_meta_json includes cost and size info
+// 12-13. composited buffer is uploaded, meta size reflects it
 // ---------------------------------------------------------------------------
 
-describe('generateCoverImage -- generation_meta_json', () => {
-  it('generation_meta_json contains provider, model, cost_jpy, dimensions, image_size_bytes', async () => {
-    const imageBuffer = Buffer.from('A'.repeat(2048));
-    const genImage = makeFakeGenerateImage(imageBuffer, 25.5);
-    const coverRepo = makeFakeCoverRepo();
-    const input = baseInput({ width: 1024, height: 1536 });
-    const deps = baseDeps({
-      generateImage: genImage,
-      prisma: { cover: coverRepo },
-    });
-
-    await generateCoverImage(input, deps);
-
-    const createArg = coverRepo.create.mock.calls[0]![0] as unknown as {
-      data: Record<string, unknown>;
-    };
-    const meta = createArg.data.generation_meta_json as Record<string, unknown>;
-    expect(meta.provider).toBe('openai');
-    expect(meta.model).toBe('gpt-image-1');
-    expect(meta.width).toBe(1024);
-    expect(meta.height).toBe(1536);
-    expect(meta.image_size_bytes).toBe(2048);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 15. image buffer passed to upload
-// ---------------------------------------------------------------------------
-
-describe('generateCoverImage -- upload buffer', () => {
-  it('raw image buffer from generateImage is uploaded to R2', async () => {
-    const imageBuffer = Buffer.from('RAW_PNG_BYTES');
-    const genImage = makeFakeGenerateImage(imageBuffer);
+describe('generateCoverImage -- composited output', () => {
+  it('uploads the composited buffer (not the raw illustration) and records its size', async () => {
+    const illustration = Buffer.from('RAW_ILLUSTRATION_BYTES');
+    const composited = Buffer.from('COMPOSITED_FINAL_COVER_BYTES');
+    const genImage = makeFakeGenerateImage(illustration);
+    const compose = vi.fn(async () => composited) as unknown as ComposeTypographyFn;
     const uploadBuf = makeFakeUploadBuffer();
-    const input = baseInput();
+    const coverRepo = makeFakeCoverRepo();
     const deps = baseDeps({
       generateImage: genImage,
+      composeTypography: compose,
       uploadBuffer: uploadBuf,
+      prisma: { cover: coverRepo },
     });
 
-    await generateCoverImage(input, deps);
+    await generateCoverImage(baseInput(), deps);
 
-    expect(uploadBuf).toHaveBeenCalledTimes(1);
     const [key, buf, contentType] = uploadBuf.mock.calls[0]!;
-    expect(key).toContain('covers/raw/');
-    expect(key).toMatch(/\.jpg$/);
-    expect(buf).toBe(imageBuffer);
+    expect(key).toMatch(/covers\/raw\/.*\.jpg$/);
+    expect(buf).toBe(composited);
     expect(contentType).toBe('image/jpeg');
-  });
-});
 
-// ---------------------------------------------------------------------------
-// 15. Cover text verification (文字崩れチェック)
-// ---------------------------------------------------------------------------
-
-describe('generateCoverImage -- cover text verification', () => {
-  it('verifies the generated image and records the verdict in generation_meta_json', async () => {
-    const verify = makeFakeVerify(true);
-    const coverRepo = makeFakeCoverRepo();
-    const deps = baseDeps({ verifyCoverText: verify, prisma: { cover: coverRepo } });
-
-    await generateCoverImage(baseInput(), deps);
-
-    expect(verify).toHaveBeenCalledTimes(1);
-    // 検証入力に画像 base64 と期待タイトルが渡る。
-    const verifyArg = verify.mock.calls[0]![0] as unknown as {
-      title: string;
-      imageBase64: string;
-      mimeType: string;
-    };
-    expect(verifyArg.title).toBe('副業で月5万円稼ぐ方法');
-    expect(verifyArg.mimeType).toBe('image/jpeg');
-    expect(verifyArg.imageBase64.length).toBeGreaterThan(0);
-
-    const meta = (coverRepo.create.mock.calls[0]![0] as unknown as { data: { generation_meta_json: Record<string, unknown> } })
-      .data.generation_meta_json;
-    expect(meta.text_check_ok).toBe(true);
-    expect(meta.image_attempts).toBe(1);
-    expect(meta.text_check).toMatchObject({ ok: true });
-  });
-
-  it('regenerates when text is garbled, up to maxImageAttempts', async () => {
-    const genImage = makeFakeGenerateImage();
-    // 1 回目は崩れ (ok=false)、2 回目は OK。
-    const verify = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        title_legible: false,
-        title_matches: false,
-        garbled_text_detected: true,
-        extra_text_detected: false,
-        transcribed_text: '副業で月5万円稼ぐ方珐',
-        issues: ['「法」が崩れている'],
-        confidence: 0.8,
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        title_legible: true,
-        title_matches: true,
-        garbled_text_detected: false,
-        extra_text_detected: false,
-        transcribed_text: '副業で月5万円稼ぐ方法',
-        issues: [],
-        confidence: 0.95,
-      });
-    const coverRepo = makeFakeCoverRepo();
-    const deps = baseDeps({
-      generateImage: genImage,
-      verifyCoverText: verify,
-      prisma: { cover: coverRepo },
-      maxImageAttempts: 3,
-    });
-
-    await generateCoverImage(baseInput(), deps);
-
-    expect(genImage).toHaveBeenCalledTimes(2);
-    expect(verify).toHaveBeenCalledTimes(2);
-    const meta = (coverRepo.create.mock.calls[0]![0] as unknown as { data: { generation_meta_json: Record<string, unknown> } })
-      .data.generation_meta_json;
-    expect(meta.image_attempts).toBe(2);
-    expect(meta.text_check_ok).toBe(true);
-  });
-
-  it('stops at maxImageAttempts even if still garbled (best-effort) and records ok=false', async () => {
-    const genImage = makeFakeGenerateImage();
-    const verify = makeFakeVerify(false); // 常に崩れ
-    const coverRepo = makeFakeCoverRepo();
-    const deps = baseDeps({
-      generateImage: genImage,
-      verifyCoverText: verify,
-      prisma: { cover: coverRepo },
-      maxImageAttempts: 2,
-    });
-
-    await generateCoverImage(baseInput(), deps);
-
-    expect(genImage).toHaveBeenCalledTimes(2);
-    expect(verify).toHaveBeenCalledTimes(2);
-    const meta = (coverRepo.create.mock.calls[0]![0] as unknown as { data: { generation_meta_json: Record<string, unknown> } })
-      .data.generation_meta_json;
-    expect(meta.image_attempts).toBe(2);
-    expect(meta.text_check_ok).toBe(false);
-  });
-
-  it('checkCoverText=false skips verification entirely', async () => {
-    const verify = makeFakeVerify(true);
-    const coverRepo = makeFakeCoverRepo();
-    const deps = baseDeps({
-      verifyCoverText: verify,
-      checkCoverText: false,
-      prisma: { cover: coverRepo },
-    });
-
-    await generateCoverImage(baseInput(), deps);
-
-    expect(verify).not.toHaveBeenCalled();
-    const meta = (coverRepo.create.mock.calls[0]![0] as unknown as { data: { generation_meta_json: Record<string, unknown> } })
-      .data.generation_meta_json;
-    expect(meta.text_check).toBeNull();
-    expect(meta.text_check_ok).toBeNull();
-  });
-
-  it('verifier failure is non-fatal: cover is still created with text_check_error', async () => {
-    const verify = vi.fn().mockRejectedValue(new Error('vision model down'));
-    const coverRepo = makeFakeCoverRepo();
-    const deps = baseDeps({ verifyCoverText: verify, prisma: { cover: coverRepo } });
-
-    const result = await generateCoverImage(baseInput(), deps);
-
-    expect(result.coverId).toBeTruthy();
-    expect(verify).toHaveBeenCalledTimes(1);
-    const meta = (coverRepo.create.mock.calls[0]![0] as unknown as { data: { generation_meta_json: Record<string, unknown> } })
-      .data.generation_meta_json;
-    expect(meta.text_check).toBeNull();
-    expect(meta.text_check_error).toContain('vision model down');
+    const meta = (coverRepo.create.mock.calls[0]![0] as unknown as {
+      data: { generation_meta_json: Record<string, unknown> };
+    }).data.generation_meta_json;
+    expect(meta.image_size_bytes).toBe(composited.byteLength);
+    expect(meta.format).toBe('jpeg');
   });
 });

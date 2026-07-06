@@ -32,6 +32,7 @@ export const PROMPT_ROLES = [
   'thumbnail_text',
   'thumbnail_image',
   'cover_text_check',
+  'cover_art_direction',
   'readings',
   'judge',
   'optimizer',
@@ -177,6 +178,8 @@ function buildPromptBody(role: PromptRole, genre: PromptGenre | null): string {
       return buildThumbnailImagePromptBody(genre);
     case 'cover_text_check':
       return buildCoverTextCheckPromptBody(genre);
+    case 'cover_art_direction':
+      return buildCoverArtDirectionPromptBody(genre);
     case 'readings':
       return buildReadingsPromptBody(genre);
     default:
@@ -548,6 +551,47 @@ function buildCoverTextCheckPromptBody(_genre: PromptGenre | null): string {
 }
 
 /**
+ * cover_art_direction — Marketer 目線で「売れる」表紙のビジュアル方向性を決める。
+ * 文字は後段で別レイヤー合成するため、ここでは「絵の内容」だけを設計する
+ * (画像内に文字を描かせない前提)。ジャンル/読者はユーザーメッセージで与える。
+ */
+function buildCoverArtDirectionPromptBody(_genre: PromptGenre | null): string {
+  return `# 表紙アートディレクション (v1)
+
+あなたは Amazon KDP で売れる電子書籍の表紙をプロデュースする、経験豊富な
+**アートディレクター兼マーケター**です。本の企画を受け取り、「Amazon の検索結果や
+ランキングのサムネイル一覧で埋もれず、ターゲット読者の目を引き、クリックと購入に
+つながる」表紙のビジュアル方向性を設計します。
+
+## 最重要の心構え
+
+- **画風を最初から固定しない**。「ラノベ風イラスト」が常に正解ではない。
+  ジャンルと読者層にとって最も"売れる"意匠を都度選ぶこと。
+  - 実用書/ビジネス書: 洗練された写真的表現、ミニマルな図象＋大きな余白、
+    大胆なタイポグラフィ空間、信頼感のある配色 など。
+  - 自己啓発: 情緒に訴える象徴的なイメージ、光・道・扉などのメタファー、
+    温かみや高揚感のある色調 など。
+  - テーマ次第でイラスト/キャラクターが有効な場合もある。要は「刺さるか」。
+- 競合の平均から**一段目立つ**こと (色のコントラスト、余白、主題の明快さ)。
+- サムネイル (小さい表示) で一目で内容と魅力が伝わる構図にする。
+
+## 各案の要件
+
+- 指定された案数だけ、**画風・被写体・構図・雰囲気・配色が明確に異なる**方向性を出す。
+- **image_prompt** (英語): gpt-image-1 が忠実に再現できるよう具体的に書く。
+  被写体/構図/カメラアングルやレイアウト/ライティング/色/質感/雰囲気を明記する。
+- **画像内には文字・ロゴ・タイトルを一切入れない前提**で、絵の内容だけを書く
+  (タイトル等は後で別レイヤーとして合成する)。タイトルを載せる余白 (通常は下部)
+  を残す構図にすること。
+- **concept** (日本語): 「なぜこの絵がこの読者に売れるのか」を簡潔に説明する。
+- **palette / style_label** は任意だが、意図を明確にするため可能な限り記載する。
+
+## 出力形式
+
+指定された JSON スキーマ (directions 配列) に厳密に従って構造化出力する。`;
+}
+
+/**
  * readings — タイトル/サブタイトル/著者名のカタカナ読み (フリガナ) 生成。
  * 対象テキストはユーザーメッセージで渡すため、システムプロンプトはペルソナ +
  * 出力規約に専念する (プレースホルダ無し)。
@@ -582,6 +626,7 @@ const ROLE_PLACEHOLDERS: Record<PromptRole, string[]> = {
   thumbnail_text: ['title', 'subtitle', 'target_reader'],
   thumbnail_image: ['cover_text', 'style_hint'],
   cover_text_check: [],
+  cover_art_direction: [],
   readings: [],
   judge: [
     'theme_title',
@@ -641,6 +686,8 @@ export function buildModelAssignmentSeeds(): ModelAssignmentSeed[] {
     { role: 'cover_text_check', genre: null, provider: 'anthropic', model: 'claude-sonnet-4-6', status: 'active', created_by: 'system' },
     // readings (フリガナ生成) は軽量タスク。Sonnet で十分。
     { role: 'readings', genre: null, provider: 'anthropic', model: 'claude-sonnet-4-6', status: 'active', created_by: 'system' },
+    // cover_art_direction は「売れる」絵の企画 = 創造性重視タスク。Opus を割当。
+    { role: 'cover_art_direction', genre: null, provider: 'anthropic', model: 'claude-opus-4-7', status: 'active', created_by: 'system' },
   ];
 }
 
