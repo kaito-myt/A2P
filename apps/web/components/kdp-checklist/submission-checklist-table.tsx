@@ -109,6 +109,14 @@ function FieldRow({ fieldView, bookId, onFieldUpdate }: FieldRowProps) {
       setOptimisticChecked(true);
     }
     onFieldUpdate(bookId, fieldView.field, { copied: true, checked: true });
+    // keywords はper-word の KeywordChip からコピーされ、Chip は自前で永続化しない。
+    // そのため keywords のチェック状態がDBに保存されず一覧で外れて見える不具合があった。
+    // 他フィールドは CopyToClipboardButton が updateChecklist を呼ぶが、keywords はここで永続化する。
+    if (fieldView.field === 'keywords') {
+      startTransition(async () => {
+        await updateChecklist({ book_id: bookId, field: 'keywords', copied: true, checked: true });
+      });
+    }
   };
 
   const value = fieldView.value;
@@ -217,6 +225,12 @@ function FieldRowMobile({ fieldView, bookId, onFieldUpdate }: FieldRowProps) {
   const handleCopied = () => {
     if (!isChecked) setOptimisticChecked(true);
     onFieldUpdate(bookId, fieldView.field, { copied: true, checked: true });
+    // keywords は per-word Chip 経由で永続化されないため、ここで明示的に保存する (詳細は desktop 版参照)。
+    if (fieldView.field === 'keywords') {
+      startTransition(async () => {
+        await updateChecklist({ book_id: bookId, field: 'keywords', copied: true, checked: true });
+      });
+    }
   };
 
   const value = fieldView.value;
