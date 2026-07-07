@@ -162,6 +162,7 @@ function makeOkThemes(count = 10): MarketerThemeOutput {
       predicted_chapters: 8,
       search_keywords: ['副業', '時間術'],
       sources: [`https://example.com/${i}`],
+      bestseller_evidence: [],
     },
   }));
   return { candidates, notes: `total ${count}` };

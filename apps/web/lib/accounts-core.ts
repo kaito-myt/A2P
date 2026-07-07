@@ -130,8 +130,10 @@ function encryptCredentialsIfPresent(
 ): string | null {
   if (!creds) return null;
   try {
+    // NOTE: worker の runSalesFetch は `email` キーで読むため email で保存する
+    // (旧実装は `login` で保存しており復号後 email=undefined になる不整合があった)。
     const plaintext = JSON.stringify({
-      login: creds.email,
+      email: creds.email,
       password: creds.password,
       ...(creds.totp_secret !== undefined ? { totp_secret: creds.totp_secret } : {}),
     });

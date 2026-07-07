@@ -307,6 +307,7 @@ export async function runSalesFetch(deps: SalesFetchDeps): Promise<SalesFetchRes
 
 import type { Task } from 'graphile-worker';
 import { createFixtureBrowserPort } from './sales-fetch/browser-port.js';
+import { createPlaywrightBrowserPort } from './sales-fetch/playwright-browser-port.js';
 
 export const salesFetchTask: Task = async (payload: unknown, _helpers) => {
   const parsed = SalesFetchPayload.safeParse(payload);
@@ -314,10 +315,12 @@ export const salesFetchTask: Task = async (payload: unknown, _helpers) => {
     throw new Error(`Invalid sales.fetch payload: ${parsed.error.message}`);
   }
 
-  // Phase 3 (SP-14) で Playwright 実装が BrowserPort を満たす形で注入される。
-  // 本番では Phase 3 まで実ブラウザが存在しないため、ここはフォールバック stub を使う。
-  // 実際の Playwright 注入は SP-14 でこのラッパを差し替える。
-  const browserPort = createFixtureBrowserPort('');
+  // Phase 3: 実ブラウザ (Playwright + Chromium) で KDP にログインしレポートを取得する。
+  // env `SALES_FETCH_BROWSER=fixture` の時のみ空 HTML の stub にフォールバック (検証用)。
+  const browserPort =
+    process.env.SALES_FETCH_BROWSER === 'fixture'
+      ? createFixtureBrowserPort('')
+      : createPlaywrightBrowserPort();
 
   await runSalesFetch({ payload: parsed.data, browserPort });
 };

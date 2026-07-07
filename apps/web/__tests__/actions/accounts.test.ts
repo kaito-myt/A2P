@@ -164,7 +164,7 @@ describe('createAccountCore', () => {
     expect(createArg.data.kdp_credentials_enc).toBeNull();
   });
 
-  it('kdp_credentials あれば encrypt(JSON.stringify({login, password, totp_secret})) を呼ぶ', async () => {
+  it('kdp_credentials あれば encrypt(JSON.stringify({email, password, totp_secret})) を呼ぶ', async () => {
     const { deps, spies } = makeDeps();
     const r = await createAccountCore(
       {
@@ -183,7 +183,7 @@ describe('createAccountCore', () => {
     const plaintext = spies.encrypt.mock.calls[0]?.[0] as string;
     const parsed = JSON.parse(plaintext);
     expect(parsed).toEqual({
-      login: 'kdp@example.com',
+      email: 'kdp@example.com',
       password: 'secret-pw',
       totp_secret: 'TOTP123',
     });

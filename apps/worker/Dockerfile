@@ -82,6 +82,13 @@ WORKDIR /app
 
 COPY --from=build /app /app
 
+# Phase 3 (F-038): KDP 売上取得の実ブラウザ (Playwright + Chromium)。
+# Chromium 本体と OS 依存ライブラリをイメージに焼き込む。PLAYWRIGHT_BROWSERS_PATH を
+# 固定パスにして、実行時に確実に見つかるようにする。
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN pnpm --filter @a2p/worker exec playwright install --with-deps chromium \
+  && rm -rf /var/lib/apt/lists/*
+
 # graphile-worker は tsx 経由で TS を直接実行する (apps/worker/package.json scripts.start)。
 # 本番でも tsx を採用するのは Phase 1 の単純化のため。Phase 2 以降で esbuild バンドルに切替予定。
 CMD ["pnpm", "--filter", "@a2p/worker", "start"]
