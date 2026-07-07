@@ -23,7 +23,7 @@ import { GenerateThemesButton } from '@/components/themes/generate-themes-button
 import { GeneratingBanner } from '@/components/themes/generating-banner';
 import { ThemesPageShell } from '@/components/themes/themes-page-shell';
 import { messages } from '@/lib/messages';
-import { serializeThemeRow, summarizeRows } from '@/lib/themes-view';
+import { serializeThemeRow, summarizeRows, sortThemesByRecommendation } from '@/lib/themes-view';
 
 export const metadata: Metadata = {
   title: `${messages.themes.pageTitle} | ${messages.brand.appName}`,
@@ -60,7 +60,8 @@ export default async function ThemesPage({ searchParams }: ThemesPageProps) {
       })
     : [];
 
-  const rows = rawRows.map(serializeThemeRow);
+  // おすすめ順 (market_score 降順) で並べる — Marketer の Amazon 売れ筋レコメンド反映。
+  const rows = sortThemesByRecommendation(rawRows.map(serializeThemeRow));
   const summary = summarizeRows(rows);
 
   // テーマ生成モーダル用に有効アカウント一覧を取得

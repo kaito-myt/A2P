@@ -63,6 +63,7 @@ function sampleCandidate(overrides: Partial<ThemeCandidate> = {}): ThemeCandidat
       predicted_chapters: 8,
       search_keywords: ['副業', '初心者', '在宅'],
       sources: [],
+      bestseller_evidence: [],
     },
   };
 }

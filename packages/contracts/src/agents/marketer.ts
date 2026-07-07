@@ -78,6 +78,29 @@ export const ThemeSignalsSchema = z.object({
   rank_estimate: z.number().optional(),
   /** docs/05 既定: web_search で参照した URL リスト (任意)。 */
   sources: z.array(z.string()).default([]),
+  // --- F-001b: Amazon 売れ筋レコメンド (signals_json に格納、DB 変更不要) ---
+  /** Amazon 売れ筋の観測に基づく需要レベル。 */
+  demand_level: z.enum(['high', 'medium', 'low']).optional(),
+  /** 類書の競合の激しさ。 */
+  competition_level: z.enum(['high', 'medium', 'low']).optional(),
+  /**
+   * Amazon Kindle 売れ筋ランキング等で観測した「実際に売れている類書」の根拠。
+   * market_score / demand_level はこれに基づいて算出する。
+   */
+  bestseller_evidence: z
+    .array(
+      z.object({
+        title: z.string().max(300),
+        /** ランキング順位 (観測できた場合)。 */
+        rank: z.number().optional(),
+        /** 補足 (カテゴリ/レビュー数/価格帯 等)。 */
+        note: z.string().max(300).optional(),
+      }),
+    )
+    .max(10)
+    .default([]),
+  /** 運営者向けの推薦コメント (なぜ売れる/避けるべきか)。 */
+  recommendation: z.string().max(600).optional(),
 });
 export type ThemeSignals = z.infer<typeof ThemeSignalsSchema>;
 

@@ -30,6 +30,8 @@ export interface ThemeRowSerialized {
   competitor_count: number;
   /** signals_json.market_score (0-100)。欠落時 null。 */
   market_score: number | null;
+  /** signals_json.demand_level (Amazon 売れ筋観測に基づく需要)。欠落時 null。 */
+  demand_level: 'high' | 'medium' | 'low' | null;
   created_at: string;
   decided_at: string | null;
 }
@@ -55,6 +57,12 @@ function extractMarketScore(signals: unknown): number | null {
 function extractCompetitorCount(competitors: unknown): number {
   if (!Array.isArray(competitors)) return 0;
   return competitors.length;
+}
+
+function extractDemandLevel(signals: unknown): 'high' | 'medium' | 'low' | null {
+  if (!signals || typeof signals !== 'object') return null;
+  const v = (signals as Record<string, unknown>).demand_level;
+  return v === 'high' || v === 'medium' || v === 'low' ? v : null;
 }
 
 /**
@@ -90,9 +98,25 @@ export function serializeThemeRow(
     status: statusOf(row.status),
     competitor_count: extractCompetitorCount(row.competitors_json),
     market_score: extractMarketScore(row.signals_json),
+    demand_level: extractDemandLevel(row.signals_json),
     created_at: row.created_at.toISOString(),
     decided_at: row.decided_at ? row.decided_at.toISOString() : null,
   };
+}
+
+/**
+ * ThemeRowSerialized[] を「おすすめ順」= market_score 降順 (null は末尾)、
+ * 同点は created_at 降順で並べ替える。テーマ一覧の既定表示順。
+ */
+export function sortThemesByRecommendation(
+  rows: readonly ThemeRowSerialized[],
+): ThemeRowSerialized[] {
+  return [...rows].sort((a, b) => {
+    const sa = a.market_score ?? -1;
+    const sb = b.market_score ?? -1;
+    if (sb !== sa) return sb - sa;
+    return b.created_at.localeCompare(a.created_at);
+  });
 }
 
 /** 全件 / pending / accepted / rejected の集計。 */
@@ -174,6 +198,13 @@ export type Competitor = z.infer<typeof CompetitorSchema>;
  * F-001 受入で必須の reasoning/market_score も、データ破損時には null fallback
  * で UI を成立させたいので全て optional に倒す。
  */
+export const BestsellerEvidenceSchema = z.object({
+  title: z.string().optional(),
+  rank: z.number().optional(),
+  note: z.string().optional(),
+});
+export type BestsellerEvidence = z.infer<typeof BestsellerEvidenceSchema>;
+
 export const SignalsSchema = z.object({
   reasoning: z.string().optional(),
   market_score: z.number().optional(),
@@ -182,6 +213,11 @@ export const SignalsSchema = z.object({
   search_volume: z.number().optional(),
   rank_estimate: z.number().optional(),
   sources: z.array(z.string()).optional(),
+  // F-001b Amazon 売れ筋レコメンド
+  demand_level: z.enum(['high', 'medium', 'low']).optional(),
+  competition_level: z.enum(['high', 'medium', 'low']).optional(),
+  bestseller_evidence: z.array(BestsellerEvidenceSchema).optional(),
+  recommendation: z.string().optional(),
 });
 export type Signals = z.infer<typeof SignalsSchema>;
 

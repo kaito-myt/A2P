@@ -24,6 +24,7 @@ import { CompetitorsTable } from '@/components/themes/competitors-table';
 import { ThemeDetailHeader } from '@/components/themes/theme-detail-header';
 import { ThemeNamingControl } from '@/components/themes/theme-naming-control';
 import { ThemeSummarySection } from '@/components/themes/theme-summary-section';
+import { ThemeRecommendationSection } from '@/components/themes/theme-recommendation-section';
 import { WebSearchSnippetList } from '@/components/themes/web-search-snippet-list';
 import { messages } from '@/lib/messages';
 import { serializeThemeDetail, serializeThemeComment, type ThemeCommentSerialized } from '@/lib/themes-view';
@@ -107,6 +108,8 @@ export default async function ThemeDetailPage({ params }: ThemeDetailPageProps) 
         currentAuthorId={raw.author_name_id}
         currentLabelId={raw.label_name_id}
       />
+
+      <ThemeRecommendationSection detail={detail} />
 
       <ThemeSummarySection detail={detail} />
 

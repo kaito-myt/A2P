@@ -485,6 +485,14 @@ export const messages = {
         targetReaderEmpty: '想定読者が設定されていません',
         rejectedReasonLabel: '却下理由',
       },
+      recommendation: {
+        sectionTitle: 'Amazon 売れ筋レコメンド',
+        scoreLabel: 'おすすめ度',
+        demandLabel: '需要',
+        competitionLabel: '競合',
+        recommendationLabel: '推薦理由',
+        evidenceLabel: '観測した売れ筋の類書',
+      },
       competitors: {
         sectionTitle: '競合本',
         sectionCount: (n: number) => `（${n} 件）`,
