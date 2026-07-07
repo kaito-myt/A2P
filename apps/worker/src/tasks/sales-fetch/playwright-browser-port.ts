@@ -108,6 +108,7 @@ async function fetchReportHtml(args: FetchReportHtmlArgs): Promise<FetchReportHt
     // まだ password / otp フォームが残っている = 失敗。
     if (await isVisible(page, pwInput, 2_000)) {
       const errText = await textIfPresent(page, '#auth-error-message-box, .a-alert-content');
+      await saveDebugArtifacts(page, args.yearMonth, 'login-failed').catch(() => {});
       return { ok: false, reason: 'login_failed', message: errText || 'still on sign-in page after submit' };
     }
     if (await isVisible(page, otpInput, 1_500)) {
@@ -128,6 +129,8 @@ async function fetchReportHtml(args: FetchReportHtmlArgs): Promise<FetchReportHt
       { yearMonth: args.yearMonth, url: page.url(), htmlBytes: html.length },
       'fetched KDP report page html',
     );
+    // 実ページ構造を後から確認してセレクタ調整するためのデバッグ証跡 (screenshot + html) を R2 に保存。
+    await saveDebugArtifacts(page, args.yearMonth, 'report').catch(() => {});
     return { ok: true, html, source: 'kdp_report_page' };
   } catch (err) {
     const msg = errMsg(err);
@@ -199,6 +202,31 @@ async function textIfPresent(
     return ((await el.textContent()) ?? '').trim() || null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * 実ページのスクリーンショット + HTML を R2 (debug/sales-fetch/) に保存する。
+ * セレクタ調整のための証跡。失敗しても本処理は止めない (呼び出し側で catch)。
+ * 保存先キーは worker ログに出すので、実行後にログからキーを拾って R2 から取得できる。
+ */
+async function saveDebugArtifacts(
+  page: import('playwright').Page,
+  yearMonth: string,
+  stage: string,
+): Promise<void> {
+  try {
+    const mod = await import('@a2p/storage');
+    const stamp = `${yearMonth}-${stage}-${Date.now()}`;
+    const pngKey = `debug/sales-fetch/${stamp}.png`;
+    const htmlKey = `debug/sales-fetch/${stamp}.html`;
+    const png = await page.screenshot({ fullPage: true });
+    const html = await page.content();
+    await mod.uploadBuffer(pngKey, png, 'image/png');
+    await mod.uploadBuffer(htmlKey, Buffer.from(html, 'utf-8'), 'text/html; charset=utf-8');
+    log.info({ stage, url: page.url(), pngKey, htmlKey }, 'saved sales-fetch debug artifacts to R2');
+  } catch (err) {
+    log.warn({ stage, err: errMsg(err) }, 'failed to save debug artifacts');
   }
 }
 
