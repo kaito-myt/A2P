@@ -180,6 +180,7 @@ describe('summarizeOutlines', () => {
       updated_at: '2026-05-25T03:00:00.000Z',
       chapters: [],
       total_target_chars: total,
+      review: null,
       book: null,
     };
   }
@@ -221,6 +222,7 @@ describe('pickEligibleIds', () => {
       updated_at: '2026-05-25T03:00:00.000Z',
       chapters: [],
       total_target_chars: 0,
+      review: null,
       book: null,
     };
   }

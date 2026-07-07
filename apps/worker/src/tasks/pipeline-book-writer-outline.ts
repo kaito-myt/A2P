@@ -6,10 +6,13 @@ import {
   releaseBookLock as defaultReleaseBookLock,
 } from '@a2p/agents/lib/book-lock';
 import { generateOutline as defaultGenerateOutline } from '@a2p/agents/writer/outline';
+import { reviewOutline as defaultReviewOutline } from '@a2p/agents/writer/outline-review';
 import type { Genre } from '@a2p/contracts/agents';
 import type {
   WriterOutlineInput,
   WriterOutlineOutput,
+  ChapterPlan,
+  OutlineReviewOutput,
 } from '@a2p/contracts/agents/writer';
 import { NotFoundError, ValidationError } from '@a2p/contracts/errors';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
@@ -144,11 +147,13 @@ export interface PipelineBookWriterOutlinePrisma {
       create: {
         book_id: string;
         chapters_json: unknown;
+        review_json?: unknown;
         status: string;
         reject_note: string | null;
       };
       update: {
         chapters_json: unknown;
+        review_json?: unknown;
         status: string;
         reject_note: string | null;
         approved_at: null;
@@ -168,6 +173,7 @@ export interface PipelineBookWriterOutlineDeps {
   prisma?: PipelineBookWriterOutlinePrisma;
   logger?: Logger;
   generateOutline?: typeof defaultGenerateOutline;
+  reviewOutline?: typeof defaultReviewOutline;
   acquireLock?: typeof defaultAcquireBookLock;
   releaseLock?: typeof defaultReleaseBookLock;
   now?: () => Date;
@@ -185,6 +191,23 @@ export interface PipelineBookWriterOutlineDeps {
 const DEFAULT_TARGET_CHAPTER_COUNT = 8;
 const DEFAULT_TARGET_TOTAL_CHARS = 50_000;
 const ALLOWED_GENRES = new Set<string>(['practical', 'business', 'self_help']);
+const OUTLINE_CHAR_TOLERANCE = 0.15;
+
+/**
+ * outline_review が返した改善版アウトラインが、generateOutline と同じ機械的制約
+ * (章数 7〜10 / index 連番 / target_chars 合計 ±15%) を満たすか検証する。
+ * per-chapter の制約 (subheadings 2〜10 等) は OutlineReviewOutputSchema が保証済み。
+ */
+function isValidRevisedOutline(chapters: ChapterPlan[], targetTotalChars: number): boolean {
+  if (chapters.length < 7 || chapters.length > 10) return false;
+  for (let i = 0; i < chapters.length; i++) {
+    if (chapters[i]!.index !== i + 1) return false;
+  }
+  const total = chapters.reduce((acc, c) => acc + c.target_chars, 0);
+  const min = Math.floor(targetTotalChars * (1 - OUTLINE_CHAR_TOLERANCE));
+  const max = Math.ceil(targetTotalChars * (1 + OUTLINE_CHAR_TOLERANCE));
+  return total >= min && total <= max;
+}
 
 /**
  * graphile-worker から呼ばれる Task 本体は下の `pipelineBookWriterOutlineTask`.
@@ -207,6 +230,7 @@ export async function runPipelineBookWriterOutline(
   const prisma =
     deps.prisma ?? (defaultPrisma as unknown as PipelineBookWriterOutlinePrisma);
   const generateOutlineFn = deps.generateOutline ?? defaultGenerateOutline;
+  const reviewOutlineFn = deps.reviewOutline ?? defaultReviewOutline;
   const acquireLock = deps.acquireLock ?? defaultAcquireBookLock;
   const releaseLock = deps.releaseLock ?? defaultReleaseBookLock;
   const notifyJobChangeFn = deps.notifyJobChange ?? defaultNotifyJobChange;
@@ -360,6 +384,44 @@ export async function runPipelineBookWriterOutline(
 
     const result: WriterOutlineOutput = await generateOutlineFn(outlineInput);
 
+    // 5b. 章立て構成レビュー (F-003b) — 重複/網羅漏れ/順序/粒度 等を校正し、
+    //     妥当な改善版が返れば採用する。失敗しても致命ではない (元アウトラインで続行)。
+    let finalChapters: ChapterPlan[] = result.chapters;
+    let reviewToStore: (OutlineReviewOutput & { revised_applied: boolean }) | null = null;
+    try {
+      const review = await reviewOutlineFn({
+        jobId,
+        bookId,
+        genre,
+        themeContext,
+        chapters: result.chapters,
+        targetTotalChars: DEFAULT_TARGET_TOTAL_CHARS,
+      });
+      const applied =
+        review.revised_chapters !== undefined &&
+        isValidRevisedOutline(review.revised_chapters, DEFAULT_TARGET_TOTAL_CHARS);
+      if (applied) {
+        finalChapters = review.revised_chapters!;
+      }
+      reviewToStore = { ...review, revised_applied: applied };
+      log.info(
+        {
+          task: PIPELINE_BOOK_WRITER_OUTLINE_TASK_NAME,
+          jobId,
+          bookId,
+          issues: review.issues.length,
+          overall_ok: review.overall_ok,
+          revised_applied: applied,
+        },
+        'outline structural review complete',
+      );
+    } catch (reviewErr) {
+      log.warn(
+        { task: PIPELINE_BOOK_WRITER_OUTLINE_TASK_NAME, jobId, bookId, err: reviewErr },
+        'outline_review failed — keeping original outline',
+      );
+    }
+
     // 6. Outline.upsert — book_id @unique のため 1 行を維持し、再生成時は同行 update.
     //    再生成 (rejectNote 付き) では status を 'pending_review' に戻し approved_at を null 化.
     const isRegeneration = rejectNote !== undefined && rejectNote.length > 0;
@@ -368,12 +430,14 @@ export async function runPipelineBookWriterOutline(
       where: { book_id: bookId },
       create: {
         book_id: bookId,
-        chapters_json: result.chapters,
+        chapters_json: finalChapters,
+        review_json: reviewToStore ?? undefined,
         status: 'pending_review',
         reject_note: persistedRejectNote,
       },
       update: {
-        chapters_json: result.chapters,
+        chapters_json: finalChapters,
+        review_json: reviewToStore ?? undefined,
         status: 'pending_review',
         reject_note: persistedRejectNote,
         approved_at: null,
@@ -389,9 +453,11 @@ export async function runPipelineBookWriterOutline(
         error: null,
         result_json: {
           outline_id: upserted.id,
-          chapters_count: result.chapters.length,
-          total_chars_estimate: result.totalCharsEstimate,
+          chapters_count: finalChapters.length,
+          total_chars_estimate: finalChapters.reduce((a, c) => a + c.target_chars, 0),
           regenerated_from_rejected: isRegeneration,
+          review_issues: reviewToStore ? reviewToStore.issues.length : null,
+          review_revised_applied: reviewToStore ? reviewToStore.revised_applied : null,
         },
       },
     });

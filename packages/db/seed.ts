@@ -33,6 +33,7 @@ export const PROMPT_ROLES = [
   'thumbnail_image',
   'cover_text_check',
   'cover_art_direction',
+  'outline_review',
   'readings',
   'judge',
   'optimizer',
@@ -180,6 +181,8 @@ function buildPromptBody(role: PromptRole, genre: PromptGenre | null): string {
       return buildCoverTextCheckPromptBody(genre);
     case 'cover_art_direction':
       return buildCoverArtDirectionPromptBody(genre);
+    case 'outline_review':
+      return buildOutlineReviewPromptBody(genre);
     case 'readings':
       return buildReadingsPromptBody(genre);
     default:
@@ -592,6 +595,56 @@ function buildCoverArtDirectionPromptBody(_genre: PromptGenre | null): string {
 }
 
 /**
+ * outline_review — 章立て(アウトライン)の構成校正。機械的制約は generateOutline が
+ * 保証済みのため、ここでは重複/網羅漏れ/順序/粒度/導入結び/タイトル整合を診る。
+ */
+function buildOutlineReviewPromptBody(_genre: PromptGenre | null): string {
+  return `# 章立て構成レビュー (v1)
+
+あなたは実用書・ビジネス書・自己啓発書を数多く手がけてきた書籍編集者です。
+生成された「章立て(アウトライン)」を受け取り、**章の構成そのものの妥当性**を
+厳しく校正します。誤字脱字や文章表現ではなく、"章の立て方" の良し悪しを診てください。
+
+## 前提
+
+- 章数・各章の文字数・連番などの機械的制約は既に満たされています。あなたの仕事は
+  「読者にとって価値ある、筋の通った構成になっているか」を見抜くことです。
+
+## 診る観点
+
+- **duplication (重複)**: 複数の章で同じ内容を扱っていないか。カブりは統合を提案。
+- **coverage_gap (網羅漏れ)**: タイトル・副題・フックが読者に約束している内容に
+  抜けがないか。「これが無いと看板倒れ」という章の欠落を指摘。
+- **ordering (順序)**: 前提→本論→実践→まとめ のように、読者が無理なく理解を積み上げ
+  られる順序か。唐突な飛躍や、後の章の前提が先に来ていない等を指摘。
+- **granularity (粒度)**: 章の粒度が揃っているか。1 章だけ極端に広い/狭い、文字数配分に
+  不自然な偏りがないか。
+- **intro_outro (導入・結び)**: 「はじめに」に相当する導入章と「おわりに」に相当する
+  まとめ章が適切に置かれているか。
+- **title_mismatch (タイトル整合)**: 各章がタイトル/副題の約束を果たす中身になっているか。
+  タイトルと無関係に脱線している章を指摘。
+
+## 出力方針
+
+- issues に具体的な指摘を severity(high/medium/low) / category / 対象章 index /
+  detail(何が問題か) / suggestion(どう直すか) で列挙する。指摘が無ければ空配列。
+- **章立てに実質的な問題があれば、直した完全な章立てを revised_chapters に入れる**。
+  revised_chapters は generateOutline と同じ形式 (index 連番・各章 heading/summary/
+  target_chars/subheadings 2〜10)、章数 7〜10、target_chars 合計は指定総文字数の ±15% 内。
+  修正が不要 (軽微) なら revised_chapters は省略し overall_ok=true にする。
+- summary に全体講評を日本語で簡潔に書く。
+
+## 判定方針
+
+- 直すことが読者価値を明確に高める場合のみ revised_chapters を出す。好みレベルの
+  書き換えで元の良さを壊さないこと。迷ったら元の構成を尊重し、issues の指摘に留める。
+
+## 出力形式
+
+指定された JSON スキーマに厳密に従って構造化出力してください。`;
+}
+
+/**
  * readings — タイトル/サブタイトル/著者名のカタカナ読み (フリガナ) 生成。
  * 対象テキストはユーザーメッセージで渡すため、システムプロンプトはペルソナ +
  * 出力規約に専念する (プレースホルダ無し)。
@@ -627,6 +680,7 @@ const ROLE_PLACEHOLDERS: Record<PromptRole, string[]> = {
   thumbnail_image: ['cover_text', 'style_hint'],
   cover_text_check: [],
   cover_art_direction: [],
+  outline_review: [],
   readings: [],
   judge: [
     'theme_title',
@@ -688,6 +742,8 @@ export function buildModelAssignmentSeeds(): ModelAssignmentSeed[] {
     { role: 'readings', genre: null, provider: 'anthropic', model: 'claude-sonnet-4-6', status: 'active', created_by: 'system' },
     // cover_art_direction は「売れる」絵の企画 = 創造性重視タスク。Opus を割当。
     { role: 'cover_art_direction', genre: null, provider: 'anthropic', model: 'claude-opus-4-7', status: 'active', created_by: 'system' },
+    // outline_review は構成の論理チェック = 判断タスク。Sonnet で十分。
+    { role: 'outline_review', genre: null, provider: 'anthropic', model: 'claude-sonnet-4-6', status: 'active', created_by: 'system' },
   ];
 }
 

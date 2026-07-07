@@ -22,6 +22,7 @@ export type AgentRole =
   | 'thumbnail_image'
   | 'cover_text_check'
   | 'cover_art_direction'
+  | 'outline_review'
   | 'readings'
   | 'optimizer'
   | 'revision';

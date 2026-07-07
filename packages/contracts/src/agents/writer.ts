@@ -93,6 +93,69 @@ export const WriterOutlineOutputSchema = z.object({
 export type WriterOutlineOutput = z.infer<typeof WriterOutlineOutputSchema>;
 
 // ===========================================================================
+// F-003b: アウトライン構成レビュー (章立ての校正) — outline_review エージェント
+// ===========================================================================
+
+/**
+ * Input for `reviewOutline`。生成済みアウトラインを構成観点で校正する。
+ * 機械的制約 (章数/文字数/連番) は generateOutline が既に保証済みなので、ここでは
+ * 「章立ての意味的な正しさ」= 重複・網羅漏れ・順序・粒度・導入結び・タイトル整合 を診る。
+ */
+export const OutlineReviewInputSchema = z.object({
+  jobId: z.string().optional(),
+  bookId: z.string(),
+  genre: z.enum(['practical', 'business', 'self_help']).nullable(),
+  themeContext: z.object({
+    title: z.string().min(1).max(200),
+    subtitle: z.string().min(1).max(200).optional(),
+    hook: z.string().min(1).max(800),
+    target_reader: z.string().min(1).max(300),
+  }),
+  /** 校正対象のアウトライン (generateOutline の出力の chapters)。 */
+  chapters: z.array(ChapterPlanSchema).min(1).max(20),
+  /** 想定総文字数 — revised を出す場合に合計を合わせる基準。 */
+  targetTotalChars: z.number().int().min(30000).max(80000).default(50000),
+});
+export type OutlineReviewInput = z.infer<typeof OutlineReviewInputSchema>;
+
+/** 章立ての構成上の指摘 1 件。 */
+export const OutlineIssueSchema = z.object({
+  severity: z.enum(['high', 'medium', 'low']),
+  category: z.enum([
+    'duplication', // 章同士の内容重複・カブり
+    'coverage_gap', // タイトル/フックが約束する内容の網羅漏れ
+    'ordering', // 論理展開・順序の不自然さ
+    'granularity', // 粒度の粗さ/細かさ・分量の偏り
+    'intro_outro', // 導入(はじめに)/結び(おわりに)の不備
+    'title_mismatch', // 章がタイトル/副題の約束を果たしていない
+    'other',
+  ]),
+  /** 対象章の index (全体に関わる指摘なら空配列)。 */
+  chapter_indices: z.array(z.number().int()).max(20),
+  /** 何が問題か (日本語)。 */
+  detail: z.string().min(1).max(600),
+  /** どう直すべきか (日本語)。 */
+  suggestion: z.string().min(1).max(600),
+});
+export type OutlineIssue = z.infer<typeof OutlineIssueSchema>;
+
+/**
+ * Output of `reviewOutline`。
+ * `revised_chapters` は改善版アウトライン (任意)。存在し機械的制約を満たせば採用する。
+ */
+export const OutlineReviewOutputSchema = z.object({
+  /** 構成的に妥当か (指摘があっても軽微なら true でよい)。 */
+  overall_ok: z.boolean(),
+  /** 構成上の指摘一覧 (無ければ空)。 */
+  issues: z.array(OutlineIssueSchema).max(30),
+  /** 総評 (日本語)。 */
+  summary: z.string().min(1).max(1000),
+  /** 改善版アウトライン (章立てを直した場合のみ)。generateOutline と同 schema。 */
+  revised_chapters: z.array(ChapterPlanSchema).min(7).max(10).optional(),
+});
+export type OutlineReviewOutput = z.infer<typeof OutlineReviewOutputSchema>;
+
+// ===========================================================================
 // T-04-02: 章執筆 (Writer chapter) の I/O 契約
 // ===========================================================================
 

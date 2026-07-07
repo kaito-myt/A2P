@@ -124,6 +124,11 @@ export {
   type GenerateCoverArtDirectionDeps,
 } from './art-direction/index.js';
 
+export {
+  reviewOutline,
+  type ReviewOutlineDeps,
+} from './writer/outline-review.js';
+
 export { kanaToRomaji } from './lib/kana-to-romaji.js';
 
 export {

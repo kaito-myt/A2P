@@ -319,6 +319,12 @@ function buildDeps(
       generateCalls.push(input);
       return makeOkOutline();
     }) as unknown as PipelineBookWriterOutlineDeps['generateOutline'],
+    // 章立てレビューは best-effort。テストでは指摘なし・改訂なしを返す stub を注入。
+    reviewOutline: (async () => ({
+      overall_ok: true,
+      issues: [],
+      summary: 'ok',
+    })) as unknown as PipelineBookWriterOutlineDeps['reviewOutline'],
     notifyJobChange: (async (payload: unknown) => {
       notifyCalls.push({ payload });
       return { ok: true };

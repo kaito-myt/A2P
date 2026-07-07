@@ -671,6 +671,11 @@ export const messages = {
     breadcrumbHome: 'ホーム',
     breadcrumbPipeline: '出版パイプライン',
     breadcrumbOutlines: 'アウトライン承認',
+    review: {
+      heading: '章立てレビュー',
+      revisedApplied: 'AI が章立てを自動改善',
+      noIssues: '構成上の指摘なし',
+    },
     summary: {
       pending: (n: number) => `承認待ち ${n} 件`,
       totalChars: (n: number) => `想定総文字数 ${n.toLocaleString('ja-JP')} 字`,

@@ -28,6 +28,7 @@ import {
   type OutlineChapterPlan,
   type OutlineCommentSerialized,
   type OutlineRowSerialized,
+  type OutlineReviewView,
 } from '@/lib/outlines-view';
 
 const m = messages.outlines;
@@ -165,6 +166,8 @@ function OutlineCard({ row, checked, onToggle, comments, onCommentChange }: Outl
         </div>
       </header>
 
+      {row.review && <OutlineReviewBlock review={row.review} />}
+
       <section className="flex flex-col gap-1">
         <div className="flex items-center justify-between">
           <h3 className="text-button-sm font-medium text-charcoal-82">
@@ -194,6 +197,67 @@ function OutlineCard({ row, checked, onToggle, comments, onCommentChange }: Outl
         )}
       </section>
     </article>
+  );
+}
+
+const REVIEW_CATEGORY_LABELS: Record<string, string> = {
+  duplication: '章の重複',
+  coverage_gap: '網羅漏れ',
+  ordering: '順序',
+  granularity: '粒度',
+  intro_outro: '導入・結び',
+  title_mismatch: 'タイトル整合',
+  other: 'その他',
+};
+const REVIEW_SEVERITY_STYLE: Record<string, string> = {
+  high: 'bg-destructive/10 text-destructive border-destructive/30',
+  medium: 'bg-warning/10 text-warning border-warning/30',
+  low: 'bg-charcoal-04 text-charcoal-82 border-border-warm',
+};
+
+/** F-003b 章立て構成レビューの表示。指摘一覧 + 改訂適用バッジ。 */
+function OutlineReviewBlock({ review }: { review: OutlineReviewView }) {
+  const rm = m.review;
+  const issues = review.issues ?? [];
+  return (
+    <section
+      className="flex flex-col gap-1.5 rounded-card border border-border-warm bg-cream p-space-snug"
+      data-testid="outline-review-block"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-button-sm font-medium text-charcoal">{rm.heading}</span>
+        {review.revised_applied && (
+          <span className="rounded-pill border border-success/30 bg-success/10 px-2 py-0.5 text-caption text-success">
+            {rm.revisedApplied}
+          </span>
+        )}
+        {issues.length === 0 && (
+          <span className="text-caption text-muted">{rm.noIssues}</span>
+        )}
+      </div>
+      {review.summary && <p className="text-caption text-charcoal-82">{review.summary}</p>}
+      {issues.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {issues.map((iss, i) => (
+            <li
+              key={i}
+              className={`rounded-card border px-2 py-1 text-caption ${
+                REVIEW_SEVERITY_STYLE[iss.severity ?? 'low'] ?? REVIEW_SEVERITY_STYLE.low
+              }`}
+            >
+              <span className="font-medium">
+                {REVIEW_CATEGORY_LABELS[iss.category ?? 'other'] ?? iss.category ?? 'その他'}
+                {iss.chapter_indices && iss.chapter_indices.length > 0
+                  ? `（第${iss.chapter_indices.join('・')}章）`
+                  : ''}
+              </span>
+              {iss.detail ? `：${iss.detail}` : ''}
+              {iss.suggestion ? ` → ${iss.suggestion}` : ''}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

@@ -48,6 +48,34 @@ export function parseChapters(json: unknown): OutlineChapterPlan[] {
 }
 
 // ---------------------------------------------------------------------------
+// review_json defensive schema (F-003b outline_review 結果)
+// ---------------------------------------------------------------------------
+
+export const OutlineIssueViewSchema = z.object({
+  severity: z.enum(['high', 'medium', 'low']).optional(),
+  category: z.string().optional(),
+  chapter_indices: z.array(z.number().int()).optional(),
+  detail: z.string().optional(),
+  suggestion: z.string().optional(),
+});
+export type OutlineIssueView = z.infer<typeof OutlineIssueViewSchema>;
+
+export const OutlineReviewViewSchema = z.object({
+  overall_ok: z.boolean().optional(),
+  issues: z.array(OutlineIssueViewSchema).optional(),
+  summary: z.string().optional(),
+  revised_applied: z.boolean().optional(),
+});
+export type OutlineReviewView = z.infer<typeof OutlineReviewViewSchema>;
+
+/** `review_json` を defensive parse。失敗 / null は null。 */
+export function parseReview(json: unknown): OutlineReviewView | null {
+  if (json === null || json === undefined || typeof json !== 'object') return null;
+  const r = OutlineReviewViewSchema.safeParse(json);
+  return r.success ? r.data : null;
+}
+
+// ---------------------------------------------------------------------------
 // Outline 行 (Book join 込み) の serialized form
 // ---------------------------------------------------------------------------
 
@@ -70,6 +98,8 @@ export interface OutlineRowSerialized {
   chapters: OutlineChapterPlan[];
   /** chapters の target_chars 合計。target_chars 欠落要素は 0 扱い。 */
   total_target_chars: number;
+  /** 章立て構成レビュー結果 (F-003b)。未レビューは null。 */
+  review: OutlineReviewView | null;
   /** Book join。Book が消えている場合 (FK setNull は無いが防御) は null。 */
   book: {
     id: string;
@@ -92,6 +122,8 @@ export function serializeOutlineRow(
     | 'updated_at'
     | 'chapters_json'
   > & {
+    review_json?: unknown;
+  } & {
     book?:
       | (Pick<Book, 'id' | 'title' | 'account_id' | 'status'> & {
           theme?: { genre: string | null } | null;
@@ -114,6 +146,7 @@ export function serializeOutlineRow(
     updated_at: row.updated_at.toISOString(),
     chapters,
     total_target_chars: total,
+    review: parseReview(row.review_json),
     book: row.book
       ? {
           id: row.book.id,

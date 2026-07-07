@@ -27,6 +27,7 @@
     "./marketer/plan": "./src/marketer/plan.ts",
     "./writer": "./src/writer/index.ts",
     "./writer/outline": "./src/writer/outline.ts",
+    "./writer/outline-review": "./src/writer/outline-review.ts",
     "./writer/chapter": "./src/writer/chapter.ts",
     "./editor": "./src/editor/index.ts",
     "./thumbnail/text": "./src/thumbnail/text.ts",

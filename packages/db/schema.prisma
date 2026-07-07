@@ -201,6 +201,9 @@ model Outline {
   book_id       String    @unique
   // type: Array<{ index: number; heading: string; summary: string; target_chars: number; subheadings: string[] }>
   chapters_json Json
+  // type: OutlineReviewOutput — outline_review エージェントの章立て構成校正結果 (F-003b)。
+  // { overall_ok, issues[], summary, revised_applied? }。null = 未レビュー。
+  review_json   Json?
   status        String    @default("draft") // draft | pending_review | approved | rejected
   reject_note   String? // 差戻し時のコメント。Writer 再実行プロンプトに渡す
   approved_at   DateTime?
