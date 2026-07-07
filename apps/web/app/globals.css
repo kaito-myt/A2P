@@ -14,50 +14,50 @@
 @tailwind utilities;
 
 :root {
-  /* A2P base tokens (mirrored from tokens.ts for use outside Tailwind) */
-  --cream: #f7f4ed;
-  --cream-light: #fcfbf8;
-  --charcoal: #1c1c1c;
-  --charcoal-83: rgba(28, 28, 28, 0.83);
-  --charcoal-82: rgba(28, 28, 28, 0.82);
-  --charcoal-40: rgba(28, 28, 28, 0.40);
-  --charcoal-04: rgba(28, 28, 28, 0.04);
-  --charcoal-03: rgba(28, 28, 28, 0.03);
-  --border-warm: #eceae4;
-  --muted: #5f5f5d;
+  /* A2P cool-neutral SaaS tokens (mirrored from tokens.ts) */
+  --cream: #f6f7f9; /* app canvas — cool light grey */
+  --cream-light: #ffffff; /* cards / surfaces — white */
+  --charcoal: #101828; /* ink — cool near-black */
+  --charcoal-83: rgba(16, 24, 40, 0.83);
+  --charcoal-82: rgba(16, 24, 40, 0.72);
+  --charcoal-40: rgba(16, 24, 40, 0.40);
+  --charcoal-04: rgba(16, 24, 40, 0.04);
+  --charcoal-03: rgba(16, 24, 40, 0.025);
+  --border-warm: #e6e8ec;
+  --muted: #667085;
 
   /* Semantic colors */
-  --destructive: #b91c1c;
-  --destructive-bg: #fee2e2;
-  --warning: #b45309;
-  --warning-bg: #fef3c7;
-  --success: #15803d;
-  --success-bg: #dcfce7;
-  --accent: #1d4ed8;
-  --accent-bg: #dbeafe;
+  --destructive: #d92d20;
+  --destructive-bg: #fef3f2;
+  --warning: #b54708;
+  --warning-bg: #fffaeb;
+  --success: #067647;
+  --success-bg: #ecfdf3;
+  --accent: #4f46e5;
+  --accent-bg: #eef2ff;
 
-  /* Focus / ring */
-  --ring-blue: rgba(59, 130, 246, 0.50);
+  /* Focus / ring (indigo) */
+  --ring-blue: rgba(79, 70, 229, 0.35);
 
   /* Radius */
   --radius-micro: 4px;
   --radius-default: 6px;
   --radius-snug: 8px;
-  --radius-card: 12px;
-  --radius-container: 16px;
+  --radius-card: 10px;
+  --radius-container: 14px;
   --radius-pill: 9999px;
 
-  /* Shadow tokens (L2 Inset for primary button signature; L3 Focus for active state) */
+  /* Shadow tokens */
   --shadow-l2-inset:
-    inset 0 0.5px 0 0 rgba(255, 255, 255, 0.20),
-    inset 0 0 0 0.5px rgba(0, 0, 0, 0.20),
-    0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-l3-focus: 0 4px 12px rgba(0, 0, 0, 0.10);
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
+    0 1px 2px 0 rgba(16, 24, 40, 0.10),
+    0 1px 3px 0 rgba(16, 24, 40, 0.06);
+  --shadow-l3-focus: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px -6px rgba(16, 24, 40, 0.10);
 
   /* shadcn semantic CSS variables (used by generated components) */
   --background: var(--cream);
   --foreground: var(--charcoal);
-  --card: var(--cream);
+  --card: var(--cream-light);
   --card-foreground: var(--charcoal);
   --popover: var(--cream-light);
   --popover-foreground: var(--charcoal);

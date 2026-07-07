@@ -18,7 +18,7 @@ import { CommentBadgeHeader } from './comment-badge-header';
 
 export function Header() {
   return (
-    <header className="sticky top-0 z-10 flex h-16 items-center gap-space-relaxed border-b border-border-warm bg-cream px-space-loose">
+    <header className="sticky top-0 z-10 flex h-16 items-center gap-space-relaxed border-b border-border-warm bg-cream-light px-space-loose">
       <Link
         href="/dashboard"
         aria-label={messages.brand.appName}

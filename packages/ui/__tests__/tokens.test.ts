@@ -8,37 +8,37 @@ import { describe, it, expect } from 'vitest';
 import { tokens, colors, borderRadius, boxShadow, fontSize, spacing } from '../src/tokens.js';
 
 describe('A2P design tokens (docs/04 §6.3)', () => {
-  it('exposes the cream/charcoal/border-warm base palette', () => {
-    expect(colors.cream).toBe('#f7f4ed');
-    expect(colors['cream-light']).toBe('#fcfbf8');
-    expect(colors.charcoal).toBe('#1c1c1c');
-    expect(colors['border-warm']).toBe('#eceae4');
-    expect(colors.muted).toBe('#5f5f5d');
+  it('exposes the cool-neutral SaaS base palette', () => {
+    expect(colors.cream).toBe('#f6f7f9');
+    expect(colors['cream-light']).toBe('#ffffff');
+    expect(colors.charcoal).toBe('#101828');
+    expect(colors['border-warm']).toBe('#e6e8ec');
+    expect(colors.muted).toBe('#667085');
   });
 
-  it('derives gray scale from charcoal opacity (no extra hex codes)', () => {
-    expect(colors['charcoal-82']).toBe('rgba(28, 28, 28, 0.82)');
-    expect(colors['charcoal-40']).toBe('rgba(28, 28, 28, 0.40)');
-    expect(colors['charcoal-04']).toBe('rgba(28, 28, 28, 0.04)');
+  it('derives gray scale from ink opacity (no extra hex codes)', () => {
+    expect(colors['charcoal-82']).toBe('rgba(16, 24, 40, 0.72)');
+    expect(colors['charcoal-40']).toBe('rgba(16, 24, 40, 0.40)');
+    expect(colors['charcoal-04']).toBe('rgba(16, 24, 40, 0.04)');
   });
 
-  it('uses the 700-series semantic colors specified in §6.3.1', () => {
-    expect(colors.destructive).toBe('#b91c1c');
-    expect(colors.warning).toBe('#b45309');
-    expect(colors.success).toBe('#15803d');
-    expect(colors.accent).toBe('#1d4ed8');
+  it('uses crisp SaaS semantic colors with an indigo accent', () => {
+    expect(colors.destructive).toBe('#d92d20');
+    expect(colors.warning).toBe('#b54708');
+    expect(colors.success).toBe('#067647');
+    expect(colors.accent).toBe('#4f46e5');
   });
 
-  it('exposes radius-card 12px for L1 Bordered containers', () => {
-    expect(borderRadius.card).toBe('12px');
+  it('exposes radius-card for L1 Bordered containers', () => {
+    expect(borderRadius.card).toBe('10px');
     expect(borderRadius.default).toBe('6px');
     expect(borderRadius.pill).toBe('9999px');
   });
 
   it('exposes L2 Inset shadow for primary dark buttons', () => {
     expect(boxShadow['l2-inset']).toContain('inset');
-    expect(boxShadow['l2-inset']).toContain('rgba(255,255,255,0.20)');
-    expect(boxShadow['l3-focus']).toBe('0 4px 12px rgba(0,0,0,0.10)');
+    expect(boxShadow['l2-inset']).toContain('rgba(255,255,255,0.08)');
+    expect(boxShadow['l3-focus']).toContain('rgba(16,24,40');
   });
 
   it('keeps 8-step semantic spacing scale', () => {

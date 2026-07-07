@@ -10,34 +10,42 @@
  * the palette. Hard-coded hex values elsewhere violate `docs/04 §6.5 Do/Don't`.
  */
 
+/**
+ * Cool-neutral SaaS palette (Linear / Vercel / Notion 系)。
+ * warm-parchment から冷たいニュートラルへ刷新。名前 (cream/charcoal/border-warm)
+ * は既存コンポーネント互換のため据え置き、値だけをクール系に差し替える。
+ *   cream        = アプリ背景キャンバス (ごく薄いクールグレー)
+ *   cream-light  = カード/サーフェス (純白)
+ *   charcoal     = インク (near-black slate)。派生グレーは同 RGB の alpha。
+ */
 export const colors = {
   // Base
-  cream: '#f7f4ed',
-  'cream-light': '#fcfbf8',
-  charcoal: '#1c1c1c',
-  'border-warm': '#eceae4',
-  muted: '#5f5f5d',
+  cream: '#f6f7f9', // app canvas — cool light grey
+  'cream-light': '#ffffff', // cards / surfaces — pure white
+  charcoal: '#101828', // ink — cool near-black slate
+  'border-warm': '#e6e8ec', // hairline border — cool grey
+  muted: '#667085', // secondary text — cool slate-500
 
-  // Charcoal opacity scale — all grays derive from charcoal at varying alpha
-  'charcoal-100': '#1c1c1c',
-  'charcoal-83': 'rgba(28, 28, 28, 0.83)',
-  'charcoal-82': 'rgba(28, 28, 28, 0.82)',
-  'charcoal-40': 'rgba(28, 28, 28, 0.40)',
-  'charcoal-04': 'rgba(28, 28, 28, 0.04)',
-  'charcoal-03': 'rgba(28, 28, 28, 0.03)',
+  // Charcoal (ink) opacity scale — cool greys derive from ink RGB (16,24,40)
+  'charcoal-100': '#101828',
+  'charcoal-83': 'rgba(16, 24, 40, 0.83)',
+  'charcoal-82': 'rgba(16, 24, 40, 0.72)',
+  'charcoal-40': 'rgba(16, 24, 40, 0.40)',
+  'charcoal-04': 'rgba(16, 24, 40, 0.04)',
+  'charcoal-03': 'rgba(16, 24, 40, 0.025)',
 
-  // Semantic colors (low-saturation, warm-neutral compatible)
-  destructive: '#b91c1c', // red-700
-  'destructive-bg': '#fee2e2', // red-100
-  warning: '#b45309', // amber-700
-  'warning-bg': '#fef3c7', // amber-100
-  success: '#15803d', // green-700
-  'success-bg': '#dcfce7', // green-100
-  accent: '#1d4ed8', // blue-700
-  'accent-bg': '#dbeafe', // blue-100
+  // Semantic colors (crisp SaaS tones)
+  destructive: '#d92d20', // red-600
+  'destructive-bg': '#fef3f2', // red-50
+  warning: '#b54708', // amber-700
+  'warning-bg': '#fffaeb', // amber-50
+  success: '#067647', // emerald-700
+  'success-bg': '#ecfdf3', // emerald-50
+  accent: '#4f46e5', // indigo-600 — the one vibrant accent
+  'accent-bg': '#eef2ff', // indigo-50
 
-  // Focus ring
-  'ring-blue': 'rgba(59, 130, 246, 0.50)',
+  // Focus ring (indigo tint)
+  'ring-blue': 'rgba(79, 70, 229, 0.35)',
 } as const;
 
 export const spacing = {
@@ -55,19 +63,19 @@ export const borderRadius = {
   micro: '4px',
   default: '6px',
   snug: '8px',
-  card: '12px',
-  container: '16px',
+  card: '10px', // crisper SaaS card radius
+  container: '14px',
   pill: '9999px',
 } as const;
 
 export const boxShadow = {
-  // L2 Inset — dark primary button signature
+  // L2 Inset — dark primary button signature (subtle cool)
   'l2-inset':
-    'inset 0 0.5px 0 0 rgba(255,255,255,0.20), inset 0 0 0 0.5px rgba(0,0,0,0.20), 0 1px 2px 0 rgba(0,0,0,0.05)',
-  // L3 Focus — soft warm shadow for active/focus
-  'l3-focus': '0 4px 12px rgba(0,0,0,0.10)',
-  // Keyboard focus ring (for inputs)
-  ring: '0 0 0 2px rgba(59,130,246,0.50)',
+    'inset 0 1px 0 0 rgba(255,255,255,0.08), 0 1px 2px 0 rgba(16,24,40,0.10), 0 1px 3px 0 rgba(16,24,40,0.06)',
+  // L3 Focus — clean cool elevation for cards / active state
+  'l3-focus': '0 1px 2px rgba(16,24,40,0.04), 0 8px 24px -6px rgba(16,24,40,0.10)',
+  // Keyboard focus ring (indigo)
+  ring: '0 0 0 3px rgba(79,70,229,0.28)',
 } as const;
 
 export const fontFamily: Record<'sans' | 'jp', string[]> = {
