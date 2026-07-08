@@ -205,9 +205,9 @@ describe('generateChapter — happy path', () => {
 // ---------------------------------------------------------------------------
 
 describe('generateChapter — 文字数レンジ検証', () => {
-  it('target 8000 / actual 6000 字 (下限 6400 未満) → AgentError(chars_out_of_range)', async () => {
-    const body = buildBody(6000);
-    const text = jsonResponse({ heading: '第1章', body_md: body, char_count: 6000 });
+  it('target 8000 / actual 5000 字 (下限 5200 未満) → AgentError(chars_out_of_range)', async () => {
+    const body = buildBody(5000);
+    const text = jsonResponse({ heading: '第1章', body_md: body, char_count: 5000 });
     const fakeClient = makeFakeClient(text);
     const promptRepo = makePromptRepo([defaultPromptRow()]);
 
@@ -225,10 +225,10 @@ describe('generateChapter — 文字数レンジ検証', () => {
     const details = (caught as AgentError).details as {
       actual: number; expected_min: number; expected_max: number; target: number;
     };
-    expect(details.actual).toBe(6000);
-    // F-004 ±20%: 8000 × 0.80 = 6400, 8000 × 1.20 = 9600
-    expect(details.expected_min).toBe(6400);
-    expect(details.expected_max).toBe(9600);
+    expect(details.actual).toBe(5000);
+    // ±35%: 8000 × 0.65 = 5200, 8000 × 1.35 = 10800
+    expect(details.expected_min).toBe(5200);
+    expect(details.expected_max).toBe(10800);
     expect(details.target).toBe(8000);
   });
 
@@ -236,9 +236,9 @@ describe('generateChapter — 文字数レンジ検証', () => {
   // 3. 文字数上限超 → AgentError
   // -------------------------------------------------------------------------
 
-  it('target 8000 / actual 10500 字 (上限 9600 超) → AgentError(chars_out_of_range)', async () => {
-    const body = buildBody(10500);
-    const text = jsonResponse({ heading: '第1章', body_md: body, char_count: 10500 });
+  it('target 8000 / actual 11000 字 (上限 10800 超) → AgentError(chars_out_of_range)', async () => {
+    const body = buildBody(11000);
+    const text = jsonResponse({ heading: '第1章', body_md: body, char_count: 11000 });
     const fakeClient = makeFakeClient(text);
     const promptRepo = makePromptRepo([defaultPromptRow()]);
 
@@ -338,10 +338,10 @@ describe('generateChapter — SP-04 §4 T-04-02 完了判定 (target 5000 字 / 
     expect(result.char_count).toBe(6000);
   });
 
-  it('target 5000 / actual 3999 字 (下限 4000 未満) → AgentError(chars_out_of_range)', async () => {
+  it('target 5000 / actual 3200 字 (下限 3250 未満) → AgentError(chars_out_of_range)', async () => {
     let caught: unknown;
     try {
-      await runWithActual(3999);
+      await runWithActual(3200);
     } catch (e) {
       caught = e;
     }
@@ -350,16 +350,17 @@ describe('generateChapter — SP-04 §4 T-04-02 完了判定 (target 5000 字 / 
     const details = (caught as AgentError).details as {
       actual: number; expected_min: number; expected_max: number; target: number;
     };
-    expect(details.actual).toBe(3999);
-    expect(details.expected_min).toBe(4000);
-    expect(details.expected_max).toBe(6000);
+    expect(details.actual).toBe(3200);
+    // ±35%: 5000 × 0.65 = 3250, 5000 × 1.35 = 6750
+    expect(details.expected_min).toBe(3250);
+    expect(details.expected_max).toBe(6750);
     expect(details.target).toBe(5000);
   });
 
-  it('target 5000 / actual 6001 字 (上限 6000 超) → AgentError(chars_out_of_range)', async () => {
+  it('target 5000 / actual 7000 字 (上限 6750 超) → AgentError(chars_out_of_range)', async () => {
     let caught: unknown;
     try {
-      await runWithActual(6001);
+      await runWithActual(7000);
     } catch (e) {
       caught = e;
     }
@@ -368,9 +369,9 @@ describe('generateChapter — SP-04 §4 T-04-02 完了判定 (target 5000 字 / 
     const details = (caught as AgentError).details as {
       actual: number; expected_min: number; expected_max: number;
     };
-    expect(details.actual).toBe(6001);
-    expect(details.expected_min).toBe(4000);
-    expect(details.expected_max).toBe(6000);
+    expect(details.actual).toBe(7000);
+    expect(details.expected_min).toBe(3250);
+    expect(details.expected_max).toBe(6750);
   });
 });
 

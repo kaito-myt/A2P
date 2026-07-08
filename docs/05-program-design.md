@@ -2869,6 +2869,10 @@ Noto Sans JP で実フォント合成** (`packages/output/image/compose-cover.ts
   サイドバー「販促施策」を独立大項目に昇格。
 - `/promotion/channel/[channel]` (F-052 SNS/note/ブログの自動運用ボード — チャンネル切替タブ・
   自動運用トグル・接続設定(handle/webhook/token)・投稿キュー(手動投稿/取消))。
+- `/progress` (F-054 進行状況 — テーマ生成・書籍パイプラインの進捗を8秒自動更新で一覧。
+  Book.status→フェーズ、執筆は章 done/total をサブ進捗に、30分以上放置+失敗ジョブは「停滞」検知)。
+  併せて writer.chapter の文字数許容を ±20%→±35% に緩和 (±20% だと創作文で頻繁に外れ、
+  1章の恒久失敗で書籍が「実行中」のまま無限停止する事故があったため)。
 - `/models/bakeoff` (F-053 モデル比較 — 役割/ジャンル/サンプル入力＋候補モデル選択で `bakeoff.run` 起動、
   順位・品質・コスト・速度・出力を比較表示)。`createAgentClient` に `assignmentOverride` を追加し、
   同一役割・同一プロンプトを任意モデルで実行できるようにした (割当DBをバイパス)。

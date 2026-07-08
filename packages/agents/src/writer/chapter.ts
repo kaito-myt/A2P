@@ -66,7 +66,9 @@ const DEFAULT_MAX_OUTPUT_TOKENS = 16384;
  * F-003 outline 総文字数 ±15% とは別レイヤー — 章執筆はリトライ濫発を避けるため緩い tolerance
  * を採用し、合計の整合は outline 段階で担保する設計。
  */
-const CHAR_TOLERANCE = 0.20;
+// 章執筆はリトライ濫発を避けるため緩い tolerance。±20% だと創作文で頻繁に外れて
+// 章が恒久失敗し書籍が「実行中」で無限に止まる事故が起きたため ±35% に緩和。
+const CHAR_TOLERANCE = 0.35;
 
 export interface GenerateChapterDeps {
   loadActivePrompt?: typeof defaultLoadActivePrompt;
