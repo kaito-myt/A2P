@@ -120,6 +120,7 @@ import {
   PROMOTION_DISPATCH_TASK_NAME,
   promotionDispatchTask,
 } from './tasks/promotion-dispatch.js';
+import { BAKEOFF_RUN_TASK_NAME, bakeoffRunTask } from './tasks/bakeoff-run.js';
 
 /**
  * graphile-worker runner 起動 (docs/05 §5 共通ポリシー / SP-01 T-01-12)
@@ -190,6 +191,7 @@ export function buildTaskList(): TaskList {
     [PROMOTION_POSTS_GENERATE_TASK_NAME]: promotionPostsGenerateTask,
     [PROMOTION_POST_PUBLISH_TASK_NAME]: promotionPostPublishTask,
     [PROMOTION_DISPATCH_TASK_NAME]: promotionDispatchTask,
+    [BAKEOFF_RUN_TASK_NAME]: bakeoffRunTask,
     [KDP_SUBMIT_TASK_NAME]: kdpSubmitTask,
     [KDP_ASIN_FETCH_TASK_NAME]: kdpAsinFetchTask,
     [ALERT_COST_CHECK_TASK_NAME]: alertCostCheckTask,

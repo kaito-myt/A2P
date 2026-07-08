@@ -214,6 +214,47 @@ model PromotionPlan {
 }
 
 // =====================================================================
+// モデル・バエオフ [F-053] — 同一役割×同一入力を複数モデルで走らせ品質/コスト比較
+// =====================================================================
+model BakeoffRun {
+  id          String   @id @default(cuid())
+  role        String // 対象エージェントロール (writer/marketer/... )
+  genre       String? // 対象ジャンル (null=既定)
+  input_label String // 人が識別するためのラベル
+  // type: { user: string; system_extra?: string } — 役割の active プロンプトに与える入力
+  input_json  Json
+  status      String   @default("queued") // queued | running | done | failed
+  error       String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  results BakeoffResult[]
+
+  @@index([role, created_at(sort: Desc)])
+  @@map("bakeoff_runs")
+}
+
+model BakeoffResult {
+  id            String   @id @default(cuid())
+  run_id        String
+  provider      String
+  model         String
+  output_text   String?  @db.Text
+  quality_score Int? // 0-100 (comparator 採点)
+  rank          Int? // 1 = 最良
+  rationale     String? // comparator の講評
+  cost_jpy      Decimal? @db.Decimal(10, 4)
+  latency_ms    Int?
+  error         String?
+  created_at    DateTime @default(now())
+
+  run BakeoffRun @relation(fields: [run_id], references: [id], onDelete: Cascade)
+
+  @@index([run_id])
+  @@map("bakeoff_results")
+}
+
+// =====================================================================
 // 販促チャンネル設定 [F-052] — SNS / note / ブログの自動運用設定 (チャンネルと 1:1)
 // =====================================================================
 model PromotionChannelSetting {

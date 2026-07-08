@@ -78,6 +78,7 @@ export const navSections: readonly NavSection[] = [
       { key: 'model-assignment', label: m.itemModelAssignment, href: '/models/assignments', enabled: true },
       { key: 'model-catalog', label: m.itemModelCatalog, href: '/models/catalog', enabled: true },
       { key: 'ab-compare', label: m.itemAbCompare, href: '/models/ab', enabled: true },
+      { key: 'bakeoff', label: m.itemBakeoff, href: '/models/bakeoff', enabled: true },
       { key: 'prompts', label: m.itemPromptManage, href: '/prompts', enabled: true },
       { key: 'prompt-approval', label: m.itemPromptApproval, href: '/prompts/proposals', enabled: true },
     ],

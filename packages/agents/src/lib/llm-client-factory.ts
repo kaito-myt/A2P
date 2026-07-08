@@ -34,6 +34,11 @@ export interface CreateAgentClientDeps {
   withTokenLoggingDeps?: WithTokenLoggingDeps;
   /** loadModelAssignment に注入する deps (テストで Prisma を差し替える経路)。 */
   loadAssignmentDeps?: LoadModelAssignmentDeps;
+  /**
+   * モデル割当を DB から解決せず、この provider/model を直接使う。
+   * モデル比較(バエオフ)で「同じ役割・プロンプトを別モデルで走らせる」ために使用。
+   */
+  assignmentOverride?: { provider: string; model: string };
 }
 
 const SUPPORTED_PROVIDERS = new Set<string>(['anthropic', 'openai', 'google']);
@@ -55,7 +60,9 @@ export async function createAgentClient(
   const load = deps.loadAssignment ?? loadModelAssignment;
   const fetchKey = deps.getApiKey ?? getApiKey;
 
-  const assignment = await load(role, genre, deps.loadAssignmentDeps);
+  const assignment = deps.assignmentOverride
+    ? { provider: deps.assignmentOverride.provider, model: deps.assignmentOverride.model }
+    : await load(role, genre, deps.loadAssignmentDeps);
   assertSupportedProvider(assignment.provider);
 
   const apiKey = await fetchKey(assignment.provider);

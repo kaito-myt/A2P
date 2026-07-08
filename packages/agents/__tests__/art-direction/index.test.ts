@@ -22,7 +22,7 @@ function input(): CoverArtDirectionInput {
 }
 
 function stubDeps(responseText: string) {
-  const complete = vi.fn(async () => ({ text: responseText }));
+  const complete = vi.fn((_a: Record<string, unknown>) => Promise.resolve({ text: responseText }));
   return {
     loadActivePrompt: vi.fn(async () => ({
       id: 'p1',

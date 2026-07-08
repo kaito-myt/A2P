@@ -2807,6 +2807,10 @@ export const logger = pino({
 - **`promotion_posts`** (F-052 販促投稿キュー)。`book_id`, `channel`, `title?`, `body`, `scheduled_for`,
   `status` (draft/scheduled/posting/posted/failed/skipped/canceled), `external_url?`, `error?`, `posted_at?`。
 - **`app_settings`** に `promo_auto_on_publish_enabled` / `promo_auto_post_enabled` / `promo_dispatch_cron`。
+- **`bakeoff_runs`** / **`bakeoff_results`** (F-053 モデル比較)。同一役割×同一入力を複数モデルで
+  走らせ、出力・コスト(cost_jpy)・レイテンシ(latency_ms)を保存、comparator が rank/quality_score を付与。
+- **`model_catalog`** に OpenAI(GPT) をキュレート単価で登録可能に (pricing ページが SPA でスクレイプ不能なため
+  `catalog-fetch` に `OPENAI_CURATED_PRICING` フォールバックを追加)。
 
 ## 追加エージェントロール (prompts / model_assignments 対象)
 
@@ -2862,6 +2866,9 @@ Noto Sans JP で実フォント合成** (`packages/output/image/compose-cover.ts
   サイドバー「販促施策」を独立大項目に昇格。
 - `/promotion/channel/[channel]` (F-052 SNS/note/ブログの自動運用ボード — チャンネル切替タブ・
   自動運用トグル・接続設定(handle/webhook/token)・投稿キュー(手動投稿/取消))。
+- `/models/bakeoff` (F-053 モデル比較 — 役割/ジャンル/サンプル入力＋候補モデル選択で `bakeoff.run` 起動、
+  順位・品質・コスト・速度・出力を比較表示)。`createAgentClient` に `assignmentOverride` を追加し、
+  同一役割・同一プロンプトを任意モデルで実行できるようにした (割当DBをバイパス)。
 - 設定に「販促自動運用」セクション (入稿で自動立案 / 自動投稿ディスパッチャの 2 トグル)。
 - テーマ詳細に「Amazon 売れ筋レコメンド」「著者名・レーベル名」セクション追加。
 - KDP入稿チェックリストを一覧→詳細構成に変更、フリガナ/ローマ字項目・入稿ステータス手動切替・一括DL追加。

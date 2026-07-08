@@ -33,6 +33,7 @@
     "./thumbnail/text": "./src/thumbnail/text.ts",
     "./thumbnail/image": "./src/thumbnail/image.ts",
     "./art-direction": "./src/art-direction/index.ts",
+    "./bakeoff": "./src/bakeoff/index.ts",
     "./judge": "./src/judge/index.ts",
     "./promoter": "./src/promoter/index.ts",
     "./optimizer": "./src/optimizer/index.ts"
