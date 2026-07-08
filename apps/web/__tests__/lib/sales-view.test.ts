@@ -123,7 +123,7 @@ describe('buildSalesTemplateCsv', () => {
   it('正しいヘッダ行を含む', () => {
     const csv = buildSalesTemplateCsv();
     const lines = csv.split('\n').filter((l) => l.trim() !== '');
-    expect(lines[0]).toBe('book_id,year_month,royalty_jpy,review_count,avg_stars,bsr');
+    expect(lines[0]).toBe('asin,year_month,royalty_jpy,review_count,avg_stars,bsr');
   });
 
   it('サンプル行を含む (ヘッダ行以外に 1 行以上)', () => {

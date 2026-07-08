@@ -80,8 +80,9 @@ export function serializeSalesHistory(
 
 /** テンプレート CSV コンテンツ (ヘッダ + サンプル行) を返す。 */
 export function buildSalesTemplateCsv(): string {
-  const header = 'book_id,year_month,royalty_jpy,review_count,avg_stars,bsr';
-  const example = 'clxxxxxxxxxxxxxxxx,2026-05,1500,12,4.3,12345';
+  // 先頭列は asin / title / book_id のいずれでも可。KDP レポートに合わせ asin を既定にする。
+  const header = 'asin,year_month,royalty_jpy,review_count,avg_stars,bsr';
+  const example = 'B0XXXXXXXX,2026-05,1500,12,4.3,12345';
   return `${header}\n${example}\n`;
 }
 

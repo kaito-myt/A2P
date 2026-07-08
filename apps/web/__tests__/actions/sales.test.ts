@@ -71,7 +71,13 @@ function makeBookRepo(existingIds: string[] = ['book_1', 'book_2']): {
   const findUniqueSpy = vi.fn(async ({ where }: Parameters<BookExistsRepo['findUnique']>[0]) =>
     idSet.has(where.id) ? { id: where.id } : null,
   );
-  return { repo: { findUnique: findUniqueSpy }, findUniqueSpy };
+  // asin/title 解決: 'ASIN-<id>' や 'TITLE-<id>' を該当 id にマップする簡易実装。
+  const findFirstSpy = vi.fn(async ({ where }: { where: { asin?: string; title?: string } }) => {
+    const v = where.asin ?? where.title ?? '';
+    const id = v.replace(/^(ASIN|TITLE)-/, '');
+    return idSet.has(id) ? { id } : null;
+  });
+  return { repo: { findUnique: findUniqueSpy, findFirst: findFirstSpy }, findUniqueSpy };
 }
 
 function makeAuditRepo(): {
@@ -210,6 +216,44 @@ describe('importSalesCsvCore — 100 rows', () => {
     }
 
     expect(salesRepo.upsertSpy).toHaveBeenCalledTimes(100);
+  });
+
+  it('先頭列 asin でも書籍を解決して取り込む', async () => {
+    const { deps, salesRepo } = makeDeps({ bookIds: ['book_1', 'book_2'] });
+    const csv = [
+      'asin,year_month,royalty_jpy,review_count,avg_stars,bsr',
+      'ASIN-book_1,2026-05,1500,5,4.0,3000',
+      'ASIN-book_2,2026-05,900,2,,',
+    ].join('\n');
+    const result = await importSalesCsvCore({ csv }, deps);
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.data.inserted).toBe(2);
+      expect(result.data.errors).toHaveLength(0);
+    }
+    // book_id に解決されて upsert される
+    expect(salesRepo.upsertSpy.mock.calls[0]?.[0].create.book_id).toBe('book_1');
+  });
+
+  it('先頭列 title で未知タイトルは book_not_found', async () => {
+    const { deps } = makeDeps({ bookIds: ['book_1'] });
+    const csv = [
+      'title,year_month,royalty_jpy,review_count,avg_stars,bsr',
+      'TITLE-unknown,2026-05,1500,5,,',
+    ].join('\n');
+    const result = await importSalesCsvCore({ csv }, deps);
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.data.inserted).toBe(0);
+      expect(result.data.errors).toHaveLength(1);
+    }
+  });
+
+  it('不正な先頭列ヘッダ (facebook) は validation エラー', async () => {
+    const { deps } = makeDeps();
+    const csv = ['facebook,year_month,royalty_jpy,review_count,avg_stars,bsr', 'x,2026-05,1,0,,'].join('\n');
+    const result = await importSalesCsvCore({ csv }, deps);
+    expect(isOk(result)).toBe(false);
   });
 
   it('treats duplicate key rows as updates', async () => {
@@ -416,7 +460,7 @@ describe('importSalesCsvCore — nonexistent book_id', () => {
       expect(result.data.updated).toBe(0);
       expect(result.data.errors).toHaveLength(1);
       expect(result.data.errors[0]?.row).toBe(3); // line 3 = second data row
-      expect(result.data.errors[0]?.message).toBe('book_id が存在しません');
+      expect(result.data.errors[0]?.message).toBe('書籍が見つかりません（book_id / asin / title のいずれか）');
     }
 
     expect(salesRepo.upsertSpy).toHaveBeenCalledTimes(2);

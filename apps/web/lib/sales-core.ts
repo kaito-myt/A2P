@@ -108,6 +108,11 @@ export interface BookExistsRepo {
     where: { id: string };
     select: { id: true };
   }): Promise<{ id: string } | null>;
+  /** ASIN / タイトルで書籍を解決する (CSV の識別子列が asin/title のとき使用)。 */
+  findFirst?(args: {
+    where: { asin?: string; title?: string };
+    select: { id: true };
+  }): Promise<{ id: string } | null>;
 }
 
 export interface AuditLogRepo {
@@ -217,10 +222,17 @@ export async function importSalesCsvCore(
       return fail('validation', messages.sales.errors.csvNoData);
     }
 
-    // Validate header
-    const EXPECTED_HEADERS = ['book_id', 'year_month', 'royalty_jpy', 'review_count', 'avg_stars', 'bsr'];
+    // Validate header — 先頭列は book_id / asin / title のいずれか、残りは固定。
+    const REST_HEADERS = ['year_month', 'royalty_jpy', 'review_count', 'avg_stars', 'bsr'];
+    const ID_COLUMNS = ['book_id', 'asin', 'title'] as const;
     const header = csvRows[0];
-    if (!header || !arraysEqual(header, EXPECTED_HEADERS)) {
+    const idKind = header?.[0] as (typeof ID_COLUMNS)[number] | undefined;
+    if (
+      !header ||
+      !idKind ||
+      !ID_COLUMNS.includes(idKind) ||
+      !arraysEqual(header.slice(1), REST_HEADERS)
+    ) {
       return fail('validation', messages.sales.errors.csvInvalidHeader);
     }
 
@@ -239,11 +251,11 @@ export async function importSalesCsvCore(
       const row = dataRows[i];
       if (!row) continue;
 
-      const [rawBookId, rawYearMonth, rawRoyalty, rawReviewCount, rawAvgStars, rawBsr] = row;
+      const [rawId, rawYearMonth, rawRoyalty, rawReviewCount, rawAvgStars, rawBsr] = row;
 
-      // book_id
-      const book_id = (rawBookId ?? '').trim();
-      if (!book_id) {
+      // 識別子 (book_id / asin / title)
+      const idValue = (rawId ?? '').trim();
+      if (!idValue) {
         errors.push({ row: lineNum, message: messages.sales.errors.csvEmptyBookId });
         continue;
       }
@@ -293,15 +305,23 @@ export async function importSalesCsvCore(
         bsr = parsedBsr;
       }
 
-      // book existence check
-      const book = await deps.bookRepo.findUnique({
-        where: { id: book_id },
-        select: { id: true },
-      });
+      // 識別子から書籍を解決 (book_id は id 一致、asin/title は findFirst)
+      let book: { id: string } | null;
+      if (idKind === 'book_id') {
+        book = await deps.bookRepo.findUnique({ where: { id: idValue }, select: { id: true } });
+      } else if (deps.bookRepo.findFirst) {
+        book = await deps.bookRepo.findFirst({
+          where: idKind === 'asin' ? { asin: idValue } : { title: idValue },
+          select: { id: true },
+        });
+      } else {
+        book = null;
+      }
       if (!book) {
         errors.push({ row: lineNum, message: messages.sales.errors.csvBookNotFound });
         continue;
       }
+      const book_id = book.id;
 
       // check insert vs update
       const existing = await deps.salesRecordRepo.findUnique({
