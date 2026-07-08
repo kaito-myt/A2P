@@ -137,6 +137,24 @@ describe('createAgentClient — 二層分岐', () => {
     expect(client instanceof AgentSdkClient).toBe(true);
   });
 
+  it('role=cover_art_direction + provider=anthropic → AgentSdkClient (売れ筋表紙の web リサーチ用)', async () => {
+    const assignRepo = makeAssignmentRepo([
+      { role: 'cover_art_direction', genre: null, provider: 'anthropic', model: 'claude-opus-4-7' },
+    ]);
+    const prisma = inMemoryPrisma();
+    const client = await createAgentClient(
+      'cover_art_direction',
+      null,
+      { role: 'cover_art_direction', bookId: 'b1' },
+      {
+        getApiKey: async () => 'sk-ant-test',
+        loadAssignmentDeps: { prisma: assignRepo as never },
+        withTokenLoggingDeps: { prisma: prisma as never, logger: { warn: vi.fn() }, fetchPriceSnapshot: async () => ({}) },
+      },
+    );
+    expect(client instanceof AgentSdkClient).toBe(true);
+  });
+
   it('role=writer + provider=anthropic → AISdkClient (Marketer 以外は AgentSdk を使わない)', async () => {
     const assignRepo = makeAssignmentRepo([
       { role: 'writer', genre: null, provider: 'anthropic', model: 'claude-opus-4-7' },

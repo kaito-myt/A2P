@@ -4,7 +4,9 @@
  * `new AgentSdkClient` を禁止することで、トークン記録漏れを構造的に防ぐ。
  *
  * 分岐:
- *  - role='marketer' かつ provider='anthropic' → `AgentSdkClient` (web_search server tool)
+ *  - role='marketer' | 'cover_art_direction' かつ provider='anthropic'
+ *    → `AgentSdkClient` (web_search server tool)。marketer はテーマ売れ筋、
+ *      cover_art_direction は Amazon 売れ筋「表紙」の意匠を実地リサーチするため。
  *  - それ以外 → `AISdkClient` (Vercel AI SDK)
  *
  * 返却値は常に `withTokenLogging` でラップ済み。
@@ -58,7 +60,8 @@ export async function createAgentClient(
 
   const apiKey = await fetchKey(assignment.provider);
 
-  const useAgentSdk = role === 'marketer' && assignment.provider === 'anthropic';
+  const WEB_SEARCH_ROLES = new Set<AgentRole>(['marketer', 'cover_art_direction']);
+  const useAgentSdk = WEB_SEARCH_ROLES.has(role) && assignment.provider === 'anthropic';
   const raw: LLMClient = useAgentSdk
     ? new AgentSdkClient({ model: assignment.model, apiKey })
     : new AISdkClient({

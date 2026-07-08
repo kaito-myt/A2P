@@ -2813,7 +2813,7 @@ export const logger = pino({
 | role | 用途 | 既定モデル |
 |---|---|---|
 | `cover_text_check` | 生成カバーの文字崩れをビジョン検証 | anthropic/claude-sonnet-4-6 |
-| `cover_art_direction` | Marketer目線で「売れる」表紙アート方向性を生成 | anthropic/claude-opus-4-7 |
+| `cover_art_direction` | **web_search で Amazon 売れ筋「表紙」を実地リサーチ**し、本ごとに最適な画風(写真/イラスト/タイポ/象徴等)を判断して画像チームに発注。画風は固定しない。AgentSdkClient 経由(responseSchema不可のため text→JSON抽出) | anthropic/claude-opus-4-7 |
 | `outline_review` | 章立ての構成校正 (重複/網羅漏れ/順序/粒度) | anthropic/claude-sonnet-4-6 |
 | `readings` | タイトル/著者名のカタカナ読み生成 (ローマ字は決定的変換) | anthropic/claude-sonnet-4-6 |
 | `promoter` | 出版後の販促施策プラン生成 (価格戦略/レビュー/告知文) | anthropic/claude-opus-4-7 |
