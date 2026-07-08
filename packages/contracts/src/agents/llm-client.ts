@@ -23,6 +23,7 @@ export type AgentRole =
   | 'cover_text_check'
   | 'cover_art_direction'
   | 'outline_review'
+  | 'promoter'
   | 'readings'
   | 'optimizer'
   | 'revision';

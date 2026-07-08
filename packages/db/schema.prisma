@@ -186,11 +186,30 @@ model Book {
   salesRecords          SalesRecord[]
   revisionComments      RevisionComment[]
   batchPlanItems        BatchPlanItem[]
+  promotionPlan         PromotionPlan?
 
   @@index([account_id, status, created_at(sort: Desc)], map: "books_account_status_idx")
   @@index([status, has_blocking_comments], map: "books_status_blocking_idx")
   @@index([cost_status], map: "books_cost_status_idx")
   @@map("books")
+}
+
+// =====================================================================
+// 販促プラン [F-051] — 出版後に「売れる」ための AI 販促施策プラン (book と 1:1)
+// =====================================================================
+model PromotionPlan {
+  id         String   @id @default(cuid())
+  book_id    String   @unique
+  // type: PromotionPlanOutput — { summary, pricing, category_keyword_actions[],
+  //   review_actions[], launch_checklist[], promo_copy{ x_posts[], note_article, blog_outline }, ongoing_calendar[] }
+  plan_json  Json
+  status     String   @default("ready") // ready (生成済) | generating
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
+
+  @@map("promotion_plans")
 }
 
 // =====================================================================

@@ -2784,3 +2784,65 @@ export const logger = pino({
 
 **影響**: `/api/sse/jobs` を購読する全クライアント (S-002 / S-010 / S-014 / S-026 のフロント) と、`pipeline.book.*` を含む全 worker タスクから呼ばれる `notifyJobChange` ヘルパが同一チャネル `'jobs'` を共有する。チャネル分割 (`'cost'` / `'revision_run'` 別系統) は §1.4 で別エンドポイント (`/api/sse/cost` / `/api/sse/revision-runs/:id`) として分離されるため、本 ADR は `/api/sse/jobs` 経路のみが対象。
 
+
+---
+
+# 追補 — 2026-07 機能拡張ログ (Phase 1+ 実装後の反映)
+
+> Hard Rule #7 に従い、設計書とコードの乖離を防ぐための追補。以下は当初設計 (§1〜) 以降に
+> 追加・変更された要素の要約。詳細は各コミット/コードを正とする。
+
+## 追加 DB テーブル / カラム
+
+- **`author_names`** / **`label_names`** (著者名・レーベル名マスタ, F-050系)。`theme_candidates`
+  に `author_name_id` / `label_name_id` (FK, SetNull) を追加。テーマ作成時にプルダウンで選択し、
+  表紙の著者名・KDP著者名に優先使用する。
+- **`promotion_plans`** (販促プラン, F-051)。`book_id @unique`, `plan_json` (PromotionPlanOutput),
+  `status`。出版後の販促施策プランを 1 冊 1 件保持。
+- **`outlines.review_json`** — 章立て構成レビュー (outline_review) の結果を保存。
+- **`kdp_metadata`** に読み系カラム `title_kana/title_romaji/subtitle_kana/subtitle_romaji/
+  author_kana/author_romaji` (F-020b フリガナ/ローマ字)。
+
+## 追加エージェントロール (prompts / model_assignments 対象)
+
+| role | 用途 | 既定モデル |
+|---|---|---|
+| `cover_text_check` | 生成カバーの文字崩れをビジョン検証 | anthropic/claude-sonnet-4-6 |
+| `cover_art_direction` | Marketer目線で「売れる」表紙アート方向性を生成 | anthropic/claude-opus-4-7 |
+| `outline_review` | 章立ての構成校正 (重複/網羅漏れ/順序/粒度) | anthropic/claude-sonnet-4-6 |
+| `readings` | タイトル/著者名のカタカナ読み生成 (ローマ字は決定的変換) | anthropic/claude-sonnet-4-6 |
+| `promoter` | 出版後の販促施策プラン生成 (価格戦略/レビュー/告知文) | anthropic/claude-opus-4-7 |
+
+`marketer` プロンプトを改訂し、テーマ生成時に **Amazon Kindle 売れ筋ランキングを web_search で
+リサーチ**して需要(demand_level)/競合(competition_level)/売れ筋根拠(bestseller_evidence)/推薦理由
+を signals に出すよう強化 (signals_json に格納、DB変更なし)。
+
+## 追加 worker タスク
+
+- `pipeline.book.readings.generate` (F-020b フリガナ生成)
+- `pipeline.book.cover.recheck` (既存カバーの文字崩れ後追い検証)
+- `pipeline.book.cover.regenerate` (旧方式カバーを新方式=文字なしAI画+実フォント合成で作り直し、再エクスポート)
+- `pipeline.book.promotion.generate` (F-051 販促プラン生成)
+- `sales.fetch` を **実ブラウザ (Playwright + Chromium)** で実装 (Phase 3 SP-14)。KDPログイン→
+  TOTP(otplib)で2FA自動突破→レポート取得。証跡(screenshot/HTML)を `debug/sales-fetch/` に保存。
+
+## サムネ生成方式の変更 (F-007)
+
+gpt-image-1 に日本語文字を描かせず、**文字なしイラストを生成 → タイトル/サブタイトル/著者名を
+Noto Sans JP で実フォント合成** (`packages/output/image/compose-cover.ts`, opentype.js→SVG→sharp)。
+アート方向性は `cover_art_direction` が本ごとに決定。カバーは JPEG・縦 1600×2560。文字化けは原理的に発生しない。
+
+## 追加画面 (App Router)
+
+- `/content-review` (本文承認ゲート — outline/thumbnail 承認と同列のパイプライン画面)
+- `/masters` (著者名・レーベル名マスタ管理)
+- `/promotion` + `/promotion/[bookId]` (販促施策プランの生成・閲覧、告知文コピペ)
+- テーマ詳細に「Amazon 売れ筋レコメンド」「著者名・レーベル名」セクション追加。
+- KDP入稿チェックリストを一覧→詳細構成に変更、フリガナ/ローマ字項目・入稿ステータス手動切替・一括DL追加。
+
+## デザイン / インフラ
+
+- **デザイントークンをクール・ニュートラルSaaSへ刷新** (`packages/ui/tokens.ts` + `globals.css`)。
+  グレーキャンバス+白カード+クールインク+indigoアクセント。サイドバーにアクティブ表示、ヘッダー白。
+- 本番: Railway Hobby プラン (Trial上限解消)。worker Dockerfile に Chromium 同梱。
+  env `KDP_CRED_KEY` (KDP認証情報の暗号化), `SALES_FETCH_BROWSER`, `KDP_SIGNIN_URL`/`KDP_REPORT_URL_TEMPLATE`。

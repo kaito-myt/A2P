@@ -129,6 +129,11 @@ export {
   type ReviewOutlineDeps,
 } from './writer/outline-review.js';
 
+export {
+  generatePromotionPlan,
+  type GeneratePromotionDeps,
+} from './promoter/index.js';
+
 export { kanaToRomaji } from './lib/kana-to-romaji.js';
 
 export {

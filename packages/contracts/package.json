@@ -18,6 +18,7 @@
     "./agents/editor": "./src/agents/editor.ts",
     "./agents/thumbnail": "./src/agents/thumbnail.ts",
     "./agents/readings": "./src/agents/readings.ts",
+    "./agents/promoter": "./src/agents/promoter.ts",
     "./agents/judge": "./src/agents/judge.ts",
     "./agents/optimizer": "./src/agents/optimizer.ts",
     "./api/prompt-proposals": "./src/api/prompt-proposals.ts",

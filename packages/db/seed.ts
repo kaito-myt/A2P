@@ -34,6 +34,7 @@ export const PROMPT_ROLES = [
   'cover_text_check',
   'cover_art_direction',
   'outline_review',
+  'promoter',
   'readings',
   'judge',
   'optimizer',
@@ -183,6 +184,8 @@ function buildPromptBody(role: PromptRole, genre: PromptGenre | null): string {
       return buildCoverArtDirectionPromptBody(genre);
     case 'outline_review':
       return buildOutlineReviewPromptBody(genre);
+    case 'promoter':
+      return buildPromoterPromptBody(genre);
     case 'readings':
       return buildReadingsPromptBody(genre);
     default:
@@ -654,6 +657,41 @@ function buildOutlineReviewPromptBody(_genre: PromptGenre | null): string {
 }
 
 /**
+ * promoter — 出版後の販促施策プランを生成する。KDP の制度 (KDPセレクト/KU/カウントダウン/
+ * 無料キャンペーン) と規約を踏まえ、コピペで使える告知文まで作る。
+ */
+function buildPromoterPromptBody(_genre: PromptGenre | null): string {
+  return `# 販促プランナー (v1)
+
+あなたは Amazon KDP で個人出版の書籍を数多くヒットさせてきた出版マーケターです。
+「出版しただけでは売れない」ことを熟知しており、出版後に読者へ届けて売上を伸ばす
+ための現実的で具体的な販促プランを設計します。
+
+## 前提知識 (正しく踏まえる)
+
+- **KDPセレクト**: 90日間の電子書籍独占販売に登録すると Kindle Unlimited(KU) の読み放題
+  対象になり、ページ既読ロイヤリティが得られる。さらに「無料キャンペーン(最大5日)」または
+  「Kindleカウントダウンディール」の販促ツールが使える。個人出版の初速作りに有効。
+- **カテゴリ/ランキング**: 競合の少ない適切なカテゴリを選ぶと「ベストセラー1位」バッジが
+  取りやすく、初速と回遊を生む。キーワードは実際に検索される語を内容と乖離させず選ぶ。
+- **初速レビュー**: 発売直後のレビューは超重要。ただし**レビューの購入・やらせ・身内の
+  組織的レビューは規約違反**なので絶対に提案しない。読者に自然にお願いする正当な方法のみ。
+
+## 出力方針
+
+- 抽象論でなく、この本の企画・読者・価格に合わせた**具体的**な施策にする。
+- **promo_copy はそのままコピペして投稿できる完成品**にする。x_posts は複数パターン
+  (各140字目安・適切なハッシュタグ込み)、note_article は見出し付きの記事下書き、
+  blog_outline はブログ告知の骨子。読者の悩みに刺さり、行動(購入/KUで読む)を促す。
+- 誇大広告・虚偽の効能・医療/投資の断定表現は避ける。
+- launch_checklist と ongoing_calendar には timing / when を必ず添える。
+
+## 出力形式
+
+指定された JSON スキーマに厳密に従って構造化出力する。日本語で。`;
+}
+
+/**
  * readings — タイトル/サブタイトル/著者名のカタカナ読み (フリガナ) 生成。
  * 対象テキストはユーザーメッセージで渡すため、システムプロンプトはペルソナ +
  * 出力規約に専念する (プレースホルダ無し)。
@@ -690,6 +728,7 @@ const ROLE_PLACEHOLDERS: Record<PromptRole, string[]> = {
   cover_text_check: [],
   cover_art_direction: [],
   outline_review: [],
+  promoter: [],
   readings: [],
   judge: [
     'theme_title',
@@ -753,6 +792,8 @@ export function buildModelAssignmentSeeds(): ModelAssignmentSeed[] {
     { role: 'cover_art_direction', genre: null, provider: 'anthropic', model: 'claude-opus-4-7', status: 'active', created_by: 'system' },
     // outline_review は構成の論理チェック = 判断タスク。Sonnet で十分。
     { role: 'outline_review', genre: null, provider: 'anthropic', model: 'claude-sonnet-4-6', status: 'active', created_by: 'system' },
+    // promoter は販促の企画・コピー = 創造性重視タスク。Opus を割当。
+    { role: 'promoter', genre: null, provider: 'anthropic', model: 'claude-opus-4-7', status: 'active', created_by: 'system' },
   ];
 }
 

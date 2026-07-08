@@ -27,11 +27,11 @@ export function Header() {
         <Image
           src="/logo-mark.png"
           alt={messages.brand.appName}
-          width={225}
-          height={91}
+          width={600}
+          height={200}
           priority
-          sizes="130px"
-          style={{ height: 48, width: 'auto' }}
+          sizes="150px"
+          style={{ height: 40, width: 'auto' }}
         />
       </Link>
 
