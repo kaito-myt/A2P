@@ -2884,6 +2884,10 @@ Noto Sans JP で実フォント合成** (`packages/output/image/compose-cover.ts
   順位・品質・コスト・速度・出力を比較表示)。`createAgentClient` に `assignmentOverride` を追加し、
   同一役割・同一プロンプトを任意モデルで実行できるようにした (割当DBをバイパス)。
 - 設定に「販促自動運用」セクション (入稿で自動立案 / 自動投稿ディスパッチャの 2 トグル)。
+- **KDP レポート取込 (F-056)**: `/sales/manual` に KDP ダッシュボードの .xlsx をアップロードすると
+  「電子書籍のロイヤリティ」シートを SheetJS で解析し、(ASIN, 年月) ごとに JPY ロイヤリティを合算して
+  SalesRecord に upsert。書籍照合は ASIN → タイトル完全一致 → 主題(コロン前)一致の順。非JPY行は集計外。
+  (`lib/kdp-report-core.ts` + `app/actions/kdp-report.ts` + `KdpReportImportPanel`)
 - テーマ詳細に「Amazon 売れ筋レコメンド」「著者名・レーベル名」セクション追加。
 - KDP入稿チェックリストを一覧→詳細構成に変更、フリガナ/ローマ字項目・入稿ステータス手動切替・一括DL追加。
 

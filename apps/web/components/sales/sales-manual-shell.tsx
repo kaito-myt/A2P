@@ -16,6 +16,7 @@ import type { BookSelectorItem, SalesHistoryData, SalesHistoryRow } from '@/lib/
 import { SalesInputForm } from './sales-input-form';
 import { SalesHistoryTable } from './sales-history-table';
 import { CsvImportPanel } from './csv-import-panel';
+import { KdpReportImportPanel } from './kdp-report-import-panel';
 import { BookSelector } from './book-selector';
 import { YearMonthSelector } from './year-month-selector';
 
@@ -195,8 +196,9 @@ export function SalesManualShell({ books }: SalesManualShellProps) {
         )}
       </div>
 
-      {/* Right column: CSV import */}
-      <div className="w-full lg:w-[40%] lg:shrink-0">
+      {/* Right column: KDP xlsx import + CSV import */}
+      <div className="flex w-full flex-col gap-space-loose lg:w-[40%] lg:shrink-0">
+        <KdpReportImportPanel />
         <CsvImportPanel />
       </div>
     </div>
