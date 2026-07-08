@@ -32,6 +32,11 @@ export const authConfig: NextAuthConfig = {
       const isLoggedIn = Boolean(auth?.user);
       const { pathname } = request.nextUrl;
 
+      // F-052b: 所有ブログ (/blog, /blog/*) は販促用の公開ページ — 未認証で閲覧可。
+      if (pathname === '/blog' || pathname.startsWith('/blog/')) {
+        return true;
+      }
+
       const isLoginPage = pathname === '/login';
       if (isLoginPage) {
         // 既にログイン済みでログイン画面に来たらダッシュボードへ

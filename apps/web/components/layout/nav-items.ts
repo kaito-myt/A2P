@@ -58,7 +58,9 @@ export const navSections: readonly NavSection[] = [
     label: m.sectionPromotion,
     items: [
       { key: 'promotion', label: m.itemPromotion, href: '/promotion', enabled: true },
-      { key: 'promotion-sns', label: m.itemPromotionSns, href: '/promotion/channel/sns', enabled: true },
+      { key: 'promotion-x', label: m.itemPromotionX, href: '/promotion/channel/x', enabled: true },
+      { key: 'promotion-instagram', label: m.itemPromotionInstagram, href: '/promotion/channel/instagram', enabled: true },
+      { key: 'promotion-tiktok', label: m.itemPromotionTiktok, href: '/promotion/channel/tiktok', enabled: true },
       { key: 'promotion-note', label: m.itemPromotionNote, href: '/promotion/channel/note', enabled: true },
       { key: 'promotion-blog', label: m.itemPromotionBlog, href: '/promotion/channel/blog', enabled: true },
     ],

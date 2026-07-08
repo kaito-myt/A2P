@@ -29,7 +29,7 @@ const PLAN = {
 // ---------------------------------------------------------------------------
 
 describe('runPromotionPostsGenerate', () => {
-  it('プランから SNS×2 / note×1 / blog×1 の投稿を日程付きで作る', async () => {
+  it('プランから X/IG/TikTok×2 / note×1 / blog×1 の投稿を日程付きで作る', async () => {
     const createMany = vi.fn(async (args: { data: unknown[] }) => ({ count: args.data.length }));
     const deleteMany = vi.fn(async () => ({ count: 0 }));
     const prisma = {
@@ -40,17 +40,22 @@ describe('runPromotionPostsGenerate', () => {
 
     const res = await runPromotionPostsGenerate({ book_id: 'b1' }, { prisma, now });
 
-    expect(res.created).toBe(4);
+    // x_posts 2件 × 3プラットフォーム + note + blog = 8
+    expect(res.created).toBe(8);
     const rows = createMany.mock.calls[0]![0].data as Array<{
       channel: string;
       scheduled_for: Date;
       title: string | null;
     }>;
-    expect(rows.map((r) => r.channel).sort()).toEqual(['blog', 'note', 'sns', 'sns']);
-    // sns#0 at base, sns#1 at +1day
-    const sns = rows.filter((r) => r.channel === 'sns').sort((a, b) => +a.scheduled_for - +b.scheduled_for);
-    expect(sns[0]!.scheduled_for.toISOString()).toBe('2026-07-08T00:00:00.000Z');
-    expect(sns[1]!.scheduled_for.toISOString()).toBe('2026-07-09T00:00:00.000Z');
+    expect(rows.filter((r) => r.channel === 'x')).toHaveLength(2);
+    expect(rows.filter((r) => r.channel === 'instagram')).toHaveLength(2);
+    expect(rows.filter((r) => r.channel === 'tiktok')).toHaveLength(2);
+    expect(rows.filter((r) => r.channel === 'note')).toHaveLength(1);
+    expect(rows.filter((r) => r.channel === 'blog')).toHaveLength(1);
+    // x#0 at base, x#1 at +1day
+    const x = rows.filter((r) => r.channel === 'x').sort((a, b) => +a.scheduled_for - +b.scheduled_for);
+    expect(x[0]!.scheduled_for.toISOString()).toBe('2026-07-08T00:00:00.000Z');
+    expect(x[1]!.scheduled_for.toISOString()).toBe('2026-07-09T00:00:00.000Z');
     const note = rows.find((r) => r.channel === 'note');
     expect(note!.title).toBe('note見出し');
   });

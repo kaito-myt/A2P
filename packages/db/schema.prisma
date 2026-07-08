@@ -276,6 +276,24 @@ model PromotionChannelSetting {
 }
 
 // =====================================================================
+// 所有ブログ記事 [F-052b] — ツール自身が公開・運用するブログ (第三者接続不要で完全自律)
+// =====================================================================
+model BlogPost {
+  id           String    @id @default(cuid())
+  book_id      String?
+  slug         String    @unique
+  title        String
+  body_md      String    @db.Text
+  status       String    @default("published") // draft | published
+  published_at DateTime?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  @@index([status, published_at(sort: Desc)])
+  @@map("blog_posts")
+}
+
+// =====================================================================
 // 販促投稿キュー [F-052] — 日程付きの投稿ドラフト。dispatcher が期限到来分を投稿する
 // =====================================================================
 model PromotionPost {

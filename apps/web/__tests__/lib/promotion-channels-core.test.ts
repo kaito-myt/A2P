@@ -28,7 +28,7 @@ function makeDeps(overrides: Partial<PromotionChannelsDeps> = {}): {
       upsert,
     },
     postRepo: {
-      findUnique: vi.fn(async () => ({ id: 'p1', status: 'scheduled', channel: 'sns' })),
+      findUnique: vi.fn(async () => ({ id: 'p1', status: 'scheduled', channel: 'x' })),
       updateMany,
     },
     auditLogRepo: { create: audit },
@@ -44,11 +44,11 @@ function makeDeps(overrides: Partial<PromotionChannelsDeps> = {}): {
 describe('setChannelAutoCore', () => {
   it('upserts auto_enabled and writes audit', async () => {
     const { deps, upsert, audit } = makeDeps();
-    const res = await setChannelAutoCore({ channel: 'sns', auto_enabled: true }, deps);
+    const res = await setChannelAutoCore({ channel: 'x', auto_enabled: true }, deps);
     expect(res.ok).toBe(true);
     expect(upsert).toHaveBeenCalledWith({
-      where: { channel: 'sns' },
-      create: { channel: 'sns', auto_enabled: true },
+      where: { channel: 'x' },
+      create: { channel: 'x', auto_enabled: true },
       update: { auto_enabled: true },
     });
     expect(audit).toHaveBeenCalled();
@@ -56,7 +56,7 @@ describe('setChannelAutoCore', () => {
 
   it('rejects invalid channel', async () => {
     const { deps } = makeDeps();
-    const res = await setChannelAutoCore({ channel: 'tiktok', auto_enabled: true }, deps);
+    const res = await setChannelAutoCore({ channel: 'facebook', auto_enabled: true }, deps);
     expect(res.ok).toBe(false);
   });
 });
@@ -80,7 +80,7 @@ describe('setChannelConnectionCore', () => {
     const { deps, upsert } = makeDeps({
       channelSettingRepo: {
         findUnique: vi.fn(async () => ({
-          channel: 'sns',
+          channel: 'x',
           auto_enabled: true,
           handle: '@x',
           token_enc: 'EXISTING',
@@ -92,7 +92,7 @@ describe('setChannelConnectionCore', () => {
     });
     // re-grab upsert from the overridden repo
     const overriddenUpsert = deps.channelSettingRepo.upsert as ReturnType<typeof vi.fn>;
-    const res = await setChannelConnectionCore({ channel: 'sns', handle: '@x' }, deps);
+    const res = await setChannelConnectionCore({ channel: 'x', handle: '@x' }, deps);
     expect(res.ok).toBe(true);
     const call = overriddenUpsert.mock.calls[0]![0];
     expect(call.update.token_enc).toBeUndefined();

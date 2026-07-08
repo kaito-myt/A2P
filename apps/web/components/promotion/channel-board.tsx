@@ -61,9 +61,25 @@ export function ChannelBoard({
     <div className="flex flex-col gap-space-loose">
       <ChannelTabs active={channel} />
       <AutomationCard setting={setting} />
-      <ConnectionCard setting={setting} />
+      {channel === 'blog' ? <OwnedBlogNote /> : <ConnectionCard setting={setting} />}
       <QueueTable posts={posts} />
     </div>
+  );
+}
+
+function OwnedBlogNote() {
+  return (
+    <Card title={m.connSection.title}>
+      <p className="text-body text-charcoal-82">{m.ownedBlogNote}</p>
+      <a
+        href="/blog"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex w-fit items-center rounded-card border border-border-warm bg-cream px-3 py-1.5 text-button-sm text-charcoal no-underline hover:bg-charcoal-04"
+      >
+        /blog を開く
+      </a>
+    </Card>
   );
 }
 

@@ -16,6 +16,7 @@ import {
   type PublishChannelConfig,
   type PublisherPort,
 } from './promotion-post/publisher-port.js';
+import { createBlogPublisherPort } from './promotion-post/blog-publisher-port.js';
 
 /**
  * `promotion.post.publish` タスク (F-052)
@@ -91,9 +92,13 @@ export type PromotionPostPublishResult =
   | { status: 'failed'; reason: string; message: string }
   | { status: 'skipped'; reason: string };
 
-function defaultResolvePort(_channel: string): PublisherPort {
+function defaultResolvePort(channel: string): PublisherPort {
   if (process.env.PROMOTION_PUBLISHER === 'stub') {
     return createStubPublisherPort();
+  }
+  // 所有ブログは第三者接続不要 — ツール自身の blog_posts に公開する。
+  if (channel === 'blog') {
+    return createBlogPublisherPort();
   }
   const httpDeps: HttpPublisherDeps = {};
   return createHttpPublisherPort(httpDeps);

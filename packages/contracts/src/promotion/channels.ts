@@ -11,9 +11,14 @@ import { z } from 'zod';
 import type { PromotionPlanOutput } from '../agents/promoter.js';
 
 /** 販促チャンネル種別。 */
-export const PROMOTION_CHANNELS = ['sns', 'note', 'blog'] as const;
+export const PROMOTION_CHANNELS = ['x', 'instagram', 'tiktok', 'note', 'blog'] as const;
 export const PromotionChannelSchema = z.enum(PROMOTION_CHANNELS);
 export type PromotionChannel = z.infer<typeof PromotionChannelSchema>;
+
+/** 短文SNS (x_posts を流し込むチャンネル)。 */
+export const SHORT_FORM_CHANNELS = ['x', 'instagram', 'tiktok'] as const;
+/** ツール所有で「作成〜運用まで完全自律」できるチャンネル (第三者接続不要)。 */
+export const OWNED_CHANNELS = ['blog'] as const;
 
 /** 投稿ステータス。 */
 export const PROMOTION_POST_STATUSES = [
@@ -75,17 +80,19 @@ export function buildPromotionPosts(
   const drafts: PromotionPostDraft[] = [];
   const copy = plan.promo_copy;
 
-  // SNS: 各 x_post を 1 投稿に
+  // 短文SNS: 各 x_post を X / Instagram / TikTok それぞれ 1 投稿に (同一文面をキャプションとして流用)。
   const xPosts = Array.isArray(copy?.x_posts) ? copy.x_posts : [];
   xPosts.forEach((body, i) => {
     const text = typeof body === 'string' ? body.trim() : '';
     if (text.length === 0) return;
-    drafts.push({
-      channel: 'sns',
-      title: null,
-      body: text,
-      offsetMinutes: snsFirst + i * snsInterval,
-    });
+    for (const channel of SHORT_FORM_CHANNELS) {
+      drafts.push({
+        channel,
+        title: null,
+        body: text,
+        offsetMinutes: snsFirst + i * snsInterval,
+      });
+    }
   });
 
   // note: 記事 1 本

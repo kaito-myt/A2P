@@ -54,10 +54,10 @@ export function createHttpPublisherPort(deps: HttpPublisherDeps = {}): Publisher
         return publishViaWebhook(doFetch, webhookUrl, input);
       }
 
-      // 2. X API v2 (SNS 専用)
-      if (input.channel === 'sns') {
+      // 2. X API v2 (X 専用)。Instagram/TikTok は公式 API の要件が重いため Webhook 経由を推奨。
+      if (input.channel === 'x') {
         if (!input.config.token) {
-          return { ok: false, reason: 'not_connected', message: 'SNS token not configured' };
+          return { ok: false, reason: 'not_connected', message: 'X token not configured' };
         }
         return publishViaXApi(doFetch, input);
       }

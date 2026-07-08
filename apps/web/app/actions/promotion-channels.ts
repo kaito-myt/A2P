@@ -42,9 +42,9 @@ function authFail(err: unknown): ActionResult<never> {
 }
 
 function revalidateChannels() {
-  revalidatePath('/promotion/channel/sns');
-  revalidatePath('/promotion/channel/note');
-  revalidatePath('/promotion/channel/blog');
+  for (const ch of ['x', 'instagram', 'tiktok', 'note', 'blog']) {
+    revalidatePath(`/promotion/channel/${ch}`);
+  }
 }
 
 export async function setChannelAuto(input: unknown) {
