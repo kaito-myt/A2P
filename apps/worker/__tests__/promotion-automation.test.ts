@@ -9,7 +9,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { runPromotionPostsGenerate } from '../src/tasks/promotion-posts-generate.js';
 import { runPromotionPostPublish } from '../src/tasks/promotion-post-publish.js';
 import { runPromotionDispatch } from '../src/tasks/promotion-dispatch.js';
-import { createStubPublisherPort, createNotConnectedPublisherPort } from '../src/tasks/promotion-post/publisher-port.js';
+import {
+  createStubPublisherPort,
+  createNotConnectedPublisherPort,
+  type PublisherPort,
+} from '../src/tasks/promotion-post/publisher-port.js';
 
 const PLAN = {
   summary: '販促方針',
@@ -77,27 +81,27 @@ describe('runPromotionPostsGenerate', () => {
 // promotion.post.publish
 // ---------------------------------------------------------------------------
 
+type AnyArgs = Record<string, unknown>;
+
 function publishPrisma(overrides: {
   post?: Record<string, unknown> | null;
   setting?: Record<string, unknown> | null;
   casCount?: number;
 }) {
-  const update = vi.fn(async () => ({}));
-  const updateMany = vi.fn(async () => ({ count: overrides.casCount ?? 1 }));
-  return {
-    update,
-    updateMany,
-    prisma: {
-      promotionPost: {
-        findUnique: vi.fn(async () => overrides.post ?? null),
-        updateMany,
-        update,
-      },
-      promotionChannelSetting: {
-        findUnique: vi.fn(async () => overrides.setting ?? null),
-      },
+  const update = vi.fn((_args: AnyArgs) => Promise.resolve({}));
+  const updateMany = vi.fn((_args: AnyArgs) => Promise.resolve({ count: overrides.casCount ?? 1 }));
+  const prisma = {
+    promotionPost: {
+      findUnique: vi.fn((_args: AnyArgs) => Promise.resolve(overrides.post ?? null)),
+      updateMany,
+      update,
     },
-  };
+    promotionChannelSetting: {
+      findUnique: vi.fn((_args: AnyArgs) => Promise.resolve(overrides.setting ?? null)),
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+  return { update, updateMany, prisma };
 }
 
 describe('runPromotionPostPublish', () => {
@@ -152,14 +156,14 @@ describe('runPromotionPostPublish', () => {
   });
 
   it('token_enc があれば復号して config.token に渡す', async () => {
-    const publish = vi.fn(async () => ({ ok: true as const, externalUrl: null }));
+    const publish = vi.fn((_a: AnyArgs) => Promise.resolve({ ok: true as const, externalUrl: null }));
     const { prisma } = publishPrisma({
       post: { id: 'p1', channel: 'sns', title: null, body: 'x', status: 'scheduled' },
       setting: { auto_enabled: true, handle: '@me', token_enc: 'ENC', config_json: { webhook_url: 'https://h' } },
     });
     await runPromotionPostPublish(
       { post_id: 'p1' },
-      { prisma, resolvePort: () => ({ publish }), decryptToken: () => 'SECRET' },
+      { prisma, resolvePort: () => ({ publish } as unknown as PublisherPort), decryptToken: () => 'SECRET' },
     );
     const arg = publish.mock.calls[0]![0] as { config: { token: string; extra: Record<string, unknown> } };
     expect(arg.config.token).toBe('SECRET');
@@ -174,11 +178,12 @@ describe('runPromotionPostPublish', () => {
 describe('runPromotionDispatch', () => {
   it('auto-enabled チャンネルの期限到来分を publish に流す', async () => {
     const addJob = vi.fn(async () => ({}));
-    const findMany = vi.fn(async () => [{ id: 'p1', channel: 'sns' }, { id: 'p2', channel: 'note' }]);
+    const findMany = vi.fn((_a: AnyArgs) => Promise.resolve([{ id: 'p1', channel: 'sns' }, { id: 'p2', channel: 'note' }]));
     const prisma = {
       promotionChannelSetting: { findMany: vi.fn(async () => [{ channel: 'sns' }, { channel: 'note' }]) },
       promotionPost: { findMany },
-    };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
     const res = await runPromotionDispatch({ prisma, addJob, now: () => new Date('2026-07-08T12:00:00Z') });
     expect(res.enqueued).toBe(2);
     expect(addJob).toHaveBeenCalledWith('promotion.post.publish', { post_id: 'p1' });

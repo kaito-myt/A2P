@@ -566,7 +566,31 @@ async function fetchAnthropicCatalog(
   }
 }
 
-/** OpenAI — `openai` SDK `client.models.list()` + cheerio で pricing ページ解析。 */
+/**
+ * OpenAI の主要モデル単価 (USD/Mtok) のキュレート済みフォールバック。
+ *
+ * OpenAI の pricing ページ (openai.com/api/pricing) は JS レンダリングの SPA で
+ * cheerio の静的解析では価格表を抽出できない (0 行になる)。そのため OpenAI だけ
+ * カタログに載らない不具合があった。ここに主要モデルの公式単価を直書きし、
+ * スクレイプが 0 行のときのフォールバックとして使う (他 provider は従来通りスクレイプ)。
+ *
+ * 値は概算 (改訂時は要更新)。source='openai_curated_fallback_v1' で識別できる。
+ */
+export const OPENAI_CURATED_PRICING: ProviderPricingEntry[] = [
+  { model: 'gpt-5', input_price_per_mtok_usd: 1.25, output_price_per_mtok_usd: 10.0 },
+  { model: 'gpt-5-mini', input_price_per_mtok_usd: 0.25, output_price_per_mtok_usd: 2.0 },
+  { model: 'gpt-4.1', input_price_per_mtok_usd: 2.0, output_price_per_mtok_usd: 8.0 },
+  { model: 'gpt-4o', input_price_per_mtok_usd: 2.5, output_price_per_mtok_usd: 10.0 },
+  { model: 'gpt-4o-mini', input_price_per_mtok_usd: 0.15, output_price_per_mtok_usd: 0.6 },
+  {
+    model: 'gpt-image-1',
+    input_price_per_mtok_usd: 0,
+    output_price_per_mtok_usd: 0,
+    image_price_per_image_usd: 0.04,
+  },
+];
+
+/** OpenAI — `openai` SDK `client.models.list()` + cheerio。スクレイプ失敗時はキュレート単価に fallback。 */
 async function fetchOpenAICatalog(
   deps: ProviderFetcherDeps,
 ): Promise<ProviderFetchResult> {
@@ -577,10 +601,29 @@ async function fetchOpenAICatalog(
     const models = await collectSdkModelIds(client, 'openai');
     deps.logger.info({ count: models.length }, 'openai models.list ok');
 
-    const html = await safeFetchText(deps.fetchImpl, OPENAI_PRICING_URL);
-    const pricing = await parseOpenAIPricing(html, models);
+    let pricing: ProviderPricingEntry[] = [];
+    try {
+      const html = await safeFetchText(deps.fetchImpl, OPENAI_PRICING_URL);
+      pricing = await parseOpenAIPricing(html, models);
+    } catch (scrapeErr) {
+      deps.logger.warn({ err: scrapeErr }, 'openai pricing scrape failed; using curated fallback');
+    }
+
     if (pricing.length === 0) {
-      return { provider: 'openai', ok: false, source, error: 'no_pricing_rows_parsed' };
+      // SPA でスクレイプ不能 → キュレート済み単価を使う (SDK に存在するモデルのみ、無ければ全件)。
+      const available = new Set(models);
+      const curated = OPENAI_CURATED_PRICING.filter(
+        (p) => available.size === 0 || available.has(p.model),
+      );
+      const fallback = curated.length > 0 ? curated : OPENAI_CURATED_PRICING;
+      deps.logger.info({ count: fallback.length }, 'openai using curated fallback pricing');
+      return {
+        provider: 'openai',
+        ok: true,
+        source: 'openai_curated_fallback_v1',
+        pricing: fallback,
+        modelIdsFromSdk: models,
+      };
     }
     return { provider: 'openai', ok: true, source, pricing, modelIdsFromSdk: models };
   } catch (err) {
