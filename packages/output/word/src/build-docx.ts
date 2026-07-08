@@ -141,7 +141,9 @@ function buildTocSection(chapters: BuildDocxChapter[]): ISectionOptions {
       new Paragraph({
         children: [
           new TextRun({
-            text: `第${ch.index}章　${ch.heading}`,
+            // heading は呼出側 (export タスク) で正規化済のタイトル行
+            // (「第1章　…」「はじめに——…」)。ここで章番号を前置しない (二重番号防止)。
+            text: ch.heading,
             font: FONT,
             size: 22,
           }),

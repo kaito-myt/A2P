@@ -10,6 +10,8 @@
 import { useCallback, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 
+import { normalizeChapters } from '@a2p/contracts/book/chapter-title';
+
 import { Badge } from '@/components/ui/badge';
 import { messages } from '@/lib/messages';
 import type {
@@ -166,7 +168,11 @@ export function OutlineTab({ outline, bookId, bookStatus, onAction }: OutlineTab
         <p className="text-body text-muted">{m.noChapters}</p>
       ) : (
         <div className="flex flex-col gap-space-snug" data-testid="outline-chapters-list">
-          {outline.chapters.map((ch, i) => {
+          {(() => {
+            const titles = normalizeChapters(
+              outline.chapters.map((ch, i) => ({ index: ch.index ?? i + 1, heading: ch.heading })),
+            );
+            return outline.chapters.map((ch, i) => {
             const idx = ch.index ?? i + 1;
             return (
               <div
@@ -176,7 +182,7 @@ export function OutlineTab({ outline, bookId, bookStatus, onAction }: OutlineTab
               >
                 <div className="flex items-baseline justify-between gap-2">
                   <h3 className="text-card-title">
-                    {m.chapterPrefix(idx)}: {ch.heading}
+                    {titles[i]?.titleLine ?? ch.heading}
                   </h3>
                   {typeof ch.target_chars === 'number' && (
                     <span className="text-caption text-muted">
@@ -198,7 +204,8 @@ export function OutlineTab({ outline, bookId, bookStatus, onAction }: OutlineTab
                 )}
               </div>
             );
-          })}
+            });
+          })()}
         </div>
       )}
 

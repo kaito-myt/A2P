@@ -844,6 +844,13 @@ export const messages = {
     approving: '承認中…',
     approveError: '本文承認に失敗しました',
     openDetail: '本文を確認',
+    requestRevision: '修正を依頼',
+    revisionPlaceholder: '直してほしい点を具体的に。例：章立てがおかしい。「はじめに」「おわりに」に第N章を付けず、本文だけ第1〜8章にして。',
+    revisionSubmit: 'この内容で修正を依頼',
+    revisionSubmitting: '修正を依頼中…',
+    revisionStarted: '修正を依頼しました（再生成後、再び本文承認に戻ります）',
+    revisionError: '修正依頼に失敗しました',
+    cancel: 'キャンセル',
     empty: {
       title: '本文承認待ちの書籍はありません',
       body: '本文の執筆・校閲が完了した書籍がここに表示されます。',
@@ -1015,6 +1022,8 @@ export const messages = {
       submitting: '承認中…',
       notReviewable: 'この書籍は本文承認待ちの状態ではありません',
       error: '本文の承認に失敗しました',
+      revisionInvalid: '修正内容を入力してください',
+      revisionNoOutline: 'アウトラインが見つからないため修正を依頼できません',
     },
     filter: {
       statusLabel: 'ステータス',

@@ -15,6 +15,8 @@ import { prisma } from '@a2p/db';
 import { getSessionOrThrow } from '@/lib/auth-helpers';
 import { enqueueJob } from '@/lib/graphile-client';
 import { messages } from '@/lib/messages';
+import { createComment } from '@/app/actions/comments';
+import { createRevisionRun } from '@/app/actions/revision-runs';
 
 const THUMBNAIL_TEXT_TASK = 'pipeline.book.thumbnail.text';
 const READINGS_GENERATE_TASK = 'pipeline.book.readings.generate';
@@ -235,6 +237,75 @@ export async function approveBookContent(
     });
 
     revalidatePath('/books');
+    revalidatePath(`/books/${book_id}`);
+    return ok({ book_id });
+  } catch (err) {
+    if (isA2PError(err)) return err.toActionResult();
+    return fail('unknown', messages.books.contentApproval.error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 本文承認ゲート: 承認せず「修正を依頼」— 運営者の指示を must コメント化し、
+// その書籍の保留コメントで修正ラン (revision.book.apply) を起動する。
+// ---------------------------------------------------------------------------
+
+const RequestRevisionSchema = z.object({
+  book_id: z.string().min(1),
+  note: z.string().trim().min(1).max(2000),
+});
+
+export async function requestContentRevision(
+  input: unknown,
+): Promise<ActionResult<{ book_id: string }>> {
+  try {
+    await getSessionOrThrow();
+  } catch (err) {
+    if (isA2PError(err)) return err.toActionResult();
+    return fail('unknown', messages.books.contentApproval.error);
+  }
+
+  const parsed = RequestRevisionSchema.safeParse(input);
+  if (!parsed.success) return fail('validation', messages.books.contentApproval.revisionInvalid);
+  const { book_id, note } = parsed.data;
+
+  try {
+    const book = await prisma.book.findUnique({
+      where: { id: book_id },
+      select: { id: true, status: true, outline: { select: { id: true } } },
+    });
+    if (!book) return fail('not_found', messages.books.contentApproval.error);
+    if (!book.outline) return fail('conflict', messages.books.contentApproval.revisionNoOutline);
+
+    // 1. 運営者の指示を outline 対象の must コメントとして登録 (章立て修正の起点)。
+    const commentRes = await createComment({
+      book_id,
+      target_kind: 'outline',
+      target_id: book.outline.id,
+      range: null,
+      body: note,
+      priority: 'must',
+    });
+    if (!commentRes.ok) return commentRes;
+
+    // 2. この書籍の pending コメントを集めて修正ランを起動。
+    const pending = await prisma.revisionComment.findMany({
+      where: { book_id, status: 'pending' },
+      select: { id: true },
+    });
+    const commentIds = pending.map((c) => c.id);
+    if (commentIds.length === 0) {
+      return fail('conflict', messages.books.contentApproval.revisionInvalid);
+    }
+
+    const runRes = await createRevisionRun({
+      comment_ids: commentIds,
+      scope: 'all_pending_in_selected_books',
+      selected_book_ids: [book_id],
+    });
+    if (!runRes.ok) return runRes;
+
+    revalidatePath('/content-review');
     revalidatePath(`/books/${book_id}`);
     return ok({ book_id });
   } catch (err) {

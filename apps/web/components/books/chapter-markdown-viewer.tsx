@@ -12,6 +12,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useRouter } from 'next/navigation';
 
+import { normalizeChapters } from '@a2p/contracts/book/chapter-title';
+
 import { messages } from '@/lib/messages';
 import type { BookChapterSerialized, RevisionCommentSerialized } from '@/lib/books-view';
 import type { CommentPriority, CommentStatus } from '@/lib/comment-helpers';
@@ -55,6 +57,15 @@ export function ChapterMarkdownViewer({
 
   if (!current) return null;
 
+  // 章タイトルを正規化 (二重番号・前書き/後書きの番号付け解消)。index で引く。
+  const titleByIndex = new Map(
+    normalizeChapters(
+      [...chapters]
+        .sort((a, b) => a.index - b.index)
+        .map((c) => ({ index: c.index, heading: c.heading })),
+    ).map((n) => [n.index, n.titleLine]),
+  );
+
   const chapterComments = groupCommentsByParagraph(comments, current.id);
 
   paragraphCounter.current = 0;
@@ -75,7 +86,7 @@ export function ChapterMarkdownViewer({
         >
           {chapters.map((ch, i) => (
             <option key={ch.id} value={i}>
-              {m.chapterPrefix(ch.index)}: {ch.heading}
+              {titleByIndex.get(ch.index) ?? ch.heading}
             </option>
           ))}
         </select>

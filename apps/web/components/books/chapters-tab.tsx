@@ -6,6 +6,8 @@
  * 章がある場合は ChapterMarkdownViewer で Markdown レンダリング。
  * 章がない場合は空状態メッセージ。
  */
+import { normalizeChapters } from '@a2p/contracts/book/chapter-title';
+
 import { Badge } from '@/components/ui/badge';
 import { messages } from '@/lib/messages';
 import type { BookChapterSerialized, BookStatus, RevisionCommentSerialized } from '@/lib/books-view';
@@ -50,19 +52,26 @@ export function ChaptersTab({ chapters, bookStatus, bookId, comments = [] }: Cha
 
   const hasDoneChapters = chapters.some((ch) => ch.status === 'done' && ch.body_md);
 
+  // 章タイトルを正規化 (二重番号・前書き/後書きの番号付けを解消)。表示順=index 昇順。
+  const sorted = [...chapters].sort((a, b) => a.index - b.index);
+  const titleByIndex = new Map(
+    normalizeChapters(sorted.map((c) => ({ index: c.index, heading: c.heading }))).map((n) => [
+      n.index,
+      n.titleLine,
+    ]),
+  );
+
   return (
     <div className="flex flex-col gap-space-snug" data-testid="chapters-tab">
       {/* Chapter metadata summary */}
       <div className="flex flex-col gap-space-snug">
-        {chapters.map((ch) => (
+        {sorted.map((ch) => (
           <div
             key={ch.id}
             className="flex items-baseline justify-between gap-2 text-caption"
             data-testid={`chapter-summary-${ch.index}`}
           >
-            <span className="text-card-title">
-              {m.chapterPrefix(ch.index)}: {ch.heading}
-            </span>
+            <span className="text-card-title">{titleByIndex.get(ch.index) ?? ch.heading}</span>
             <Badge variant={chapterStatusVariant(ch.status)}>{ch.status}</Badge>
           </div>
         ))}

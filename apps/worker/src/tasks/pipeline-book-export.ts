@@ -6,6 +6,7 @@ import {
   releaseBookLock as defaultReleaseBookLock,
 } from '@a2p/agents/lib/book-lock';
 import { NotFoundError, ValidationError } from '@a2p/contracts/errors';
+import { normalizeChapters } from '@a2p/contracts/book/chapter-title';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
 import { prisma as defaultPrisma } from '@a2p/db';
 import { buildDocx as defaultBuildDocx } from '@a2p/output-word';
@@ -283,6 +284,20 @@ export async function runPipelineBookExport(
       );
     }
 
+    // 章タイトルを正規化 (二重番号・前書き/後書きの番号付け解消)。出力の heading に
+    // 完成タイトル行 (「第1章　…」「はじめに——…」) を渡す。build-docx/pdf は前置しない。
+    const titleByIndex = new Map(
+      normalizeChapters(chapters.map((c) => ({ index: c.index, heading: c.heading }))).map((n) => [
+        n.index,
+        n.titleLine,
+      ]),
+    );
+    const exportChapters = chapters.map((c) => ({
+      index: c.index,
+      heading: titleByIndex.get(c.index) ?? c.heading,
+      body_md: c.body_md,
+    }));
+
     const artifactIds: string[] = [];
 
     // 4b. 既存 artifact を削除して再出力を冪等にする。
@@ -295,7 +310,7 @@ export async function runPipelineBookExport(
     // 5. Build docx
     const docxBuffer = await buildDocxFn(
       { title: book.title, subtitle: book.subtitle },
-      chapters.map((c) => ({ index: c.index, heading: c.heading, body_md: c.body_md })),
+      exportChapters,
     );
     const docxKey = bookArtifact(bookId, 'docx');
     const docxUpload = await uploadBufferFn(
@@ -321,7 +336,7 @@ export async function runPipelineBookExport(
     // 6. Build PDF
     const pdfBuffer = await buildPdfFn(
       { title: book.title, subtitle: book.subtitle },
-      chapters.map((c) => ({ index: c.index, heading: c.heading, body_md: c.body_md })),
+      exportChapters,
     );
     const pdfKey = bookArtifact(bookId, 'pdf');
     const pdfUpload = await uploadBufferFn(pdfKey, pdfBuffer, 'application/pdf');

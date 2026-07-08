@@ -2869,6 +2869,13 @@ Noto Sans JP で実フォント合成** (`packages/output/image/compose-cover.ts
   サイドバー「販促施策」を独立大項目に昇格。
 - `/promotion/channel/[channel]` (F-052 SNS/note/ブログの自動運用ボード — チャンネル切替タブ・
   自動運用トグル・接続設定(handle/webhook/token)・投稿キュー(手動投稿/取消))。
+- **章タイトル正規化 (F-055)**: `@a2p/contracts/book/chapter-title` の `normalizeChapters` で
+  埋め込み「第N章」の除去・はじめに/おわりに を前書き/後書き扱い・本文のみ連番振り直しを決定的に行う。
+  Web 表示 (章本文/アウトライン/章セレクタ) と DOCX/PDF 出力 (export タスクで正規化しビルダは前置しない)
+  の双方に適用し「第2章: 第1章 …」の二重番号を根絶。
+- **本文承認で「修正を依頼」(F-055)**: `requestContentRevision` — 承認一択ではなく、運営者が
+  修正指示を書くと outline 対象の must コメントを作成し `createRevisionRun` で修正ラン
+  (revision.book.apply) を起動。再生成後に再び本文承認へ戻る。
 - `/progress` (F-054 進行状況 — テーマ生成・書籍パイプラインの進捗を8秒自動更新で一覧。
   Book.status→フェーズ、執筆は章 done/total をサブ進捗に、30分以上放置+失敗ジョブは「停滞」検知)。
   併せて writer.chapter の文字数許容を ±20%→±35% に緩和 (±20% だと創作文で頻繁に外れ、
