@@ -7,6 +7,7 @@ import { BATCH_PLAN_DISPATCHER_TASK_NAME } from './tasks/batch-plan-dispatcher.j
 import { CATALOG_FETCH_TASK_NAME } from './tasks/catalog-fetch.js';
 import { FX_FETCH_TASK_NAME } from './tasks/fx-fetch.js';
 import { SALES_FETCH_DISPATCHER_TASK_NAME } from './tasks/sales-fetch-dispatcher.js';
+import { PROMOTION_DISPATCH_TASK_NAME } from './tasks/promotion-dispatch.js';
 
 /**
  * graphile-worker cron 定義 (docs/05 §5.4 / SP-01 仕様: `apps/worker/src/crontab.ts`)
@@ -103,35 +104,62 @@ export const SALES_FETCH_DISPATCH_CRON_ITEM: CronItem = {
   identifier: 'sales-fetch-dispatch-daily',
 };
 
-/** AppSettings.sales_auto_fetch_enabled に応じて CronItem 配列を組み立てる。 */
-export interface SalesFetchSettings {
+/**
+ * F-052: 販促投稿の自動ディスパッチ cron (既定 30分毎)。
+ * AppSettings.promo_auto_post_enabled=true のときだけ条件付き追加する。
+ */
+export const PROMOTION_DISPATCH_CRON_DEFAULT = '*/30 * * * *';
+
+/** `promotion.dispatch` の CronItem 定義。 */
+export const PROMOTION_DISPATCH_CRON_ITEM: CronItem = {
+  task: PROMOTION_DISPATCH_TASK_NAME,
+  match: PROMOTION_DISPATCH_CRON_DEFAULT,
+  identifier: 'promotion-dispatch',
+};
+
+/** AppSettings の自動運用トグルに応じて CronItem 配列を組み立てる。 */
+export interface CronRuntimeSettings {
   sales_auto_fetch_enabled: boolean;
   /** DB に保存されている cron 文字列 (省略時は env / 既定値を使用)。 */
   sales_auto_fetch_cron?: string | null;
+  /** F-052: 販促自動投稿ディスパッチャを有効化するか。 */
+  promo_auto_post_enabled?: boolean;
+  /** F-052: 販促ディスパッチ cron (省略時は既定 30分毎)。 */
+  promo_dispatch_cron?: string | null;
 }
+
+/** 後方互換エイリアス (旧名)。 */
+export type SalesFetchSettings = CronRuntimeSettings;
 
 /**
  * AppSettings を受け取り、最終的な CronItem[] を返す。
  *
- * - `sales_auto_fetch_enabled=false` → CRON_ITEMS のみ (静的 6 件)
- * - `sales_auto_fetch_enabled=true`  → CRON_ITEMS + sales.fetch.dispatch エントリ
- * - `sales_auto_fetch_cron` が設定されていれば env より優先して使う
+ * - 静的 CRON_ITEMS は常に含む
+ * - `sales_auto_fetch_enabled=true`  → + sales.fetch.dispatch
+ * - `promo_auto_post_enabled=true`   → + promotion.dispatch
  */
-export function buildCronItemsWithSettings(settings: SalesFetchSettings): CronItem[] {
-  if (!settings.sales_auto_fetch_enabled) return [...CRON_ITEMS];
+export function buildCronItemsWithSettings(settings: CronRuntimeSettings): CronItem[] {
+  const items: CronItem[] = [...CRON_ITEMS];
 
-  const cronMatch =
-    typeof settings.sales_auto_fetch_cron === 'string' &&
-    settings.sales_auto_fetch_cron.trim().length > 0
-      ? settings.sales_auto_fetch_cron.trim()
-      : resolveSalesFetchCron();
+  if (settings.sales_auto_fetch_enabled) {
+    const cronMatch =
+      typeof settings.sales_auto_fetch_cron === 'string' &&
+      settings.sales_auto_fetch_cron.trim().length > 0
+        ? settings.sales_auto_fetch_cron.trim()
+        : resolveSalesFetchCron();
+    items.push({ ...SALES_FETCH_DISPATCH_CRON_ITEM, match: cronMatch });
+  }
 
-  const dispatchItem: CronItem = {
-    ...SALES_FETCH_DISPATCH_CRON_ITEM,
-    match: cronMatch,
-  };
+  if (settings.promo_auto_post_enabled) {
+    const cronMatch =
+      typeof settings.promo_dispatch_cron === 'string' &&
+      settings.promo_dispatch_cron.trim().length > 0
+        ? settings.promo_dispatch_cron.trim()
+        : PROMOTION_DISPATCH_CRON_DEFAULT;
+    items.push({ ...PROMOTION_DISPATCH_CRON_ITEM, match: cronMatch });
+  }
 
-  return [...CRON_ITEMS, dispatchItem];
+  return items;
 }
 
 export const CRON_ITEMS: CronItem[] = [

@@ -50,6 +50,8 @@ export interface SettingsPageData {
   prompt_auto_approval_rollback_h: number;
   sales_auto_fetch_enabled: boolean;
   sales_auto_fetch_cron: string;
+  promo_auto_on_publish_enabled: boolean;
+  promo_auto_post_enabled: boolean;
   kdp_submit_timeout_minutes: number;
   kdp_submit_retry_count: number;
   job_log_retention_days: number;
@@ -75,6 +77,8 @@ interface RawAppSettings {
   prompt_auto_approval_rollback_h: number;
   sales_auto_fetch_enabled: boolean;
   sales_auto_fetch_cron: string;
+  promo_auto_on_publish_enabled: boolean;
+  promo_auto_post_enabled: boolean;
   kdp_submit_timeout_minutes: number;
   kdp_submit_retry_count: number;
   job_log_retention_days: number;
@@ -164,6 +168,8 @@ export function serializeSettingsPage(
     prompt_auto_approval_rollback_h: raw.prompt_auto_approval_rollback_h,
     sales_auto_fetch_enabled: raw.sales_auto_fetch_enabled,
     sales_auto_fetch_cron: raw.sales_auto_fetch_cron,
+    promo_auto_on_publish_enabled: raw.promo_auto_on_publish_enabled,
+    promo_auto_post_enabled: raw.promo_auto_post_enabled,
     kdp_submit_timeout_minutes: raw.kdp_submit_timeout_minutes,
     kdp_submit_retry_count: raw.kdp_submit_retry_count,
     job_log_retention_days: raw.job_log_retention_days,

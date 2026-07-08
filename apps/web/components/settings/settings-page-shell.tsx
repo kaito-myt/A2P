@@ -12,6 +12,7 @@ import { NotificationSettingsForm } from './notification-settings-form';
 import { ThresholdSettingsForm } from './threshold-settings-form';
 import { AutoApprovalToggle } from './auto-approval-toggle';
 import { SalesAutoFetchSettings } from './sales-auto-fetch-settings';
+import { PromotionAutomationSettings } from './promotion-automation-settings';
 import { DataRetentionForm } from './data-retention-form';
 import { KdpSubmissionSettingsForm } from './kdp-submission-settings-form';
 import { ApiCredentialsList } from './api-credentials-list';
@@ -44,6 +45,11 @@ export function SettingsPageShell({ data }: SettingsPageShellProps) {
       <SalesAutoFetchSettings
         initialEnabled={data.sales_auto_fetch_enabled}
         initialCron={data.sales_auto_fetch_cron}
+      />
+
+      <PromotionAutomationSettings
+        initialOnPublish={data.promo_auto_on_publish_enabled}
+        initialAutoPost={data.promo_auto_post_enabled}
       />
 
       <DataRetentionForm

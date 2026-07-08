@@ -187,6 +187,7 @@ model Book {
   revisionComments      RevisionComment[]
   batchPlanItems        BatchPlanItem[]
   promotionPlan         PromotionPlan?
+  promotionPosts        PromotionPost[]
 
   @@index([account_id, status, created_at(sort: Desc)], map: "books_account_status_idx")
   @@index([status, has_blocking_comments], map: "books_status_blocking_idx")
@@ -210,6 +211,53 @@ model PromotionPlan {
   book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
 
   @@map("promotion_plans")
+}
+
+// =====================================================================
+// 販促チャンネル設定 [F-052] — SNS / note / ブログの自動運用設定 (チャンネルと 1:1)
+// =====================================================================
+model PromotionChannelSetting {
+  id           String   @id @default(cuid())
+  channel      String   @unique // sns | note | blog
+  // true のときだけ dispatcher が実投稿する。既定 false (誤爆防止)。
+  auto_enabled Boolean  @default(false)
+  // 表示用ハンドル/URL (例: @account, note ユーザ名, ブログ URL)。
+  handle       String?
+  // 投稿先アクセストークン等の暗号化保存 (AES-256-GCM, API_CRED_KEY)。未接続なら null。
+  token_enc    String?  @db.Text
+  token_mask   String? // 表示用マスク
+  // チャンネル固有設定 (例: { webhook_url, api_base, default_hashtags[] })。
+  config_json  Json?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@map("promotion_channel_settings")
+}
+
+// =====================================================================
+// 販促投稿キュー [F-052] — 日程付きの投稿ドラフト。dispatcher が期限到来分を投稿する
+// =====================================================================
+model PromotionPost {
+  id            String    @id @default(cuid())
+  book_id       String
+  channel       String // sns | note | blog
+  title         String? // note/blog の見出し (SNS は null)
+  body          String    @db.Text // 投稿本文 (SNS 文面 / note 記事 / ブログ骨子)
+  scheduled_for DateTime // この時刻を過ぎたら投稿対象
+  // draft | scheduled | posting | posted | failed | skipped | canceled
+  status        String    @default("scheduled")
+  external_url  String? // 投稿成功後の公開 URL
+  error         String? // 投稿失敗時のメッセージ
+  posted_at     DateTime?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduled_for])
+  @@index([book_id])
+  @@index([channel, status])
+  @@map("promotion_posts")
 }
 
 // =====================================================================
@@ -317,21 +365,21 @@ model Cover {
 // KDP メタデータ [F-040]
 // =====================================================================
 model KdpMetadata {
-  id          String   @id @default(cuid())
-  book_id     String   @unique
-  description String   @db.Text
-  categories  String[] // KDP 2 カテゴリ
-  keywords    String[] // 最大 7 個
-  price_jpy   Int
+  id              String   @id @default(cuid())
+  book_id         String   @unique
+  description     String   @db.Text
+  categories      String[] // KDP 2 カテゴリ
+  keywords        String[] // 最大 7 個
+  price_jpy       Int
   // KDP 入稿用フリガナ/ローマ字 (F-020b)。AI 生成カタカナ + ローマ字自動変換。null=未生成。
-  title_kana       String?
-  title_romaji     String?
-  subtitle_kana    String?
-  subtitle_romaji  String?
-  author_kana      String?
-  author_romaji    String?
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  title_kana      String?
+  title_romaji    String?
+  subtitle_kana   String?
+  subtitle_romaji String?
+  author_kana     String?
+  author_romaji   String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 
   book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
 
@@ -641,7 +689,7 @@ model SalesFetchRun {
   account Account @relation(fields: [account_id], references: [id], onDelete: Cascade)
 
   @@index([account_id, started_at(sort: Desc)], map: "sales_fetch_runs_account_time_idx")
-  @@index([status, started_at(sort: Desc)],     map: "sales_fetch_runs_status_time_idx")
+  @@index([status, started_at(sort: Desc)], map: "sales_fetch_runs_status_time_idx")
   @@map("sales_fetch_runs")
 }
 
@@ -786,6 +834,11 @@ model AppSettings {
   prompt_auto_approval_rollback_h Int      @default(24)
   sales_auto_fetch_enabled        Boolean  @default(false)
   sales_auto_fetch_cron           String   @default("0 17 * * *") // 02:00 JST
+  // F-052: 販促自動運用。入稿(publish)で販促プランを自動立案し投稿キューを自動生成するか。
+  promo_auto_on_publish_enabled   Boolean  @default(false)
+  // F-052: 期限到来した投稿を自動投稿するディスパッチャ cron を有効化するマスタスイッチ。
+  promo_auto_post_enabled         Boolean  @default(false)
+  promo_dispatch_cron             String   @default("*/30 * * * *") // 30分毎に期限到来分をチェック
   kdp_submit_timeout_minutes      Int      @default(10)
   kdp_submit_retry_count          Int      @default(2)
   job_log_retention_days          Int      @default(90)

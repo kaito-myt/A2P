@@ -18,6 +18,7 @@ import { messages } from '@/lib/messages';
 
 const THUMBNAIL_TEXT_TASK = 'pipeline.book.thumbnail.text';
 const READINGS_GENERATE_TASK = 'pipeline.book.readings.generate';
+const PROMOTION_GENERATE_TASK = 'pipeline.book.promotion.generate';
 
 const UpdatePublishStatusSchema = z.object({
   book_id: z.string().min(1),
@@ -66,6 +67,39 @@ export async function updateBookPublishStatus(
         after_json: { publish_status },
       },
     });
+
+    // F-052: 「未出版 → published」への遷移で、設定が ON なら販促プランを自動立案。
+    // プラン生成タスクが成功すると promotion.posts.generate を連鎖起動し、投稿キューが自動生成される。
+    if (
+      publish_status === 'published' &&
+      existing.publish_status !== 'published'
+    ) {
+      try {
+        const settings = await prisma.appSettings.findUnique({
+          where: { id: 'singleton' },
+          select: { promo_auto_on_publish_enabled: true },
+        });
+        if (settings?.promo_auto_on_publish_enabled) {
+          const inFlight = await prisma.job.findFirst({
+            where: { book_id, kind: PROMOTION_GENERATE_TASK, status: { in: ['queued', 'running'] } },
+            select: { id: true },
+          });
+          if (!inFlight) {
+            const job = await prisma.job.create({
+              data: {
+                kind: PROMOTION_GENERATE_TASK,
+                book_id,
+                status: 'queued',
+                payload_json: { book_id },
+              },
+            });
+            await enqueueJob(PROMOTION_GENERATE_TASK, { book_id, job_id: job.id });
+          }
+        }
+      } catch {
+        // ベストエフォート: 販促自動立案の失敗は publish_status 更新の成否に影響させない。
+      }
+    }
 
     revalidatePath('/books');
     revalidatePath(`/books/${book_id}`);

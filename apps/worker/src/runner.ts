@@ -12,7 +12,11 @@ import { ConfigError } from '@a2p/contracts/errors';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
 import { prisma } from '@a2p/db';
 
-import { buildCronItemsWithSettings, buildParsedCronItems } from './crontab.js';
+import {
+  buildCronItemsWithSettings,
+  buildParsedCronItems,
+  type CronRuntimeSettings,
+} from './crontab.js';
 import {
   ALERT_COST_CHECK_TASK_NAME,
   alertCostCheckTask,
@@ -104,6 +108,18 @@ import {
   SALES_FETCH_DISPATCHER_TASK_NAME,
   salesFetchDispatcherTask,
 } from './tasks/sales-fetch-dispatcher.js';
+import {
+  PROMOTION_POSTS_GENERATE_TASK_NAME,
+  promotionPostsGenerateTask,
+} from './tasks/promotion-posts-generate.js';
+import {
+  PROMOTION_POST_PUBLISH_TASK_NAME,
+  promotionPostPublishTask,
+} from './tasks/promotion-post-publish.js';
+import {
+  PROMOTION_DISPATCH_TASK_NAME,
+  promotionDispatchTask,
+} from './tasks/promotion-dispatch.js';
 
 /**
  * graphile-worker runner 起動 (docs/05 §5 共通ポリシー / SP-01 T-01-12)
@@ -135,7 +151,7 @@ export interface StartRunnerOptions {
    * AppSettings を外から注入する場合（テスト用）。
    * 省略時は startRunner 内で DB から読む。
    */
-  appSettings?: { sales_auto_fetch_enabled: boolean; sales_auto_fetch_cron?: string | null };
+  appSettings?: CronRuntimeSettings;
 }
 
 export function buildTaskList(): TaskList {
@@ -171,6 +187,9 @@ export function buildTaskList(): TaskList {
     [FX_FETCH_TASK_NAME]: fxFetchTask,
     [SALES_FETCH_TASK_NAME]: salesFetchTask,
     [SALES_FETCH_DISPATCHER_TASK_NAME]: salesFetchDispatcherTask,
+    [PROMOTION_POSTS_GENERATE_TASK_NAME]: promotionPostsGenerateTask,
+    [PROMOTION_POST_PUBLISH_TASK_NAME]: promotionPostPublishTask,
+    [PROMOTION_DISPATCH_TASK_NAME]: promotionDispatchTask,
     [KDP_SUBMIT_TASK_NAME]: kdpSubmitTask,
     [KDP_ASIN_FETCH_TASK_NAME]: kdpAsinFetchTask,
     [ALERT_COST_CHECK_TASK_NAME]: alertCostCheckTask,
@@ -255,31 +274,39 @@ function attachEventLogging(events: WorkerEvents, log: Logger): void {
  * worker 起動時に AppSettings.sales_auto_fetch_enabled/cron を取得する。
  * DB 接続前 or 読取失敗の場合は safe デフォルト (enabled=false) を返す。
  */
-async function fetchAppSettingsForCron(
-  log: Logger,
-): Promise<{ sales_auto_fetch_enabled: boolean; sales_auto_fetch_cron: string | null }> {
+async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings> {
+  const safeDefault: CronRuntimeSettings = {
+    sales_auto_fetch_enabled: false,
+    sales_auto_fetch_cron: null,
+    promo_auto_post_enabled: false,
+    promo_dispatch_cron: null,
+  };
   try {
     const row = await prisma.appSettings.findUnique({
       where: { id: 'singleton' },
-      select: { sales_auto_fetch_enabled: true, sales_auto_fetch_cron: true },
+      select: {
+        sales_auto_fetch_enabled: true,
+        sales_auto_fetch_cron: true,
+        promo_auto_post_enabled: true,
+        promo_dispatch_cron: true,
+      },
     });
     if (!row) {
       log.warn(
         { task: 'startRunner' },
-        'AppSettings not found; sales.fetch.dispatch cron disabled (safe default)',
+        'AppSettings not found; auto-dispatch crons disabled (safe default)',
       );
-      return { sales_auto_fetch_enabled: false, sales_auto_fetch_cron: null };
+      return safeDefault;
     }
     return {
       sales_auto_fetch_enabled: row.sales_auto_fetch_enabled,
       sales_auto_fetch_cron: row.sales_auto_fetch_cron,
+      promo_auto_post_enabled: row.promo_auto_post_enabled,
+      promo_dispatch_cron: row.promo_dispatch_cron,
     };
   } catch (err) {
-    log.warn(
-      { err },
-      'failed to read AppSettings; sales.fetch.dispatch cron disabled (safe default)',
-    );
-    return { sales_auto_fetch_enabled: false, sales_auto_fetch_cron: null };
+    log.warn({ err }, 'failed to read AppSettings; auto-dispatch crons disabled (safe default)');
+    return safeDefault;
   }
 }
 

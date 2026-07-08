@@ -39,6 +39,8 @@ export const UpdateSettingsInputSchema = z.object({
   prompt_auto_approval_rollback_h: z.number().int().min(1).max(168).optional(),
   sales_auto_fetch_enabled: z.boolean().optional(),
   sales_auto_fetch_cron: z.string().optional(),
+  promo_auto_on_publish_enabled: z.boolean().optional(),
+  promo_auto_post_enabled: z.boolean().optional(),
   kdp_submit_timeout_minutes: z.number().int().min(1).max(60).optional(),
   kdp_submit_retry_count: z.number().int().min(0).max(5).optional(),
   job_log_retention_days: z.number().int().min(7).max(365).optional(),
@@ -66,6 +68,8 @@ export interface AppSettingsRow {
   prompt_auto_approval_rollback_h: number;
   sales_auto_fetch_enabled: boolean;
   sales_auto_fetch_cron: string;
+  promo_auto_on_publish_enabled: boolean;
+  promo_auto_post_enabled: boolean;
   kdp_submit_timeout_minutes: number;
   kdp_submit_retry_count: number;
   job_log_retention_days: number;
@@ -194,6 +198,12 @@ export async function updateSettingsCore(
     }
     if (data.sales_auto_fetch_cron !== undefined) {
       updateData.sales_auto_fetch_cron = data.sales_auto_fetch_cron;
+    }
+    if (data.promo_auto_on_publish_enabled !== undefined) {
+      updateData.promo_auto_on_publish_enabled = data.promo_auto_on_publish_enabled;
+    }
+    if (data.promo_auto_post_enabled !== undefined) {
+      updateData.promo_auto_post_enabled = data.promo_auto_post_enabled;
     }
     if (data.kdp_submit_timeout_minutes !== undefined) {
       updateData.kdp_submit_timeout_minutes = data.kdp_submit_timeout_minutes;

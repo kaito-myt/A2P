@@ -23,6 +23,8 @@ import { CATALOG_FETCH_TASK_NAME } from '../src/tasks/catalog-fetch.js';
 import { FX_FETCH_TASK_NAME } from '../src/tasks/fx-fetch.js';
 import { LOCKS_SWEEP_TASK_NAME } from '../src/tasks/locks-sweep.js';
 import { SALES_FETCH_DISPATCHER_TASK_NAME } from '../src/tasks/sales-fetch-dispatcher.js';
+import { PROMOTION_DISPATCH_TASK_NAME } from '../src/tasks/promotion-dispatch.js';
+import { PROMOTION_DISPATCH_CRON_DEFAULT } from '../src/crontab.js';
 
 describe('crontab.ts', () => {
   it('ARCHIVE_DB_BACKUP_CRON は土曜 18:00 UTC = 日曜 03:00 JST', () => {
@@ -201,6 +203,53 @@ describe('crontab.ts', () => {
     expect(parsed).toHaveLength(7);
     const tasks = parsed.map((p) => p.task).sort();
     expect(tasks).toContain(SALES_FETCH_DISPATCHER_TASK_NAME);
+  });
+
+  // -----------------------------------------------------------------------
+  // 販促自動投稿ディスパッチャ (F-052)
+  // -----------------------------------------------------------------------
+
+  it('PROMOTION_DISPATCH_CRON_DEFAULT は 30 分毎', () => {
+    expect(PROMOTION_DISPATCH_CRON_DEFAULT).toBe('*/30 * * * *');
+  });
+
+  it('promo_auto_post_enabled=false なら promotion.dispatch を含まない', () => {
+    const items = buildCronItemsWithSettings({
+      sales_auto_fetch_enabled: false,
+      promo_auto_post_enabled: false,
+    });
+    expect(items.find((c) => c.task === PROMOTION_DISPATCH_TASK_NAME)).toBeUndefined();
+  });
+
+  it('promo_auto_post_enabled=true なら promotion.dispatch を含む', () => {
+    const items = buildCronItemsWithSettings({
+      sales_auto_fetch_enabled: false,
+      promo_auto_post_enabled: true,
+    });
+    const promo = items.find((c) => c.task === PROMOTION_DISPATCH_TASK_NAME);
+    expect(promo).toBeDefined();
+    expect(promo!.identifier).toBe('promotion-dispatch');
+    expect(promo!.match).toBe(PROMOTION_DISPATCH_CRON_DEFAULT);
+  });
+
+  it('promo_dispatch_cron の DB 値を cron match に使う', () => {
+    const items = buildCronItemsWithSettings({
+      sales_auto_fetch_enabled: false,
+      promo_auto_post_enabled: true,
+      promo_dispatch_cron: '0 */2 * * *',
+    });
+    const promo = items.find((c) => c.task === PROMOTION_DISPATCH_TASK_NAME);
+    expect(promo!.match).toBe('0 */2 * * *');
+  });
+
+  it('sales と promo の両方 ON なら静的 6 + 2 件', () => {
+    const items = buildCronItemsWithSettings({
+      sales_auto_fetch_enabled: true,
+      promo_auto_post_enabled: true,
+    });
+    expect(items).toHaveLength(8);
+    expect(items.find((c) => c.task === SALES_FETCH_DISPATCHER_TASK_NAME)).toBeDefined();
+    expect(items.find((c) => c.task === PROMOTION_DISPATCH_TASK_NAME)).toBeDefined();
   });
 
   it('docs/05 §5.1 のドット表記タスク名 (archive.db.backup) を programmatic API で受け付ける', () => {

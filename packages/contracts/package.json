@@ -21,6 +21,7 @@
     "./agents/promoter": "./src/agents/promoter.ts",
     "./agents/judge": "./src/agents/judge.ts",
     "./agents/optimizer": "./src/agents/optimizer.ts",
+    "./promotion/channels": "./src/promotion/channels.ts",
     "./api/prompt-proposals": "./src/api/prompt-proposals.ts",
     "./api/ab-distribution": "./src/api/ab-distribution.ts"
   },

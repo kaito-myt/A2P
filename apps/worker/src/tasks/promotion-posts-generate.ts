@@ -1,0 +1,125 @@
+import type { JobHelpers, Task } from 'graphile-worker';
+import { z } from 'zod';
+
+import { buildPromotionPosts } from '@a2p/contracts/promotion/channels';
+import type { PromotionPlanOutput } from '@a2p/contracts/agents/promoter';
+import { ValidationError } from '@a2p/contracts/errors';
+import { createLogger, type Logger } from '@a2p/contracts/logger';
+import { prisma as defaultPrisma } from '@a2p/db';
+
+/**
+ * `promotion.posts.generate` タスク (F-052)
+ *
+ * 本の PromotionPlan から SNS/note/ブログの投稿ドラフトを日程付きで生成し、
+ * `promotion_posts` に登録する。入稿(publish)→販促プラン生成の後段で自動起動され、
+ * その後は dispatcher が期限到来分を自動投稿する。
+ *
+ * 冪等性: 既存の未投稿(scheduled/draft)分を削除してから作り直す (再生成に対応)。
+ * 既に投稿済(posted/posting/failed)のものは残す。
+ */
+
+export const PROMOTION_POSTS_GENERATE_TASK_NAME = 'promotion.posts.generate';
+
+export const PromotionPostsGeneratePayloadSchema = z.object({
+  book_id: z.string().min(1),
+  /** 日程の基準時刻 (ISO)。未指定なら現在時刻。通常は publish 時刻。 */
+  base_time: z.string().optional(),
+});
+
+export interface PromotionPostsGeneratePrisma {
+  promotionPlan: {
+    findUnique: (args: {
+      where: { book_id: string };
+      select: { plan_json: true };
+    }) => Promise<{ plan_json: unknown } | null>;
+  };
+  promotionPost: {
+    deleteMany: (args: {
+      where: { book_id: string; status: { in: string[] } };
+    }) => Promise<{ count: number }>;
+    createMany: (args: {
+      data: Array<{
+        book_id: string;
+        channel: string;
+        title: string | null;
+        body: string;
+        scheduled_for: Date;
+        status: string;
+      }>;
+    }) => Promise<{ count: number }>;
+  };
+}
+
+export interface PromotionPostsGenerateDeps {
+  prisma?: PromotionPostsGeneratePrisma;
+  logger?: Logger;
+  now?: () => Date;
+}
+
+export interface PromotionPostsGenerateResult {
+  created: number;
+  removed: number;
+}
+
+export async function runPromotionPostsGenerate(
+  payload: unknown,
+  deps: PromotionPostsGenerateDeps = {},
+): Promise<PromotionPostsGenerateResult> {
+  const parsed = PromotionPostsGeneratePayloadSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new ValidationError('promotion.posts.generate payload が不正です', {
+      details: { issues: parsed.error.issues },
+    });
+  }
+  const { book_id: bookId } = parsed.data;
+
+  const log = deps.logger ?? createLogger(`worker.${PROMOTION_POSTS_GENERATE_TASK_NAME}`);
+  const prisma = deps.prisma ?? (defaultPrisma as unknown as PromotionPostsGeneratePrisma);
+  const now = deps.now ?? (() => new Date());
+
+  const baseTime = parsed.data.base_time ? new Date(parsed.data.base_time) : now();
+  const baseMs = Number.isNaN(baseTime.getTime()) ? now().getTime() : baseTime.getTime();
+
+  const planRow = await prisma.promotionPlan.findUnique({
+    where: { book_id: bookId },
+    select: { plan_json: true },
+  });
+  if (!planRow) {
+    log.info({ task: PROMOTION_POSTS_GENERATE_TASK_NAME, bookId }, 'no promotion plan — nothing to generate');
+    return { created: 0, removed: 0 };
+  }
+
+  const plan = planRow.plan_json as PromotionPlanOutput;
+  const drafts = buildPromotionPosts(plan);
+
+  // 未投稿の既存分を作り直す (再生成対応)。投稿済/処理中/失敗は温存。
+  const removed = await prisma.promotionPost.deleteMany({
+    where: { book_id: bookId, status: { in: ['scheduled', 'draft'] } },
+  });
+
+  if (drafts.length === 0) {
+    log.info({ task: PROMOTION_POSTS_GENERATE_TASK_NAME, bookId }, 'plan has no channel content — no posts');
+    return { created: 0, removed: removed.count };
+  }
+
+  const created = await prisma.promotionPost.createMany({
+    data: drafts.map((d) => ({
+      book_id: bookId,
+      channel: d.channel,
+      title: d.title,
+      body: d.body,
+      scheduled_for: new Date(baseMs + d.offsetMinutes * 60_000),
+      status: 'scheduled',
+    })),
+  });
+
+  log.info(
+    { task: PROMOTION_POSTS_GENERATE_TASK_NAME, bookId, created: created.count, removed: removed.count },
+    'promotion posts generated',
+  );
+  return { created: created.count, removed: removed.count };
+}
+
+export const promotionPostsGenerateTask: Task = async (payload: unknown, _helpers: JobHelpers) => {
+  await runPromotionPostsGenerate(payload);
+};

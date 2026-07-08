@@ -8,6 +8,8 @@ import { NotFoundError, ValidationError } from '@a2p/contracts/errors';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
 import { prisma as defaultPrisma } from '@a2p/db';
 
+import { PROMOTION_POSTS_GENERATE_TASK_NAME } from './promotion-posts-generate.js';
+
 /**
  * `pipeline.book.promotion.generate` タスク (F-051)
  *
@@ -89,7 +91,7 @@ export interface PipelineBookPromotionGenerateDeps {
 
 export async function runPipelineBookPromotionGenerate(
   payload: unknown,
-  _addJob: AddJobLike,
+  addJob: AddJobLike,
   deps: PipelineBookPromotionGenerateDeps = {},
 ): Promise<void> {
   const parsed = PipelineBookPromotionGeneratePayloadSchema.safeParse(payload);
@@ -178,6 +180,16 @@ export async function runPipelineBookPromotionGenerate(
       data: { status: 'done', finished_at: now(), error: null, result_json: { ok: true } },
     });
     log.info({ task: PIPELINE_BOOK_PROMOTION_GENERATE_TASK_NAME, jobId, bookId }, 'promotion plan generated');
+
+    // 販促プランから投稿キューを自動生成 (ベストエフォート: 失敗しても plan 生成は成功扱い)。
+    try {
+      await addJob(PROMOTION_POSTS_GENERATE_TASK_NAME, { book_id: bookId, base_time: now().toISOString() });
+    } catch (enqErr) {
+      log.warn(
+        { task: PIPELINE_BOOK_PROMOTION_GENERATE_TASK_NAME, bookId, err: enqErr },
+        'failed to enqueue promotion.posts.generate',
+      );
+    }
   } catch (err) {
     try {
       await prisma.job.update({

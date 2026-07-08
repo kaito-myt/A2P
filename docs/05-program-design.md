@@ -2802,6 +2802,11 @@ export const logger = pino({
 - **`outlines.review_json`** — 章立て構成レビュー (outline_review) の結果を保存。
 - **`kdp_metadata`** に読み系カラム `title_kana/title_romaji/subtitle_kana/subtitle_romaji/
   author_kana/author_romaji` (F-020b フリガナ/ローマ字)。
+- **`promotion_channel_settings`** (F-052 販促チャンネル設定)。`channel @unique` (sns/note/blog),
+  `auto_enabled`, `handle`, `token_enc`/`token_mask` (AES-256-GCM), `config_json` (webhook_url等)。
+- **`promotion_posts`** (F-052 販促投稿キュー)。`book_id`, `channel`, `title?`, `body`, `scheduled_for`,
+  `status` (draft/scheduled/posting/posted/failed/skipped/canceled), `external_url?`, `error?`, `posted_at?`。
+- **`app_settings`** に `promo_auto_on_publish_enabled` / `promo_auto_post_enabled` / `promo_dispatch_cron`。
 
 ## 追加エージェントロール (prompts / model_assignments 対象)
 
@@ -2825,18 +2830,39 @@ export const logger = pino({
 - `pipeline.book.promotion.generate` (F-051 販促プラン生成)
 - `sales.fetch` を **実ブラウザ (Playwright + Chromium)** で実装 (Phase 3 SP-14)。KDPログイン→
   TOTP(otplib)で2FA自動突破→レポート取得。証跡(screenshot/HTML)を `debug/sales-fetch/` に保存。
+- **販促自動運用 (F-052)** の 3 タスク:
+  - `promotion.posts.generate` — 販促プラン(`promotion_plans.plan_json`)から `buildPromotionPosts`
+    (contracts/promotion/channels、純関数) で SNS/note/blog の投稿を日程付き生成し `promotion_posts` に登録。
+    未投稿(scheduled/draft)分を作り直す冪等設計。`pipeline.book.promotion.generate` 成功時に連鎖起動。
+  - `promotion.post.publish` — 1 投稿を PublisherPort で実投稿。`auto_enabled` ガード (手動 force で回避可)、
+    scheduled→posting→posted/failed の CAS。token を復号して port へ渡す。
+  - `promotion.dispatch` (cron) — `auto_enabled` チャンネル × `publish_status='published'` の本 ×
+    期限到来 scheduled 投稿を publish に流す。`AppSettings.promo_auto_post_enabled` で cron を条件付き有効化
+    (sales.fetch.dispatch と同じ `buildCronItemsWithSettings` 方式、worker再起動で反映)。
+  - **PublisherPort** DI 境界 (`apps/worker/src/tasks/promotion-post/`): 契約+stub は publisher-port.ts、
+    実 HTTP (Webhook 汎用経路 / X API v2) は http-publisher-port.ts に隔離。env `PROMOTION_PUBLISHER=stub`。
+  - **トリガー**: `updateBookPublishStatus` で「未出版→published」かつ `promo_auto_on_publish_enabled` の時に
+    `pipeline.book.promotion.generate` を enqueue → プラン生成 → 投稿キュー生成 → dispatcher が自動投稿。
 
 ## サムネ生成方式の変更 (F-007)
 
 gpt-image-1 に日本語文字を描かせず、**文字なしイラストを生成 → タイトル/サブタイトル/著者名を
 Noto Sans JP で実フォント合成** (`packages/output/image/compose-cover.ts`, opentype.js→SVG→sharp)。
 アート方向性は `cover_art_direction` が本ごとに決定。カバーは JPEG・縦 1600×2560。文字化けは原理的に発生しない。
+- **タイポグラフィ再描画パス**: 実フォント合成した「下絵」を gpt-image-1 の **images.edit** に渡し、
+  タイトル等を正確に保ったまま魅力的なタイポグラフィへ描き直す (`editImage`, `buildRefinePrompt`)。
+  ベストエフォート (失敗時は合成版を採用)、2 回目の呼び出しも `token_usage` に記録。
+  `generation_meta.typography_refined` でどちらを採用したか記録。
 
 ## 追加画面 (App Router)
 
 - `/content-review` (本文承認ゲート — outline/thumbnail 承認と同列のパイプライン画面)
 - `/masters` (著者名・レーベル名マスタ管理)
-- `/promotion` + `/promotion/[bookId]` (販促施策プランの生成・閲覧、告知文コピペ)
+- `/promotion` + `/promotion/[bookId]` (販促施策プランの生成・閲覧、施策ごとタブ切替、告知文コピペ)。
+  サイドバー「販促施策」を独立大項目に昇格。
+- `/promotion/channel/[channel]` (F-052 SNS/note/ブログの自動運用ボード — チャンネル切替タブ・
+  自動運用トグル・接続設定(handle/webhook/token)・投稿キュー(手動投稿/取消))。
+- 設定に「販促自動運用」セクション (入稿で自動立案 / 自動投稿ディスパッチャの 2 トグル)。
 - テーマ詳細に「Amazon 売れ筋レコメンド」「著者名・レーベル名」セクション追加。
 - KDP入稿チェックリストを一覧→詳細構成に変更、フリガナ/ローマ字項目・入稿ステータス手動切替・一括DL追加。
 
@@ -2844,5 +2870,6 @@ Noto Sans JP で実フォント合成** (`packages/output/image/compose-cover.ts
 
 - **デザイントークンをクール・ニュートラルSaaSへ刷新** (`packages/ui/tokens.ts` + `globals.css`)。
   グレーキャンバス+白カード+クールインク+indigoアクセント。サイドバーにアクティブ表示、ヘッダー白。
+  シェルを `h-screen` 化し **サイドバーと本文を独立スクロール** (サイドバーは `.scrollbar-none` でバー非表示)。
 - 本番: Railway Hobby プラン (Trial上限解消)。worker Dockerfile に Chromium 同梱。
   env `KDP_CRED_KEY` (KDP認証情報の暗号化), `SALES_FETCH_BROWSER`, `KDP_SIGNIN_URL`/`KDP_REPORT_URL_TEMPLATE`。

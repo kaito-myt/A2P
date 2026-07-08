@@ -36,6 +36,8 @@ const BASE_ROW: AppSettingsRow = {
   prompt_auto_approval_rollback_h: 24,
   sales_auto_fetch_enabled: false,
   sales_auto_fetch_cron: '0 17 * * *',
+  promo_auto_on_publish_enabled: false,
+  promo_auto_post_enabled: false,
   kdp_submit_timeout_minutes: 10,
   kdp_submit_retry_count: 2,
   job_log_retention_days: 90,
