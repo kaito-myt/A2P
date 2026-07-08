@@ -65,21 +65,34 @@ async function fetchReportHtml(args: FetchReportHtmlArgs): Promise<FetchReportHt
 
     // --- 1. サインインページへ ---
     await page.goto(SIGNIN_URL, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+    // 着地ページを必ず記録 (セレクタ調整の起点)。
+    await saveDebugArtifacts(page, args.yearMonth, 'landing').catch(() => {});
 
     // KDP トップに「サインイン」導線がある場合は踏む (既にサインインフォームなら空振り)。
     await clickIfPresent(page, 'a#signin, a[href*="/ap/signin"], #a-autoid-0-announce', 3_000);
+    await page.waitForLoadState('domcontentloaded', { timeout: timeoutMs }).catch(() => {});
+    await saveDebugArtifacts(page, args.yearMonth, 'after-signin-click').catch(() => {});
 
     // --- 2. Email 入力 ---
     const emailInput = 'input[type="email"], input#ap_email';
-    if (await isVisible(page, emailInput, 8_000)) {
+    const emailVisible = await isVisible(page, emailInput, 8_000);
+    if (emailVisible) {
       await page.fill(emailInput, args.credentials.email);
-      await clickIfPresent(page, 'input#continue, #continue', 3_000);
+      await clickIfPresent(page, 'input#continue, #continue, input[type="submit"]', 3_000);
+      await page.waitForLoadState('domcontentloaded', { timeout: timeoutMs }).catch(() => {});
     }
+    await saveDebugArtifacts(page, args.yearMonth, 'after-email').catch(() => {});
 
     // --- 3. Password 入力 ---
     const pwInput = 'input[type="password"], input#ap_password';
     if (!(await isVisible(page, pwInput, 10_000))) {
-      return { ok: false, reason: 'login_failed', message: 'password field not found' };
+      // 実ページを記録して失敗理由を後から診断できるようにする。
+      await saveDebugArtifacts(page, args.yearMonth, 'no-password').catch(() => {});
+      return {
+        ok: false,
+        reason: 'login_failed',
+        message: `password field not found (url=${page.url()}, emailFieldSeen=${emailVisible})`,
+      };
     }
     await page.fill(pwInput, args.credentials.password);
     // 「ログイン状態を保持」があればチェック
