@@ -24,6 +24,11 @@ export interface GenerateThemesAccount {
   pen_name: string;
 }
 
+export interface NameOption {
+  id: string;
+  name: string;
+}
+
 type Genre = 'practical' | 'business' | 'self_help' | '';
 
 const GENRE_OPTIONS: Array<{ value: Genre; label: string }> = [
@@ -35,8 +40,12 @@ const GENRE_OPTIONS: Array<{ value: Genre; label: string }> = [
 
 export function GenerateThemesButton({
   accounts = [],
+  authors = [],
+  labels = [],
 }: {
   accounts?: GenerateThemesAccount[];
+  authors?: NameOption[];
+  labels?: NameOption[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -47,6 +56,8 @@ export function GenerateThemesButton({
   const [keywordOrBrief, setKeywordOrBrief] = useState('');
   const [genre, setGenre] = useState<Genre>('practical');
   const [count, setCount] = useState(5);
+  const [authorNameId, setAuthorNameId] = useState('');
+  const [labelNameId, setLabelNameId] = useState('');
 
   const noAccounts = accounts.length === 0;
 
@@ -66,6 +77,8 @@ export function GenerateThemesButton({
         genre: genre === '' ? null : genre,
         keywordOrBrief: keywordOrBrief.trim(),
         count,
+        authorNameId: authorNameId || null,
+        labelNameId: labelNameId || null,
       });
       if (!res.ok) {
         setError(res.error?.message ?? 'テーマ生成に失敗しました');
@@ -173,6 +186,52 @@ export function GenerateThemesButton({
                     />
                   </div>
                 </div>
+
+                <div className="flex gap-space-snug">
+                  <div className="flex flex-1 flex-col gap-1">
+                    <Label htmlFor="gt-author">著者名</Label>
+                    <select
+                      id="gt-author"
+                      className="rounded-default border border-border-warm bg-cream-light px-3 py-2 text-body text-charcoal"
+                      value={authorNameId}
+                      onChange={(e) => setAuthorNameId(e.target.value)}
+                      disabled={pending}
+                    >
+                      <option value="">（指定なし・後で設定）</option>
+                      {authors.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-1 flex-col gap-1">
+                    <Label htmlFor="gt-label">レーベル名</Label>
+                    <select
+                      id="gt-label"
+                      className="rounded-default border border-border-warm bg-cream-light px-3 py-2 text-body text-charcoal"
+                      value={labelNameId}
+                      onChange={(e) => setLabelNameId(e.target.value)}
+                      disabled={pending}
+                    >
+                      <option value="">（指定なし・後で設定）</option>
+                      {labels.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {authors.length === 0 && labels.length === 0 && (
+                  <p className="text-caption text-muted">
+                    著者名・レーベル名は{' '}
+                    <a href="/masters" className="underline">
+                      マスタ管理
+                    </a>{' '}
+                    で登録するとここで選べます。
+                  </p>
+                )}
               </div>
             )}
 

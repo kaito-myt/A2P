@@ -57,6 +57,9 @@ const JobPayloadSchema = z.object({
   keyword_or_brief: z.string().min(1).max(500),
   count: z.number().int().min(1).max(30),
   exclude_titles_recent: z.array(z.string()).max(500).optional(),
+  // テーマ作成時に選択した著者名/レーベル名マスタ (任意)。生成候補全件に付与。
+  author_name_id: z.string().nullish(),
+  label_name_id: z.string().nullish(),
 });
 export type JobPayloadShape = z.infer<typeof JobPayloadSchema>;
 
@@ -233,6 +236,8 @@ export async function runPipelineThemeGenerate(
         accountId: jobPayload.account_id,
         themeSessionId,
         genre: jobPayload.genre,
+        authorNameId: jobPayload.author_name_id ?? null,
+        labelNameId: jobPayload.label_name_id ?? null,
       }),
     );
     const inserted = await prisma.themeCandidate.createMany({
@@ -312,6 +317,8 @@ function mapCandidateToRow(args: {
   accountId: string;
   themeSessionId: string;
   genre: 'practical' | 'business' | 'self_help' | null;
+  authorNameId?: string | null;
+  labelNameId?: string | null;
 }): {
   account_id: string;
   theme_session_id: string;
@@ -320,6 +327,8 @@ function mapCandidateToRow(args: {
   subtitle: string | null;
   hook: string;
   target_reader: string | null;
+  author_name_id: string | null;
+  label_name_id: string | null;
   competitors_json: unknown;
   signals_json: unknown;
   status: string;
@@ -334,6 +343,9 @@ function mapCandidateToRow(args: {
     subtitle: args.candidate.subtitle ?? null,
     hook: args.candidate.hook,
     target_reader: args.candidate.target_reader ?? null,
+    // テーマ作成時に選択した著者名/レーベル名を全候補に付与 (未選択なら null)。
+    author_name_id: args.authorNameId ?? null,
+    label_name_id: args.labelNameId ?? null,
     competitors_json: args.candidate.competitors,
     signals_json: args.candidate.signals,
     status: 'pending',

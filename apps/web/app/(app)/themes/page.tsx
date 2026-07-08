@@ -64,12 +64,24 @@ export default async function ThemesPage({ searchParams }: ThemesPageProps) {
   const rows = sortThemesByRecommendation(rawRows.map(serializeThemeRow));
   const summary = summarizeRows(rows);
 
-  // テーマ生成モーダル用に有効アカウント一覧を取得
-  const accounts = await prisma.account.findMany({
-    where: { status: 'active' },
-    select: { id: true, pen_name: true },
-    orderBy: { created_at: 'asc' },
-  });
+  // テーマ生成モーダル用に有効アカウント一覧 + 著者名/レーベル名マスタを取得
+  const [accounts, authorNames, labelNames] = await Promise.all([
+    prisma.account.findMany({
+      where: { status: 'active' },
+      select: { id: true, pen_name: true },
+      orderBy: { created_at: 'asc' },
+    }),
+    prisma.authorName.findMany({
+      where: { status: 'active' },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.labelName.findMany({
+      where: { status: 'active' },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    }),
+  ]);
 
   // このセッションのテーマ生成ジョブが進行中か (候補が出るまで「生成中」表示)
   const generatingCount = sessionId
@@ -101,7 +113,7 @@ export default async function ThemesPage({ searchParams }: ThemesPageProps) {
             <p className="text-body text-muted">{m.pageSubtitle}</p>
           </div>
           <div className="flex items-center gap-space-snug">
-            <GenerateThemesButton accounts={accounts} />
+            <GenerateThemesButton accounts={accounts} authors={authorNames} labels={labelNames} />
           </div>
         </div>
         {sessionId && (
@@ -136,7 +148,7 @@ export default async function ThemesPage({ searchParams }: ThemesPageProps) {
           <p className="text-body font-medium text-charcoal">{m.empty.title}</p>
           <p className="mt-2 text-body text-muted">{m.empty.body}</p>
           <div className="mt-space-snug flex justify-center">
-            <GenerateThemesButton accounts={accounts} />
+            <GenerateThemesButton accounts={accounts} authors={authorNames} labels={labelNames} />
           </div>
         </div>
       ) : (

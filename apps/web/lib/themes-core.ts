@@ -69,6 +69,9 @@ export const GenerateThemesInputSchema = z.object({
    * 未指定時は worker タスク側で `theme_candidates` から直近 90 日を取得する。
    */
   excludeTitlesRecent: z.array(z.string()).max(500).optional(),
+  /** テーマ作成時に選ぶ著者名マスタ / レーベル名マスタ (任意)。生成候補全件に適用。 */
+  authorNameId: z.string().max(64).nullish(),
+  labelNameId: z.string().max(64).nullish(),
 });
 
 export type GenerateThemesInput = z.infer<typeof GenerateThemesInputSchema>;
@@ -264,6 +267,8 @@ export async function generateThemesCore(
       ...(input.excludeTitlesRecent !== undefined
         ? { exclude_titles_recent: input.excludeTitlesRecent }
         : {}),
+      ...(input.authorNameId ? { author_name_id: input.authorNameId } : {}),
+      ...(input.labelNameId ? { label_name_id: input.labelNameId } : {}),
     };
     const job = await deps.jobRepo.create({
       data: {
