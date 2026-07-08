@@ -32,6 +32,8 @@ export interface LoggingContext {
   themeSessionId?: string;
   /** graphile-worker の Job.id。 */
   jobId?: string;
+  /** docs/06: 組織タスク ID — CEO/本部長/担当エージェントの呼出コストを紐付ける。 */
+  orgTaskId?: string;
   /** 役割 (Marketer / Writer / ...) — `prompts.role` と同値域。 */
   role: AgentRole;
 }
@@ -40,6 +42,7 @@ interface TokenUsageCreateData {
   book_id?: string | null;
   theme_session_id?: string | null;
   job_id?: string | null;
+  org_task_id?: string | null;
   provider: string;
   model: string;
   role: AgentRole;
@@ -225,6 +228,7 @@ export function withTokenLogging<T extends LLMClient>(
               book_id: ctx.bookId ?? null,
               theme_session_id: ctx.themeSessionId ?? null,
               job_id: ctx.jobId ?? null,
+              org_task_id: ctx.orgTaskId ?? null,
               provider: result.provider,
               model: result.model,
               role: ctx.role,

@@ -6,10 +6,25 @@
 > 開発時の Claude Code サブエージェント（`.claude/agents`）とは別物。本ドキュメントでは
 > これらを **Org エージェント** と呼ぶ。
 >
-> ステータス: **設計合意フェーズ（未実装）**。この文書で合意 → Phase 1 から実装に入る。
+> ステータス: **P1 実装済み（2026-07-09）**。CEO＋6本部長の起票系（経営神経系）が稼働。
+> P2 以降（担当者による実行＋効果検証、コスト実績紐付け、予算ガード）は未実装。
 >
-> 履歴: v1 は「販促のみの組織」。v2（本書）で **本の作成・出版・データ分析・販促・システム運用・
-> 予算管理までを含む全社組織**へ拡張。
+> 履歴: v1 は「販促のみの組織」。v2 で **本の作成・出版・データ分析・販促・システム運用・
+> 予算管理までを含む全社組織**へ拡張。v2.1（本書）で **P1 を実装**。
+
+## 実装状況（P1）
+
+| 領域 | 実体 |
+| --- | --- |
+| DB | `org_objectives` / `org_tasks`（`packages/db/schema.prisma`） ＋ `token_usage.org_task_id` ＋ `AppSettings.org_auto_plan_enabled/org_plan_cron`。migration `20260709000000_add_org_agents`（本番適用済）|
+| 共有型 | `@a2p/contracts/org`（本部/kind/状態/優先度、CEO・本部長 I/O スキーマ、ビューヘルパー）|
+| エージェント | `ceo`＋6本部長（`editorial_mgr`/`publish_mgr`/`analytics_mgr`/`promo_mgr`/`ops_mgr`/`finance_mgr`）。`packages/agents/src/org/{ceo,manager}.ts`。prompts/model_assignments 本番 seed 済（`apply-org-roles.ts`）|
+| worker | `org.plan`（CEOティック）`apps/worker/src/tasks/org-plan.ts`。`AppSettings.org_auto_plan_enabled=true` で日次cron条件付き有効化（既定 05:00 JST）＋ web から手動起動 |
+| web | `/org`（経営ダッシュボード）＋ `/org/tasks`（全社ToDoカンバン）＋ `actions/org.ts`（runOrgPlan/approve/complete/cancel）＋ サイドバー「経営（組織）」節 |
+| コスト | 全 Org 呼出は `withTokenLogging` の `orgTaskId` で `token_usage.org_task_id` に記録（P1は起票のCEO/本部長呼出。担当実行はP2）|
+
+P1 で確定した運用: 本部長が起票したタスクは、人手前提 kind（create_account/connect_account/publish_kdp）→ `needs_human`、
+それ以外 → `approved`（自動承認）。実行（担当エージェント）とコスト実績のタスク紐付けは **P2** で接続する。
 
 ---
 

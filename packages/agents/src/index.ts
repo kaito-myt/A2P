@@ -134,6 +134,22 @@ export {
   type GeneratePromotionDeps,
 } from './promoter/index.js';
 
+export {
+  planObjective,
+  buildCeoUserMessage,
+  type CeoPlanInput,
+  type CeoPlanDeps,
+  type CompanySnapshot,
+} from './org/ceo.js';
+
+export {
+  planDivisionTasks,
+  buildManagerUserMessage,
+  type ManagerPlanInput,
+  type ManagerPlanDeps,
+  type DivisionContext,
+} from './org/manager.js';
+
 export { kanaToRomaji } from './lib/kana-to-romaji.js';
 
 export {

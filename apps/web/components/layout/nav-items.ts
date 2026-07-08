@@ -34,6 +34,14 @@ export const navSections: readonly NavSection[] = [
     ],
   },
   {
+    key: 'org',
+    label: m.sectionOrg,
+    items: [
+      { key: 'org-dashboard', label: m.itemOrgDashboard, href: '/org', enabled: true },
+      { key: 'org-tasks', label: m.itemOrgTasks, href: '/org/tasks', enabled: true },
+    ],
+  },
+  {
     key: 'pipeline',
     label: m.sectionPipeline,
     items: [

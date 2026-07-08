@@ -7,9 +7,15 @@
 
 ---
 
-> **関連**: 販促を自律運用する **組織エージェント（社長→マネージャー→担当者＋ToDoバックログ）** の
-> 設計は [`docs/06-org-agents-design.md`](06-org-agents-design.md) に分離（設計合意フェーズ）。
-> 既存の販促自動運用（F-052）を実行レイヤーとして再利用し、その上に計画・検証・コスト統治を載せる。
+> **関連**: KDP出版事業を丸ごと回す **組織エージェント（CEO→6本部長→担当者＋全社ToDoバックログ）** の
+> 設計は [`docs/06-org-agents-design.md`](06-org-agents-design.md) に分離。**P1 実装済み（2026-07-09）**。
+> 既存パイプライン/販促自動運用を実行レイヤーとして再利用し、その上に計画・検証・コスト統治を載せる。
+>
+> P1 追加物（本ドキュメントの各レジストリへの反映）:
+> - **DB**: `org_objectives` / `org_tasks`（+`token_usage.org_task_id`、`app_settings.org_auto_plan_enabled/org_plan_cron`）
+> - **worker タスク**: `org.plan`（CEOティック。`org_auto_plan_enabled` で日次cron条件付き。既定 05:00 JST）
+> - **エージェント役割**: `ceo` ＋ 6本部長（`editorial_mgr`/`publish_mgr`/`analytics_mgr`/`promo_mgr`/`ops_mgr`/`finance_mgr`）
+> - **画面**: `/org`（経営ダッシュボード）・`/org/tasks`（全社ToDoカンバン）
 
 ## 0. 本ドキュメントの読み方
 

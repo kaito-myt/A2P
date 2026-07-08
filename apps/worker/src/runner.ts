@@ -121,6 +121,7 @@ import {
   promotionDispatchTask,
 } from './tasks/promotion-dispatch.js';
 import { BAKEOFF_RUN_TASK_NAME, bakeoffRunTask } from './tasks/bakeoff-run.js';
+import { ORG_PLAN_TASK_NAME, orgPlanTask } from './tasks/org-plan.js';
 
 /**
  * graphile-worker runner 起動 (docs/05 §5 共通ポリシー / SP-01 T-01-12)
@@ -199,6 +200,7 @@ export function buildTaskList(): TaskList {
     [ARCHIVE_DB_BACKUP_TASK_NAME]: archiveDbBackupTask,
     [LOCKS_SWEEP_TASK_NAME]: locksSweepTask,
     [BATCH_PLAN_DISPATCHER_TASK_NAME]: batchPlanDispatcherTask,
+    [ORG_PLAN_TASK_NAME]: orgPlanTask,
   };
 }
 
@@ -282,6 +284,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
     sales_auto_fetch_cron: null,
     promo_auto_post_enabled: false,
     promo_dispatch_cron: null,
+    org_auto_plan_enabled: false,
+    org_plan_cron: null,
   };
   try {
     const row = await prisma.appSettings.findUnique({
@@ -291,6 +295,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
         sales_auto_fetch_cron: true,
         promo_auto_post_enabled: true,
         promo_dispatch_cron: true,
+        org_auto_plan_enabled: true,
+        org_plan_cron: true,
       },
     });
     if (!row) {
@@ -305,6 +311,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
       sales_auto_fetch_cron: row.sales_auto_fetch_cron,
       promo_auto_post_enabled: row.promo_auto_post_enabled,
       promo_dispatch_cron: row.promo_dispatch_cron,
+      org_auto_plan_enabled: row.org_auto_plan_enabled,
+      org_plan_cron: row.org_plan_cron,
     };
   } catch (err) {
     log.warn({ err }, 'failed to read AppSettings; auto-dispatch crons disabled (safe default)');

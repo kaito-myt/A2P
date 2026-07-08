@@ -188,6 +188,7 @@ model Book {
   batchPlanItems        BatchPlanItem[]
   promotionPlan         PromotionPlan?
   promotionPosts        PromotionPost[]
+  orgTasks              OrgTask[]
 
   @@index([account_id, status, created_at(sort: Desc)], map: "books_account_status_idx")
   @@index([status, has_blocking_comments], map: "books_status_blocking_idx")
@@ -686,6 +687,7 @@ model TokenUsage {
   book_id             String? // nullable: テーマ生成段階等
   theme_session_id    String? // book_id 未確定時の集計キー
   job_id              String?
+  org_task_id         String? // docs/06 §9: 組織タスク別コスト集計キー (CEO/本部長/担当の呼出)
   provider            String // anthropic | openai | google
   model               String
   role                String // marketer | writer | editor | judge | thumbnail_text | thumbnail_image | optimizer | revision
@@ -703,6 +705,7 @@ model TokenUsage {
 
   @@index([book_id, created_at], map: "token_usage_book_time_idx")
   @@index([theme_session_id], map: "token_usage_session_idx")
+  @@index([org_task_id], map: "token_usage_org_task_idx")
   @@index([provider, model, created_at], map: "token_usage_provider_model_idx")
   @@index([role, created_at], map: "token_usage_role_idx")
   @@index([created_at(sort: Desc)], map: "token_usage_time_idx") // 月次集計
@@ -908,7 +911,74 @@ model AppSettings {
   latest_fx_rate                  Decimal? @db.Decimal(10, 4)
   // T-11-06: A/B 配信設定。type: Array<{ role, genre, baseline_id, candidate_id, ratio_candidate }>
   ab_distribution_json            Json?
+  // docs/06: 組織エージェント。CEOティック(org.plan)を日次cronで自動起動するか。
+  org_auto_plan_enabled           Boolean  @default(false)
+  org_plan_cron                   String   @default("0 20 * * *") // 05:00 JST (UTC 20:00)
   updated_at                      DateTime @updatedAt
 
   @@map("app_settings")
+}
+
+// =====================================================================
+// 組織エージェント [docs/06] — CEO → 本部長 → 担当者 ＋ 全社ToDoバックログ
+// =====================================================================
+
+/// CEO の方針（全社戦略）。期間ごとに 1 本のアクティブな Objective を持つ。
+model OrgObjective {
+  id                     String   @id @default(cuid())
+  period_label           String // "2026-07" | "launch:bookX"
+  title                  String
+  // type: { focus_books: string[]; goals: string[]; kpi: string[]; notes?: string }
+  body_json              Json
+  budget_jpy             Int? // この方針の全社コスト上限
+  // type: Partial<Record<Division, number>> 本部別予算配分
+  budget_allocation_json Json?
+  status                 String   @default("active") // active | closed
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+
+  tasks OrgTask[]
+
+  @@index([status, created_at(sort: Desc)], map: "org_objectives_status_time_idx")
+  @@map("org_objectives")
+}
+
+/// 全社ToDoバックログ本体。全 Org エージェントはここを介して協働する。
+model OrgTask {
+  id            String    @id @default(cuid())
+  objective_id  String?
+  parent_id     String?
+  division      String // production | publishing | analytics | promotion | sysops | finance
+  book_id       String?
+  owner_role    String // 起票者ロール (ceo | *_mgr | analyst 等)
+  assignee_role String // 実行担当ロール (writer | metadata_worker | content_creator | human 等)
+  channel       String? // 販促用: x | instagram | tiktok | note | blog
+  account_ref   String? // 販促用: 対象アカウント識別
+  kind          String // docs/06 §6 の本部別動詞
+  title         String
+  instruction   String    @db.Text
+  status        String    @default("proposed") // proposed|approved|in_progress|blocked|needs_human|done|canceled
+  priority      String    @default("should") // must | should | may
+  // type: string[] 依存タスクID
+  depends_on    String[]  @default([])
+  scheduled_for DateTime?
+  cost_jpy      Decimal?  @db.Decimal(10, 4)
+  // type: 実行成果 (生成物ID/ASIN/投稿URL/検証結果 等)
+  result_json   Json?
+  error         String?   @db.Text
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  done_at       DateTime?
+
+  objective OrgObjective? @relation(fields: [objective_id], references: [id], onDelete: SetNull)
+  parent    OrgTask?      @relation("OrgTaskChildren", fields: [parent_id], references: [id], onDelete: SetNull)
+  children  OrgTask[]     @relation("OrgTaskChildren")
+  book      Book?         @relation(fields: [book_id], references: [id], onDelete: SetNull)
+
+  @@index([status, scheduled_for], map: "org_tasks_status_sched_idx")
+  @@index([division, status], map: "org_tasks_division_status_idx")
+  @@index([book_id], map: "org_tasks_book_idx")
+  @@index([assignee_role, status], map: "org_tasks_assignee_status_idx")
+  @@index([objective_id], map: "org_tasks_objective_idx")
+  @@map("org_tasks")
 }

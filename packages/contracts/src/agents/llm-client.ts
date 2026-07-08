@@ -26,7 +26,15 @@ export type AgentRole =
   | 'promoter'
   | 'readings'
   | 'optimizer'
-  | 'revision';
+  | 'revision'
+  // docs/06 — 組織エージェント（CEO ＋ 6 本部長）。P2+ で担当者ロールを追加。
+  | 'ceo'
+  | 'editorial_mgr'
+  | 'publish_mgr'
+  | 'analytics_mgr'
+  | 'promo_mgr'
+  | 'ops_mgr'
+  | 'finance_mgr';
 
 /**
  * マルチモーダル入力用の画像添付。`content` (テキスト) と併せてユーザーメッセージに付与する。

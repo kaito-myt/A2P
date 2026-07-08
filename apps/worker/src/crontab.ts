@@ -8,6 +8,7 @@ import { CATALOG_FETCH_TASK_NAME } from './tasks/catalog-fetch.js';
 import { FX_FETCH_TASK_NAME } from './tasks/fx-fetch.js';
 import { SALES_FETCH_DISPATCHER_TASK_NAME } from './tasks/sales-fetch-dispatcher.js';
 import { PROMOTION_DISPATCH_TASK_NAME } from './tasks/promotion-dispatch.js';
+import { ORG_PLAN_TASK_NAME } from './tasks/org-plan.js';
 
 /**
  * graphile-worker cron 定義 (docs/05 §5.4 / SP-01 仕様: `apps/worker/src/crontab.ts`)
@@ -117,6 +118,20 @@ export const PROMOTION_DISPATCH_CRON_ITEM: CronItem = {
   identifier: 'promotion-dispatch',
 };
 
+/**
+ * docs/06: CEO ティック (org.plan) の日次 cron。既定 05:00 JST (UTC 20:00)。
+ * AppSettings.org_auto_plan_enabled=true のときだけ条件付き追加する。
+ */
+export const ORG_PLAN_CRON_DEFAULT = '0 20 * * *';
+
+/** `org.plan` の CronItem 定義。 */
+export const ORG_PLAN_CRON_ITEM: CronItem = {
+  task: ORG_PLAN_TASK_NAME,
+  match: ORG_PLAN_CRON_DEFAULT,
+  identifier: 'org-plan-daily',
+  payload: { trigger: 'cron' },
+};
+
 /** AppSettings の自動運用トグルに応じて CronItem 配列を組み立てる。 */
 export interface CronRuntimeSettings {
   sales_auto_fetch_enabled: boolean;
@@ -126,6 +141,10 @@ export interface CronRuntimeSettings {
   promo_auto_post_enabled?: boolean;
   /** F-052: 販促ディスパッチ cron (省略時は既定 30分毎)。 */
   promo_dispatch_cron?: string | null;
+  /** docs/06: CEO ティック (org.plan) を日次 cron で自動起動するか。 */
+  org_auto_plan_enabled?: boolean;
+  /** docs/06: org.plan cron (省略時は既定 05:00 JST)。 */
+  org_plan_cron?: string | null;
 }
 
 /** 後方互換エイリアス (旧名)。 */
@@ -157,6 +176,14 @@ export function buildCronItemsWithSettings(settings: CronRuntimeSettings): CronI
         ? settings.promo_dispatch_cron.trim()
         : PROMOTION_DISPATCH_CRON_DEFAULT;
     items.push({ ...PROMOTION_DISPATCH_CRON_ITEM, match: cronMatch });
+  }
+
+  if (settings.org_auto_plan_enabled) {
+    const cronMatch =
+      typeof settings.org_plan_cron === 'string' && settings.org_plan_cron.trim().length > 0
+        ? settings.org_plan_cron.trim()
+        : ORG_PLAN_CRON_DEFAULT;
+    items.push({ ...ORG_PLAN_CRON_ITEM, match: cronMatch });
   }
 
   return items;
