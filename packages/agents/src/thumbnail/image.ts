@@ -37,6 +37,7 @@ import {
 
 import {
   generateImage as defaultGenerateImage,
+  editImage as defaultEditImage,
   type GenerateImageFn,
   type ImageGenDeps,
 } from '../tools/image-gen.js';
@@ -86,6 +87,13 @@ export interface GenerateCoverImageDeps {
   withImageLoggingDeps?: WithImageLoggingDeps;
   /** Override typography compositor (default: real `composeCoverTypography`). */
   composeTypography?: ComposeTypographyFn;
+  /** Override the gpt-image-1 edit call used for the typography refine pass. */
+  editImage?: GenerateImageFn;
+  /**
+   * タイポグラフィ再描画パス (ChatGPT/gpt-image-1 edit) を実行するか。既定 true。
+   * false にすると実フォント合成版をそのまま最終カバーにする。
+   */
+  refineTypography?: boolean;
   /** Override R2 upload function (default: `uploadBuffer` from @a2p/storage). */
   uploadBuffer?: UploadBufferFn;
   /** Override Prisma cover repo (default: real prisma.cover). */
@@ -125,6 +133,40 @@ function buildImagePrompt(input: ThumbnailImageInput): string {
     '',
     'Output: a sharp, high-quality vertical book-cover artwork with NO text anywhere.',
   ];
+  return lines.join('\n');
+}
+
+/**
+ * タイポグラフィ再描画パス用のプロンプト。
+ *
+ * 入力: 実フォントで文字を焼き込んだ「下絵」カバー。
+ * 目的: 文字の内容・配置はそのままに、タイポグラフィだけを「売れる本」らしい
+ *       魅力的なデザインに描き直す。日本語を **一字一句正確** に描かせるのが最重要。
+ */
+function buildRefinePrompt(text: CoverText): string {
+  const lines: string[] = [
+    'This is a draft Japanese book cover. The artwork and the text placement are already correct.',
+    'Redraw this SAME cover, keeping the artwork and overall composition essentially unchanged, but elevate the TITLE TYPOGRAPHY into a polished, eye-catching, best-selling Amazon Kindle book-cover design (strong hierarchy, tasteful weight/contrast, a premium and appealing look — not a plain, thin, unstyled font).',
+    '',
+    'ABSOLUTELY CRITICAL — render the Japanese text EXACTLY as written below. Do NOT translate, transliterate, paraphrase, abbreviate, add, drop, reorder or corrupt any character. Every kanji, hiragana and katakana must be perfectly correct and legible:',
+    `- タイトル (title): 「${text.title}」`,
+  ];
+  if (text.subtitle && text.subtitle.trim().length > 0) {
+    lines.push(`- サブタイトル (subtitle): 「${text.subtitle}」`);
+  }
+  if (text.author && text.author.trim().length > 0) {
+    lines.push(`- 著者名 (author): 「${text.author}」`);
+  }
+  lines.push(
+    '',
+    'Rules:',
+    '- The title must be the dominant, most prominent element. Subtitle smaller; author name smallest, near the bottom.',
+    '- Keep the text fully inside the cover with safe margins; high contrast against the background so it is easy to read at thumbnail size.',
+    '- Do NOT add any extra words, logos, watermarks, barcodes, price tags, or captions that are not listed above.',
+    '- Preserve the vertical (portrait) book-cover orientation.',
+    '',
+    'Output: the same cover with beautiful, accurate Japanese typography.',
+  );
   return lines.join('\n');
 }
 
@@ -208,13 +250,51 @@ export async function generateCoverImage(
   if (parsed.author && parsed.author.trim().length > 0) {
     coverText.author = parsed.author;
   }
-  const finalImage = await compose(illustration, coverText);
+  const compositedImage = await compose(illustration, coverText);
+
+  // --- 4.5. Typography refine pass (gpt-image-1 edit) ---
+  // 実フォント合成版を「下絵」として gpt-image-1 に渡し、タイトル等を正確に保った
+  // まま魅力的なタイポグラフィへ描き直させる。ベストエフォート: 失敗時は合成版を使う。
+  let finalImage = compositedImage;
+  let refineApplied = false;
+  const refineEnabled = deps.refineTypography ?? true;
+  if (refineEnabled) {
+    try {
+      const editFn: GenerateImageFn = deps.editImage ?? defaultEditImage;
+      const wrappedEdit = withImageLogging(editFn, loggingCtx, deps.withImageLoggingDeps);
+      const refined = await wrappedEdit(
+        {
+          prompt: buildRefinePrompt(coverText),
+          image: compositedImage,
+          width: parsed.width,
+          height: parsed.height,
+          count: 1,
+          quality: 'high',
+          outputFormat: 'jpeg',
+          outputCompression: 92,
+        },
+        deps.imageGenDeps,
+      );
+      const refinedImage = refined.images[0];
+      if (refinedImage && refinedImage.byteLength > 0) {
+        finalImage = refinedImage;
+        refineApplied = true;
+      }
+    } catch (err) {
+      // ベストエフォート: 再描画に失敗しても実フォント合成版で確実にカバーを出す。
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[generateCoverImage] typography refine pass failed; falling back to composited image',
+        err,
+      );
+    }
+  }
 
   // --- 5. Generate cover ID and R2 key ---
   const coverId = (deps.generateId ?? defaultGenerateId)();
   const r2Key = bookArtifact(parsed.bookId, 'cover_source', `${coverId}.jpg`);
 
-  // --- 6. Upload composited cover to R2 ---
+  // --- 6. Upload final cover to R2 ---
   const upload = deps.uploadBuffer ?? defaultUploadBuffer;
   await upload(r2Key, finalImage, 'image/jpeg');
 
@@ -229,8 +309,10 @@ export async function generateCoverImage(
     height: parsed.height,
     image_size_bytes: finalImage.byteLength,
     format: 'jpeg',
-    // 文字は AI ではなく実フォントで合成済 (文字化けは原理的に発生しない)。
+    // 文字は実フォントで合成後、gpt-image-1 edit で魅力的なタイポグラフィへ再描画。
     text_overlay: true,
+    // true: gpt-image-1 edit で再描画済 / false: 実フォント合成版をそのまま採用。
+    typography_refined: refineApplied,
     style_guide: parsed.styleGuide ?? '',
   };
 

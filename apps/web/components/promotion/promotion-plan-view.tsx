@@ -116,47 +116,55 @@ function LaunchPanel({ plan }: { plan: Plan }) {
   );
 }
 
-function PromoCopyPanel({ plan }: { plan: Plan }) {
-  const promo = plan.promo_copy;
-  if (!promo) return null;
+function SnsPanel({ plan }: { plan: Plan }) {
+  const posts = plan.promo_copy?.x_posts ?? [];
+  if (posts.length === 0) return null;
   return (
     <Panel>
-      {promo.x_posts && promo.x_posts.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <div className="text-button-sm text-charcoal-82">{m.xPosts}</div>
-          {promo.x_posts.map((post, i) => (
-            <div
-              key={i}
-              className="flex items-start justify-between gap-2 rounded-card border border-border-warm bg-cream p-space-snug"
-            >
-              <p className="whitespace-pre-wrap text-button-sm text-charcoal">{post}</p>
-              <CopyButton text={post} />
-            </div>
-          ))}
-        </div>
-      )}
-      {promo.note_article && (
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between">
-            <div className="text-button-sm text-charcoal-82">{m.noteArticle}</div>
-            <CopyButton text={promo.note_article} />
+      <p className="text-caption text-muted">{m.snsHint}</p>
+      <div className="flex flex-col gap-2">
+        {posts.map((post, i) => (
+          <div
+            key={i}
+            className="flex items-start justify-between gap-2 rounded-card border border-border-warm bg-cream p-space-snug"
+          >
+            <p className="whitespace-pre-wrap text-button-sm text-charcoal">{post}</p>
+            <CopyButton text={post} />
           </div>
-          <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-card border border-border-warm bg-cream p-space-snug text-button-sm text-charcoal">
-            {promo.note_article}
-          </pre>
-        </div>
-      )}
-      {promo.blog_outline && (
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between">
-            <div className="text-button-sm text-charcoal-82">{m.blogOutline}</div>
-            <CopyButton text={promo.blog_outline} />
-          </div>
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-card border border-border-warm bg-cream p-space-snug text-button-sm text-charcoal">
-            {promo.blog_outline}
-          </pre>
-        </div>
-      )}
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function NotePanel({ plan }: { plan: Plan }) {
+  const note = plan.promo_copy?.note_article;
+  if (!note) return null;
+  return (
+    <Panel>
+      <div className="flex items-center justify-between">
+        <p className="text-caption text-muted">{m.noteHint}</p>
+        <CopyButton text={note} />
+      </div>
+      <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-card border border-border-warm bg-cream p-space-snug text-button-sm text-charcoal">
+        {note}
+      </pre>
+    </Panel>
+  );
+}
+
+function BlogPanel({ plan }: { plan: Plan }) {
+  const blog = plan.promo_copy?.blog_outline;
+  if (!blog) return null;
+  return (
+    <Panel>
+      <div className="flex items-center justify-between">
+        <p className="text-caption text-muted">{m.blogHint}</p>
+        <CopyButton text={blog} />
+      </div>
+      <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-card border border-border-warm bg-cream p-space-snug text-button-sm text-charcoal">
+        {blog}
+      </pre>
     </Panel>
   );
 }
@@ -213,7 +221,12 @@ export function PromotionPlanView({ plan }: { plan: Plan }) {
       });
     if (plan.launch_checklist && plan.launch_checklist.length > 0)
       t.push({ key: 'launch', label: m.launchChecklist, render: () => <LaunchPanel plan={plan} /> });
-    if (plan.promo_copy) t.push({ key: 'promo', label: m.promoCopy, render: () => <PromoCopyPanel plan={plan} /> });
+    if (plan.promo_copy?.x_posts && plan.promo_copy.x_posts.length > 0)
+      t.push({ key: 'sns', label: m.tabSns, render: () => <SnsPanel plan={plan} /> });
+    if (plan.promo_copy?.note_article)
+      t.push({ key: 'note', label: m.tabNote, render: () => <NotePanel plan={plan} /> });
+    if (plan.promo_copy?.blog_outline)
+      t.push({ key: 'blog', label: m.tabBlog, render: () => <BlogPanel plan={plan} /> });
     if (plan.ongoing_calendar && plan.ongoing_calendar.length > 0)
       t.push({ key: 'ongoing', label: m.ongoing, render: () => <OngoingPanel plan={plan} /> });
     return t;

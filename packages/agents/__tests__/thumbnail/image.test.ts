@@ -105,6 +105,9 @@ function baseDeps(overrides: Partial<GenerateCoverImageDeps> = {}): GenerateCove
     uploadBuffer: overrides.uploadBuffer ?? makeFakeUploadBuffer(),
     prisma: overrides.prisma ?? { cover: makeFakeCoverRepo() },
     generateId: overrides.generateId ?? (() => 'test-cover-id'),
+    // 既定は再描画パスを OFF にして「合成版がそのまま最終」という従来セマンティクスを保つ。
+    // 再描画パス自体は専用の describe で検証する。
+    refineTypography: overrides.refineTypography ?? false,
     withImageLoggingDeps: overrides.withImageLoggingDeps ?? {
       prisma: {
         tokenUsage: { create: vi.fn() },
@@ -432,5 +435,85 @@ describe('generateCoverImage -- composited output', () => {
     }).data.generation_meta_json;
     expect(meta.image_size_bytes).toBe(composited.byteLength);
     expect(meta.format).toBe('jpeg');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 14. typography refine pass (gpt-image-1 edit)
+// ---------------------------------------------------------------------------
+
+describe('generateCoverImage -- typography refine pass', () => {
+  it('feeds the composited draft + exact title into editImage and uploads the refined result', async () => {
+    const composited = Buffer.from('COMPOSITED_DRAFT');
+    const refined = Buffer.from('REFINED_BEAUTIFUL_COVER');
+    const compose = vi.fn(async () => composited) as unknown as ComposeTypographyFn;
+    const editImage = vi.fn(
+      async (_args: GenerateImageArgs): Promise<GenerateImageResult> => ({
+        images: [refined],
+        costJpy: 18.0,
+        usage: { imageCount: 1 },
+      }),
+    ) as unknown as GenerateImageFn;
+    const uploadBuf = makeFakeUploadBuffer();
+    const coverRepo = makeFakeCoverRepo();
+
+    await generateCoverImage(
+      baseInput({ title: 'メインタイトル', subtitle: 'サブ', author: 'ミヤタ' }),
+      baseDeps({
+        composeTypography: compose,
+        editImage,
+        refineTypography: true,
+        uploadBuffer: uploadBuf,
+        prisma: { cover: coverRepo },
+      }),
+    );
+
+    // edit は合成下絵を入力画像に、タイトルを正確に描く指示で呼ばれる
+    expect(editImage).toHaveBeenCalledTimes(1);
+    const editArgs = (editImage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as GenerateImageArgs;
+    expect(editArgs.image).toBe(composited);
+    expect(editArgs.prompt).toContain('メインタイトル');
+    expect(editArgs.prompt).toContain('サブ');
+    expect(editArgs.prompt).toContain('ミヤタ');
+
+    // アップロードされるのは再描画後のバッファ
+    const [, buf] = uploadBuf.mock.calls[0]!;
+    expect(buf).toBe(refined);
+
+    const meta = (coverRepo.create.mock.calls[0]![0] as unknown as {
+      data: { generation_meta_json: Record<string, unknown> };
+    }).data.generation_meta_json;
+    expect(meta.typography_refined).toBe(true);
+    expect(meta.image_size_bytes).toBe(refined.byteLength);
+  });
+
+  it('falls back to the composited draft when the refine pass throws', async () => {
+    const composited = Buffer.from('COMPOSITED_DRAFT_FALLBACK');
+    const compose = vi.fn(async () => composited) as unknown as ComposeTypographyFn;
+    const editImage = vi.fn(async () => {
+      throw new Error('gpt-image-1 edit failed');
+    }) as unknown as GenerateImageFn;
+    const uploadBuf = makeFakeUploadBuffer();
+    const coverRepo = makeFakeCoverRepo();
+
+    await generateCoverImage(
+      baseInput(),
+      baseDeps({
+        composeTypography: compose,
+        editImage,
+        refineTypography: true,
+        uploadBuffer: uploadBuf,
+        prisma: { cover: coverRepo },
+      }),
+    );
+
+    // 失敗しても合成版で確実にカバーが出る
+    const [, buf] = uploadBuf.mock.calls[0]!;
+    expect(buf).toBe(composited);
+
+    const meta = (coverRepo.create.mock.calls[0]![0] as unknown as {
+      data: { generation_meta_json: Record<string, unknown> };
+    }).data.generation_meta_json;
+    expect(meta.typography_refined).toBe(false);
   });
 });

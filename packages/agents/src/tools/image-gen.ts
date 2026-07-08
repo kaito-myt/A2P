@@ -44,6 +44,12 @@ export interface GenerateImageArgs {
   outputFormat?: ImageOutputFormat;
   /** jpeg/webp の圧縮率 0-100 (高いほど高品質)。outputFormat が jpeg/webp の時のみ有効。 */
   outputCompression?: number;
+  /**
+   * 指定時は images.generate ではなく images.edit を用い、この画像を入力参照として
+   * 再生成する (カバーの「文字入り下絵 → 魅力的なタイポグラフィに再描画」パス)。
+   * `editImage` 経由で使う。`generateImage` は本フィールドを無視する。
+   */
+  image?: Buffer;
 }
 
 export interface GenerateImageResult {
@@ -73,14 +79,36 @@ export interface OpenAIImagesClient {
     }): Promise<{
       data?: Array<{ b64_json?: string | null } | null> | null;
     }>;
+    /** gpt-image-1 の画像編集 (入力画像を参照に再生成)。editImage で使用 (任意)。 */
+    edit?(args: {
+      model: string;
+      image: unknown;
+      prompt: string;
+      size: string;
+      n: number;
+      quality?: ImageQuality;
+      output_format?: ImageOutputFormat;
+      output_compression?: number;
+    }): Promise<{
+      data?: Array<{ b64_json?: string | null } | null> | null;
+    }>;
   };
 }
+
+/** Buffer → OpenAI SDK が受け付ける File-like への変換関数。 */
+export type ToFileFn = (
+  buffer: Buffer,
+  filename: string,
+  opts: { type: string },
+) => Promise<unknown>;
 
 export interface ImageGenDeps {
   /** API キー解決関数 (既定: `getApiKey('openai')`)。 */
   getApiKey?: () => Promise<string>;
   /** OpenAI クライアント生成関数 (テスト時に差し替え可)。 */
   openaiFactory?: (apiKey: string) => OpenAIImagesClient;
+  /** Buffer→File 変換 (既定: openai SDK の `toFile`)。editImage 用。 */
+  toFile?: ToFileFn;
 }
 
 // ---------------------------------------------------------------------------
@@ -282,3 +310,109 @@ export type GenerateImageFn = (
   args: GenerateImageArgs,
   deps?: ImageGenDeps,
 ) => Promise<GenerateImageResult>;
+
+/**
+ * 既定の `toFile` 解決関数。`openai` SDK の `toFile` を遅延 import。
+ */
+async function defaultToFile(
+  buffer: Buffer,
+  filename: string,
+  opts: { type: string },
+): Promise<unknown> {
+  const mod = (await import('openai')) as unknown as { toFile?: ToFileFn };
+  if (typeof mod.toFile !== 'function') {
+    throw new ConfigError('editImage: openai SDK does not export toFile');
+  }
+  return mod.toFile(buffer, filename, opts);
+}
+
+/**
+ * OpenAI `gpt-image-1` の **画像編集** で、入力画像 (`args.image`) を参照に再生成する。
+ *
+ * カバー生成の最終仕上げに使う: 実フォントで文字を焼き込んだ「下絵」を渡し、
+ * 「このタイトル/サブタイトル/著者名を正確に、かつ魅力的なタイポグラフィで描いて」と
+ * 指示して gpt-image-1 に再描画させる (質素なフォント合成より訴求力を上げる)。
+ *
+ * シグネチャは `GenerateImageFn` 互換 (args.image 必須)。`withImageLogging` で
+ * そのまま wrap できる。
+ *
+ * @throws ConfigError 入力検証エラー (image 未指定 / 空 prompt / 不正サイズ)
+ * @throws ProviderError 認証/リクエスト/サーバエラー (リトライ後)
+ */
+export async function editImage(
+  args: GenerateImageArgs,
+  deps: ImageGenDeps = {},
+): Promise<GenerateImageResult> {
+  if (!args.image || args.image.byteLength === 0) {
+    throw new ConfigError('editImage: image buffer is required');
+  }
+  if (!args.prompt || args.prompt.trim().length === 0) {
+    throw new ConfigError('editImage: prompt is required');
+  }
+  const count = args.count ?? 1;
+  if (!Number.isInteger(count) || count <= 0) {
+    throw new ConfigError(`editImage: count must be a positive integer (got ${String(count)})`);
+  }
+  const size = normalizeSize(args.width, args.height);
+
+  const apiKey = await (deps.getApiKey ?? defaultGetApiKey)();
+  const client = await (deps.openaiFactory
+    ? Promise.resolve(deps.openaiFactory(apiKey))
+    : defaultOpenaiFactory(apiKey));
+  const toFile = deps.toFile ?? defaultToFile;
+
+  const contentType =
+    args.outputFormat === 'png'
+      ? 'image/png'
+      : args.outputFormat === 'webp'
+        ? 'image/webp'
+        : 'image/jpeg';
+  const filename =
+    args.outputFormat === 'png' ? 'cover.png' : args.outputFormat === 'webp' ? 'cover.webp' : 'cover.jpg';
+  const file = await toFile(args.image, filename, { type: contentType });
+
+  const editFn = client.images.edit;
+  if (typeof editFn !== 'function') {
+    throw new ConfigError('editImage: OpenAI client does not implement images.edit');
+  }
+
+  const response = await runWithRetry(() =>
+    editFn.call(client.images, {
+      model: MODEL,
+      image: file,
+      prompt: args.prompt,
+      size,
+      n: count,
+      ...(args.quality !== undefined ? { quality: args.quality } : {}),
+      ...(args.outputFormat !== undefined ? { output_format: args.outputFormat } : {}),
+      ...(args.outputCompression !== undefined
+        ? { output_compression: args.outputCompression }
+        : {}),
+    }),
+  );
+
+  const data = response.data ?? [];
+  const images: Buffer[] = [];
+  for (const item of data) {
+    const b64 = item?.b64_json;
+    if (typeof b64 !== 'string' || b64.length === 0) {
+      throw new ProviderError(`${PROVIDER} images.edit returned empty b64_json`, {
+        retryable: false,
+        details: { received: data.length },
+      });
+    }
+    images.push(Buffer.from(b64, 'base64'));
+  }
+
+  if (images.length === 0) {
+    throw new ProviderError(`${PROVIDER} images.edit returned no images`, {
+      retryable: false,
+    });
+  }
+
+  return {
+    images,
+    costJpy: 0,
+    usage: { imageCount: images.length },
+  };
+}
