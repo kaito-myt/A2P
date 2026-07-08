@@ -126,3 +126,17 @@ button {
 [lang='ja'] {
   font-feature-settings: 'palt';
 }
+
+/*
+ * scrollbar-none — スクロールは可能だがスクロールバーを描画しない。
+ * サイドバー内ナビで使用 (本文とは独立してスクロールする)。
+ */
+.scrollbar-none {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE / legacy Edge */
+}
+.scrollbar-none::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none; /* Chrome / Safari / Edge */
+}

@@ -54,10 +54,16 @@ export const navSections: readonly NavSection[] = [
     ],
   },
   {
+    key: 'promotion',
+    label: m.sectionPromotion,
+    items: [
+      { key: 'promotion', label: m.itemPromotion, href: '/promotion', enabled: true },
+    ],
+  },
+  {
     key: 'analytics',
     label: m.sectionAnalytics,
     items: [
-      { key: 'promotion', label: m.itemPromotion, href: '/promotion', enabled: true },
       { key: 'sales', label: m.itemSalesKpi, href: '/sales', enabled: true },
       { key: 'cost', label: m.itemCostDetail, href: '/cost', enabled: true },
     ],
