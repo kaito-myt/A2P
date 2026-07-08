@@ -41,17 +41,59 @@ export async function importKdpReport(
     return fail('validation', 'KDP ダッシュボードの .xlsx を選択してください');
   }
 
+  const createMissing = formData.get('create_external') === 'true';
+
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
     const rows = await parseKdpWorkbook(buffer);
     const agg = aggregateKdpRoyalties(rows);
-    const res = await importKdpRecordsCore(agg, {
-      bookRepo: prisma.book as unknown as KdpImportDeps['bookRepo'],
-      salesRecordRepo: prisma.salesRecord as unknown as KdpImportDeps['salesRecordRepo'],
-    });
+
+    // 外部書籍作成用: 登録先アカウント (最初の active) を一度だけ解決。
+    let accountId: string | null = null;
+    if (createMissing) {
+      const acct = await prisma.account.findFirst({
+        where: { status: 'active' },
+        orderBy: { created_at: 'asc' },
+        select: { id: true },
+      });
+      accountId = acct?.id ?? null;
+    }
+
+    const createdByAsin = new Map<string, string>();
+    const res = await importKdpRecordsCore(
+      agg,
+      {
+        bookRepo: prisma.book as unknown as KdpImportDeps['bookRepo'],
+        salesRecordRepo: prisma.salesRecord as unknown as KdpImportDeps['salesRecordRepo'],
+        createExternalBook: async (rec) => {
+          if (!accountId) return null;
+          // 同一 ASIN が複数月にまたがる場合、1冊を使い回す (unique asin 制約対策)。
+          const cached = createdByAsin.get(rec.asin);
+          if (cached) return { id: cached };
+          const title = (rec.title.split(/[:：]/)[0]?.trim() || rec.title).slice(0, 200);
+          const book = await prisma.book.create({
+            data: {
+              account_id: accountId,
+              title,
+              asin: rec.asin,
+              // KDP から取り込んだ外部書籍 (本ツール未生成)。
+              status: 'external',
+              publish_status: 'published',
+              prompt_version_ids_json: {},
+              model_assignment_snapshot: {},
+            },
+            select: { id: true },
+          });
+          createdByAsin.set(rec.asin, book.id);
+          return { id: book.id };
+        },
+      },
+      { createMissing },
+    );
     if (res.ok) {
       revalidatePath('/sales');
       revalidatePath('/sales/manual');
+      revalidatePath('/books');
     }
     return res;
   } catch (err) {

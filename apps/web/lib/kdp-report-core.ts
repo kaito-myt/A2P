@@ -138,6 +138,8 @@ export interface KdpImportDeps {
       select: { id: true; title: true };
     }) => Promise<{ id: string; title: string } | null>;
   };
+  /** 未登録 ASIN を「外部書籍」として登録するための作成関数 (opts.createMissing 時のみ使用)。 */
+  createExternalBook?: (rec: KdpRoyaltyRecord) => Promise<{ id: string } | null>;
   salesRecordRepo: {
     findUnique: (args: {
       where: { book_id_year_month: { book_id: string; year_month: string } };
@@ -154,6 +156,8 @@ export interface KdpImportDeps {
 export interface KdpImportResult {
   inserted: number;
   updated: number;
+  /** 外部書籍として新規登録した冊数。 */
+  createdExternal: number;
   /** 該当書籍 (ASIN) が見つからず取り込めなかったレコード。 */
   notFound: Array<{ asin: string; title: string; year_month: string; royalty_jpy: number }>;
   skippedNonJpy: number;
@@ -164,6 +168,7 @@ export interface KdpImportResult {
 export async function importKdpRecordsCore(
   agg: KdpAggregateResult,
   deps: KdpImportDeps,
+  opts: { createMissing?: boolean } = {},
 ): Promise<ActionResult<KdpImportResult>> {
   if (agg.records.length === 0 && agg.parsedRows === 0) {
     return fail('validation', 'ロイヤリティ行が見つかりませんでした（KDP ダッシュボードの xlsx か確認してください）');
@@ -171,11 +176,13 @@ export async function importKdpRecordsCore(
 
   let inserted = 0;
   let updated = 0;
+  let createdExternal = 0;
   const notFound: KdpImportResult['notFound'] = [];
 
   for (const rec of agg.records) {
     // 1. ASIN 一致 → 2. タイトル完全一致 → 3. 主題(コロン前)一致 の順で書籍を解決。
-    let book = await deps.bookRepo.findFirst({ where: { asin: rec.asin }, select: { id: true, title: true } });
+    let book: { id: string; title?: string } | null =
+      await deps.bookRepo.findFirst({ where: { asin: rec.asin }, select: { id: true, title: true } });
     if (!book && rec.title) {
       book = await deps.bookRepo.findFirst({ where: { title: rec.title }, select: { id: true, title: true } });
     }
@@ -183,6 +190,14 @@ export async function importKdpRecordsCore(
       const main = rec.title.split(/[:：]/)[0]!.trim();
       if (main && main !== rec.title) {
         book = await deps.bookRepo.findFirst({ where: { title: main }, select: { id: true, title: true } });
+      }
+    }
+    // 未登録 → opts.createMissing なら外部書籍として登録。
+    if (!book && opts.createMissing && deps.createExternalBook) {
+      const created = await deps.createExternalBook(rec);
+      if (created) {
+        book = created;
+        createdExternal += 1;
       }
     }
     if (!book) {
@@ -205,6 +220,7 @@ export async function importKdpRecordsCore(
   return ok({
     inserted,
     updated,
+    createdExternal,
     notFound,
     skippedNonJpy: agg.skippedNonJpy,
     skippedInvalid: agg.skippedInvalid,

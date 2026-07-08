@@ -115,6 +115,26 @@ describe('importKdpRecordsCore', () => {
     }
   });
 
+  it('createMissing 時は未登録を外部書籍として作成し取り込む', async () => {
+    const { d } = deps({});
+    let created = 0;
+    d.createExternalBook = vi.fn(async () => { created += 1; return { id: `ext-${created}` }; });
+    const agg = aggregateKdpRoyalties([row({})]);
+    const res = await importKdpRecordsCore(agg, d, { createMissing: true });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data.createdExternal).toBe(1);
+      expect(res.data.inserted).toBe(1);
+      expect(res.data.notFound).toHaveLength(0);
+    }
+  });
+
+  it('createMissing でも createExternalBook 未指定なら notFound', async () => {
+    const { d } = deps({});
+    const res = await importKdpRecordsCore(aggregateKdpRoyalties([row({})]), d, { createMissing: true });
+    if (res.ok) expect(res.data.notFound).toHaveLength(1);
+  });
+
   it('既存レコードは updated としてカウント', async () => {
     const { d } = deps({ B0FVL9HDBB: { id: 'book1', title: 't' } }, new Set(['book1/2026-07']));
     const res = await importKdpRecordsCore(aggregateKdpRoyalties([row({})]), d);

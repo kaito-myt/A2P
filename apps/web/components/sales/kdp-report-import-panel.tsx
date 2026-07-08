@@ -22,6 +22,7 @@ export function KdpReportImportPanel() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [result, setResult] = useState<KdpImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [createExternal, setCreateExternal] = useState(true);
 
   function onPick(file: File | null) {
     setResult(null);
@@ -33,6 +34,7 @@ export function KdpReportImportPanel() {
     setFileName(file.name);
     const fd = new FormData();
     fd.append('file', file);
+    fd.append('create_external', createExternal ? 'true' : 'false');
     start(async () => {
       const res = await importKdpReport(fd);
       if (!res.ok) {
@@ -72,12 +74,23 @@ export function KdpReportImportPanel() {
       </button>
       {fileName && <span className="text-caption text-muted">{fileName}</span>}
 
+      <label className="flex items-center gap-2 text-caption text-charcoal-82">
+        <input
+          type="checkbox"
+          checked={createExternal}
+          onChange={(e) => setCreateExternal(e.target.checked)}
+          disabled={pending}
+        />
+        {m.createExternalLabel}
+      </label>
+
       {error && <p className="text-button-sm text-destructive" role="alert">{error}</p>}
 
       {result && (
         <div className="flex flex-col gap-1 rounded-card border border-border-warm bg-cream p-space-snug text-caption text-charcoal-82">
           <span className="font-medium text-success">{m.done(result.inserted + result.updated)}</span>
           <span>{m.detail(result.inserted, result.updated, result.parsedRows)}</span>
+          {result.createdExternal > 0 && <span className="text-accent">{m.createdExternal(result.createdExternal)}</span>}
           {result.skippedNonJpy > 0 && <span>{m.skippedNonJpy(result.skippedNonJpy)}</span>}
           {result.notFound.length > 0 && (
             <div className="mt-1 flex flex-col gap-0.5">
