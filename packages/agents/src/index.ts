@@ -150,6 +150,30 @@ export {
   type DivisionContext,
 } from './org/manager.js';
 
+export {
+  analyzeSales,
+  buildSalesAnalystUserMessage,
+  type SalesAnalystInput,
+  type SalesAnalystDeps,
+  type SalesSnapshot,
+} from './org/sales-analyst.js';
+
+export {
+  researchMarket,
+  buildMarketAnalystUserMessage,
+  type MarketAnalystInput,
+  type MarketAnalystDeps,
+  type MarketContext,
+} from './org/market-analyst.js';
+
+export {
+  draftMetadata,
+  buildMetadataWorkerUserMessage,
+  type MetadataWorkerInput,
+  type MetadataWorkerDeps,
+  type MetadataContext,
+} from './org/metadata-worker.js';
+
 export { kanaToRomaji } from './lib/kana-to-romaji.js';
 
 export {

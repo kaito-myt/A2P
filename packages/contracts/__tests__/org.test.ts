@@ -5,13 +5,21 @@ import {
   DIVISIONS,
   DIVISION_KINDS,
   DIVISION_MANAGER_ROLE,
+  DIVISION_DEFAULT_KIND,
+  DISPATCHABLE_KINDS,
   ManagerPlanOutputSchema,
+  MetadataDraftOutputSchema,
+  SalesAnalysisOutputSchema,
+  MarketResearchOutputSchema,
   buildBudgetLines,
+  depsSatisfied,
   groupByDivision,
   groupByStatus,
+  isDispatchableKind,
   isHumanKind,
   kindLabel,
   needsAttention,
+  priorityRank,
 } from '../src/org/index.js';
 
 describe('org constants', () => {
@@ -120,5 +128,69 @@ describe('view helpers', () => {
     const fin = lines.find((l) => l.division === 'finance')!;
     expect(fin.allocated).toBeNull();
     expect(fin.spent).toBe(0);
+  });
+});
+
+describe('P2 dispatch helpers', () => {
+  it('dispatchable kind と人手 kind は排他', () => {
+    expect(isDispatchableKind('analyze_sales')).toBe(true);
+    expect(isDispatchableKind('plan_book')).toBe(true);
+    expect(isDispatchableKind('publish_kdp')).toBe(false);
+    expect(isDispatchableKind('create_account')).toBe(false);
+    // publish_kdp / create_account / connect_account は dispatch されない
+    for (const k of ['publish_kdp', 'create_account', 'connect_account']) {
+      expect(DISPATCHABLE_KINDS.has(k)).toBe(false);
+    }
+  });
+
+  it('本部の既定 kind は各本部の kind 集合に含まれる', () => {
+    for (const d of DIVISIONS) {
+      expect(DIVISION_KINDS[d]).toContain(DIVISION_DEFAULT_KIND[d]);
+    }
+  });
+
+  it('priorityRank は must<should<may', () => {
+    expect(priorityRank('must')).toBeLessThan(priorityRank('should'));
+    expect(priorityRank('should')).toBeLessThan(priorityRank('may'));
+    expect(priorityRank('unknown')).toBeGreaterThanOrEqual(priorityRank('may'));
+  });
+
+  it('depsSatisfied は全依存が done のときだけ true', () => {
+    const done = new Set(['a', 'b']);
+    expect(depsSatisfied({ depends_on: [] }, done)).toBe(true);
+    expect(depsSatisfied({ depends_on: ['a'] }, done)).toBe(true);
+    expect(depsSatisfied({ depends_on: ['a', 'b'] }, done)).toBe(true);
+    expect(depsSatisfied({ depends_on: ['a', 'c'] }, done)).toBe(false);
+    expect(depsSatisfied({}, done)).toBe(true);
+  });
+});
+
+describe('P2 worker output schemas', () => {
+  it('SalesAnalysisOutputSchema は suggestions を検証する', () => {
+    const out = SalesAnalysisOutputSchema.parse({
+      summary: '売上は先月比+20%',
+      suggestions: [{ division: 'production', action: 'Xジャンルを3冊', rationale: '需要増' }],
+    });
+    expect(out.suggestions[0].division).toBe('production');
+    expect(out.trends).toEqual([]); // default
+  });
+
+  it('MarketResearchOutputSchema は theme_ideas を許容', () => {
+    const out = MarketResearchOutputSchema.parse({
+      summary: '自己啓発が伸長',
+      theme_ideas: [{ title: '朝活の科学', angle: '習慣化' }],
+    });
+    expect(out.theme_ideas[0].title).toBe('朝活の科学');
+  });
+
+  it('MetadataDraftOutputSchema は keywords 7枠まで', () => {
+    const out = MetadataDraftOutputSchema.parse({
+      title: 'すごい本',
+      description: '読者ベネフィット',
+      keywords: ['a', 'b', 'c'],
+      price_jpy: 500,
+    });
+    expect(out.keywords).toHaveLength(3);
+    expect(out.price_jpy).toBe(500);
   });
 });

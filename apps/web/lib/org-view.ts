@@ -20,6 +20,8 @@ export interface OrgTaskRow {
   priority: string;
   costJpy: number | null;
   createdAt: string | null;
+  resultSummary: string | null;
+  error: string | null;
 }
 
 export interface DbOrgTask {
@@ -37,7 +39,29 @@ export interface DbOrgTask {
   priority: string;
   cost_jpy: unknown;
   created_at: Date | string | null;
+  result_json?: unknown;
+  error?: string | null;
   book?: { title: string } | null;
+}
+
+/** result_json から人が読める1行要約を抽出（実行成果の見える化）。 */
+export function summarizeResult(result: unknown): string | null {
+  if (result == null || typeof result !== 'object') return null;
+  const r = result as Record<string, unknown>;
+  // 分析系: summary。
+  if (typeof r.summary === 'string' && r.summary.length > 0) return r.summary.slice(0, 160);
+  // メタデータ草案。
+  if (r.draft && typeof r.draft === 'object') {
+    const d = r.draft as Record<string, unknown>;
+    if (typeof d.title === 'string') return `メタデータ草案: ${d.title}`.slice(0, 160);
+  }
+  // 制作起動系。
+  if (typeof r.action === 'string') {
+    if (r.action === 'theme_generate_enqueued') return `テーマ生成を起動（${r.count ?? '?'}件）`;
+    if (r.action === 'book_kickoff_enqueued') return '本の制作を起動';
+    return String(r.action).slice(0, 160);
+  }
+  return null;
 }
 
 function toNum(v: unknown): number | null {
@@ -63,6 +87,8 @@ export function mapOrgTaskRow(t: DbOrgTask): OrgTaskRow {
     priority: t.priority,
     costJpy: toNum(t.cost_jpy),
     createdAt: t.created_at instanceof Date ? t.created_at.toISOString() : (t.created_at ?? null),
+    resultSummary: summarizeResult(t.result_json),
+    error: t.error ?? null,
   };
 }
 

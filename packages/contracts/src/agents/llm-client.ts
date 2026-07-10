@@ -27,14 +27,18 @@ export type AgentRole =
   | 'readings'
   | 'optimizer'
   | 'revision'
-  // docs/06 — 組織エージェント（CEO ＋ 6 本部長）。P2+ で担当者ロールを追加。
+  // docs/06 — 組織エージェント（CEO ＋ 6 本部長）。
   | 'ceo'
   | 'editorial_mgr'
   | 'publish_mgr'
   | 'analytics_mgr'
   | 'promo_mgr'
   | 'ops_mgr'
-  | 'finance_mgr';
+  | 'finance_mgr'
+  // docs/06 P2 — 担当者（実行）ロール。
+  | 'sales_analyst'
+  | 'market_analyst'
+  | 'metadata_worker';
 
 /**
  * マルチモーダル入力用の画像添付。`content` (テキスト) と併せてユーザーメッセージに付与する。

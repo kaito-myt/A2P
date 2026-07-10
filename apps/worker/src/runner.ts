@@ -122,6 +122,7 @@ import {
 } from './tasks/promotion-dispatch.js';
 import { BAKEOFF_RUN_TASK_NAME, bakeoffRunTask } from './tasks/bakeoff-run.js';
 import { ORG_PLAN_TASK_NAME, orgPlanTask } from './tasks/org-plan.js';
+import { ORG_EXECUTE_DISPATCH_TASK_NAME, orgExecuteDispatchTask } from './tasks/org-execute.js';
 
 /**
  * graphile-worker runner 起動 (docs/05 §5 共通ポリシー / SP-01 T-01-12)
@@ -201,6 +202,7 @@ export function buildTaskList(): TaskList {
     [LOCKS_SWEEP_TASK_NAME]: locksSweepTask,
     [BATCH_PLAN_DISPATCHER_TASK_NAME]: batchPlanDispatcherTask,
     [ORG_PLAN_TASK_NAME]: orgPlanTask,
+    [ORG_EXECUTE_DISPATCH_TASK_NAME]: orgExecuteDispatchTask,
   };
 }
 
@@ -286,6 +288,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
     promo_dispatch_cron: null,
     org_auto_plan_enabled: false,
     org_plan_cron: null,
+    org_auto_execute_enabled: false,
+    org_execute_cron: null,
   };
   try {
     const row = await prisma.appSettings.findUnique({
@@ -297,6 +301,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
         promo_dispatch_cron: true,
         org_auto_plan_enabled: true,
         org_plan_cron: true,
+        org_auto_execute_enabled: true,
+        org_execute_cron: true,
       },
     });
     if (!row) {
@@ -313,6 +319,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
       promo_dispatch_cron: row.promo_dispatch_cron,
       org_auto_plan_enabled: row.org_auto_plan_enabled,
       org_plan_cron: row.org_plan_cron,
+      org_auto_execute_enabled: row.org_auto_execute_enabled,
+      org_execute_cron: row.org_execute_cron,
     };
   } catch (err) {
     log.warn({ err }, 'failed to read AppSettings; auto-dispatch crons disabled (safe default)');

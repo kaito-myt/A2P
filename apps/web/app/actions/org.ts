@@ -17,6 +17,7 @@ import { enqueueJob } from '@/lib/graphile-client';
 import { messages } from '@/lib/messages';
 
 const ORG_PLAN_TASK = 'org.plan';
+const ORG_EXECUTE_TASK = 'org.execute.dispatch';
 
 function revalidateOrg(): void {
   revalidatePath('/org');
@@ -44,6 +45,36 @@ export async function runOrgPlan(): Promise<ActionResult<{ job_id: string }>> {
       });
       jobId = job.id;
       await enqueueJob(ORG_PLAN_TASK, { job_id: jobId, trigger: 'manual' });
+    }
+    revalidateOrg();
+    return ok({ job_id: jobId });
+  } catch (err) {
+    if (isA2PError(err)) return err.toActionResult();
+    return fail('unknown', messages.org.dashboard.runError);
+  }
+}
+
+export async function runOrgDispatch(): Promise<ActionResult<{ job_id: string }>> {
+  try {
+    await getSessionOrThrow();
+  } catch (err) {
+    if (isA2PError(err)) return err.toActionResult();
+    return fail('unknown', messages.org.dashboard.runError);
+  }
+
+  try {
+    // 既に走っている dispatch があれば二重起動しない。
+    const existing = await prisma.job.findFirst({
+      where: { kind: ORG_EXECUTE_TASK, status: { in: ['queued', 'running'] } },
+      select: { id: true },
+    });
+    let jobId = existing?.id ?? null;
+    if (!jobId) {
+      const job = await prisma.job.create({
+        data: { kind: ORG_EXECUTE_TASK, status: 'queued', payload_json: { trigger: 'manual' } },
+      });
+      jobId = job.id;
+      await enqueueJob(ORG_EXECUTE_TASK, { job_id: jobId, trigger: 'manual' });
     }
     revalidateOrg();
     return ok({ job_id: jobId });

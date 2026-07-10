@@ -73,3 +73,28 @@ describe('divisionTaskCounts', () => {
     // canceled は open にも done にも入らない
   });
 });
+
+describe('summarizeResult / mapOrgTaskRow result', () => {
+  it('分析結果は summary を要約に使う', () => {
+    const row = mapOrgTaskRow(db({ result_json: { summary: '先月比+20%' } }));
+    expect(row.resultSummary).toBe('先月比+20%');
+  });
+
+  it('メタデータ草案は draft.title を要約に使う', () => {
+    const row = mapOrgTaskRow(db({ result_json: { draft: { title: 'すごい本' } } }));
+    expect(row.resultSummary).toContain('すごい本');
+  });
+
+  it('制作起動アクションを人が読める文にする', () => {
+    const t = mapOrgTaskRow(db({ result_json: { action: 'theme_generate_enqueued', count: 5 } }));
+    expect(t.resultSummary).toContain('テーマ生成');
+    const k = mapOrgTaskRow(db({ result_json: { action: 'book_kickoff_enqueued' } }));
+    expect(k.resultSummary).toContain('制作を起動');
+  });
+
+  it('blocked の error を行に載せる', () => {
+    const row = mapOrgTaskRow(db({ status: 'blocked', error: 'theme_id が必要' }));
+    expect(row.error).toBe('theme_id が必要');
+    expect(row.resultSummary).toBeNull();
+  });
+});

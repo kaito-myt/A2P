@@ -9,6 +9,7 @@ import { FX_FETCH_TASK_NAME } from './tasks/fx-fetch.js';
 import { SALES_FETCH_DISPATCHER_TASK_NAME } from './tasks/sales-fetch-dispatcher.js';
 import { PROMOTION_DISPATCH_TASK_NAME } from './tasks/promotion-dispatch.js';
 import { ORG_PLAN_TASK_NAME } from './tasks/org-plan.js';
+import { ORG_EXECUTE_DISPATCH_TASK_NAME } from './tasks/org-execute.js';
 
 /**
  * graphile-worker cron 定義 (docs/05 §5.4 / SP-01 仕様: `apps/worker/src/crontab.ts`)
@@ -132,6 +133,20 @@ export const ORG_PLAN_CRON_ITEM: CronItem = {
   payload: { trigger: 'cron' },
 };
 
+/**
+ * docs/06 P2: 承認済 org_tasks の実行ディスパッチ (org.execute.dispatch)。既定 15分毎。
+ * AppSettings.org_auto_execute_enabled=true のときだけ条件付き追加する。
+ */
+export const ORG_EXECUTE_CRON_DEFAULT = '*/15 * * * *';
+
+/** `org.execute.dispatch` の CronItem 定義。 */
+export const ORG_EXECUTE_CRON_ITEM: CronItem = {
+  task: ORG_EXECUTE_DISPATCH_TASK_NAME,
+  match: ORG_EXECUTE_CRON_DEFAULT,
+  identifier: 'org-execute-dispatch',
+  payload: { trigger: 'cron' },
+};
+
 /** AppSettings の自動運用トグルに応じて CronItem 配列を組み立てる。 */
 export interface CronRuntimeSettings {
   sales_auto_fetch_enabled: boolean;
@@ -145,6 +160,10 @@ export interface CronRuntimeSettings {
   org_auto_plan_enabled?: boolean;
   /** docs/06: org.plan cron (省略時は既定 05:00 JST)。 */
   org_plan_cron?: string | null;
+  /** docs/06 P2: 承認済タスクの実行ディスパッチ (org.execute.dispatch) を cron 有効化するか。 */
+  org_auto_execute_enabled?: boolean;
+  /** docs/06 P2: org.execute.dispatch cron (省略時は既定 15分毎)。 */
+  org_execute_cron?: string | null;
 }
 
 /** 後方互換エイリアス (旧名)。 */
@@ -184,6 +203,14 @@ export function buildCronItemsWithSettings(settings: CronRuntimeSettings): CronI
         ? settings.org_plan_cron.trim()
         : ORG_PLAN_CRON_DEFAULT;
     items.push({ ...ORG_PLAN_CRON_ITEM, match: cronMatch });
+  }
+
+  if (settings.org_auto_execute_enabled) {
+    const cronMatch =
+      typeof settings.org_execute_cron === 'string' && settings.org_execute_cron.trim().length > 0
+        ? settings.org_execute_cron.trim()
+        : ORG_EXECUTE_CRON_DEFAULT;
+    items.push({ ...ORG_EXECUTE_CRON_ITEM, match: cronMatch });
   }
 
   return items;

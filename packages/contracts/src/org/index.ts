@@ -229,6 +229,10 @@ export const ManagerTaskDraftSchema = z.object({
   channel: z.enum(PROMOTION_TASK_CHANNELS).nullable().optional(),
   account_ref: z.string().max(120).nullable().optional(),
   assignee_role: z.string().min(1).max(40),
+  /** 制作 write タスク: 起票元テーマ候補 ID（あれば dispatcher が kickoff で使う）。 */
+  theme_id: z.string().max(40).nullable().optional(),
+  /** 制作タスクの発注 KDP アカウント（省略時は dispatcher が既定アカウントを解決）。 */
+  account_id: z.string().max(40).nullable().optional(),
 });
 export type ManagerTaskDraft = z.infer<typeof ManagerTaskDraftSchema>;
 
@@ -236,6 +240,120 @@ export const ManagerPlanOutputSchema = z.object({
   tasks: z.array(ManagerTaskDraftSchema).max(30).default([]),
 });
 export type ManagerPlanOutput = z.infer<typeof ManagerPlanOutputSchema>;
+
+// ---------------------------------------------------------------------------
+// 担当者エージェント I/O スキーマ (P2 — 実行レイヤー)
+// ---------------------------------------------------------------------------
+
+/** 本部横断の改善示唆（分析→CEO/制作/販促へ還元する1件）。 */
+export const AnalysisSuggestionSchema = z.object({
+  division: z.enum(DIVISIONS),
+  action: z.string().min(1).max(200),
+  rationale: z.string().max(600).default(''),
+});
+export type AnalysisSuggestion = z.infer<typeof AnalysisSuggestionSchema>;
+
+/** 売上アナリスト (sales_analyst) の出力。 */
+export const SalesAnalysisOutputSchema = z.object({
+  summary: z.string().min(1).max(2000),
+  trends: z.array(z.string().max(300)).max(12).default([]),
+  top_books: z.array(z.string().max(200)).max(10).default([]),
+  underperformers: z.array(z.string().max(200)).max(10).default([]),
+  suggestions: z.array(AnalysisSuggestionSchema).max(6).default([]),
+});
+export type SalesAnalysisOutput = z.infer<typeof SalesAnalysisOutputSchema>;
+
+/** 市場アナリスト (market_analyst) の出力。 */
+export const MarketResearchOutputSchema = z.object({
+  summary: z.string().min(1).max(2000),
+  genre_opportunities: z
+    .array(z.object({ genre: z.string().max(80), why: z.string().max(400).default('') }))
+    .max(10)
+    .default([]),
+  theme_ideas: z
+    .array(z.object({ title: z.string().max(160), angle: z.string().max(400).default('') }))
+    .max(12)
+    .default([]),
+  suggestions: z.array(AnalysisSuggestionSchema).max(6).default([]),
+});
+export type MarketResearchOutput = z.infer<typeof MarketResearchOutputSchema>;
+
+/** 入稿担当 (metadata_worker) の出力 — KDP メタデータ草案。 */
+export const MetadataDraftOutputSchema = z.object({
+  title: z.string().min(1).max(200),
+  subtitle: z.string().max(200).nullable().optional(),
+  description: z.string().min(1).max(4000),
+  keywords: z.array(z.string().max(60)).max(7).default([]),
+  categories: z.array(z.string().max(120)).max(3).default([]),
+  price_jpy: z.number().int().positive().max(2000).nullable().optional(),
+  rationale: z.string().max(1200).default(''),
+});
+export type MetadataDraftOutput = z.infer<typeof MetadataDraftOutputSchema>;
+
+// ---------------------------------------------------------------------------
+// ディスパッチ (org.execute.dispatch) の語彙
+// ---------------------------------------------------------------------------
+
+/**
+ * P2 で dispatcher が自動実行できる kind。
+ * - 制作の write/edit/design_cover/qa は自走パイプライン（4つの人手ゲート）が処理するため、
+ *   ここでは plan_book（テーマ生成）と write（本の制作起動）のみを扱う。
+ * - publish_kdp / create_account 等の人手 kind は needs_human のまま（含めない）。
+ */
+export const DISPATCHABLE_KINDS = new Set<string>([
+  // production
+  'plan_book',
+  'write',
+  // publishing
+  'prepare_metadata',
+  'set_price',
+  // analytics
+  'analyze_sales',
+  'research_market',
+  'report',
+]);
+
+export function isDispatchableKind(kind: string): boolean {
+  return DISPATCHABLE_KINDS.has(kind);
+}
+
+/** 改善ToDoを起票する際、本部→既定 kind / 既定担当ロール。 */
+export const DIVISION_DEFAULT_KIND: Record<Division, string> = {
+  production: 'plan_book',
+  publishing: 'prepare_metadata',
+  analytics: 'research_market',
+  promotion: 'create_content',
+  sysops: 'monitor',
+  finance: 'cost_report',
+};
+
+export const DIVISION_DEFAULT_ASSIGNEE: Record<Division, string> = {
+  production: 'marketer',
+  publishing: 'metadata_worker',
+  analytics: 'market_analyst',
+  promotion: 'content_creator',
+  sysops: 'ops_worker',
+  finance: 'cost_accountant',
+};
+
+/** priority を数値ランクに（must=0 が最優先）。 */
+export function priorityRank(priority: string): number {
+  const idx = (TASK_PRIORITIES as readonly string[]).indexOf(priority);
+  return idx < 0 ? TASK_PRIORITIES.length : idx;
+}
+
+export interface DependentLike {
+  depends_on?: readonly string[] | null;
+}
+
+/** タスクの依存が全て done か（done タスク ID 集合を渡す）。 */
+export function depsSatisfied(task: DependentLike, doneIds: ReadonlySet<string>): boolean {
+  const deps = task.depends_on ?? [];
+  for (const id of deps) {
+    if (!doneIds.has(id)) return false;
+  }
+  return true;
+}
 
 // ---------------------------------------------------------------------------
 // ビューヘルパー

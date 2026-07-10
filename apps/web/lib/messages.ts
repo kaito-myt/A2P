@@ -144,6 +144,13 @@ export const messages = {
       owner: '起票',
       cost: 'コスト',
       actionError: '操作に失敗しました',
+      dispatch: '承認済タスクを実行',
+      dispatchRunning: '実行中…',
+      dispatchHint: '承認済み・依存充足のタスクを担当者が自動実行します（分析/メタデータ草案/制作起動）',
+      dispatchError: '実行の起動に失敗しました',
+      dispatchQueued: 'ディスパッチを起動しました。数十秒後に成果が反映されます。',
+      result: '成果',
+      blockedReason: 'ブロック理由',
     },
   },
   accounts: {

@@ -163,6 +163,17 @@ function TaskCard({
         )}
       </dl>
 
+      {task.resultSummary && (
+        <p className="w-fit rounded bg-emerald-100 px-1.5 py-0.5 text-caption text-emerald-900">
+          {m.result}: {task.resultSummary}
+        </p>
+      )}
+      {task.status === 'blocked' && task.error && (
+        <p className="line-clamp-2 rounded bg-red-100 px-1.5 py-0.5 text-caption text-red-900">
+          {m.blockedReason}: {task.error}
+        </p>
+      )}
+
       {isHuman && (
         <span className="w-fit rounded bg-amber-200 px-1.5 py-0.5 text-caption font-medium text-amber-900">{m.humanBadge}</span>
       )}

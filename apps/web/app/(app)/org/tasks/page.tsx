@@ -9,6 +9,7 @@ import { prisma } from '@a2p/db';
 
 import { messages } from '@/lib/messages';
 import { OrgTaskBoard } from '@/components/org/org-task-board';
+import { RunDispatchButton } from '@/components/org/run-dispatch-button';
 import { mapOrgTaskRow, type DbOrgTask } from '@/lib/org-view';
 
 export const metadata: Metadata = {
@@ -38,6 +39,8 @@ export default async function OrgTasksPage() {
       priority: true,
       cost_jpy: true,
       created_at: true,
+      result_json: true,
+      error: true,
       book: { select: { title: true } },
     },
   });
@@ -53,9 +56,12 @@ export default async function OrgTasksPage() {
           <span aria-hidden="true"> &gt; </span>
           <span>{m.pageTitle}</span>
         </nav>
-        <div className="flex flex-col">
-          <h1 className="text-sub-heading text-foreground">{m.pageTitle}</h1>
-          <p className="text-body text-muted">{m.pageSubtitle}</p>
+        <div className="flex flex-col gap-space-snug sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col">
+            <h1 className="text-sub-heading text-foreground">{m.pageTitle}</h1>
+            <p className="text-body text-muted">{m.pageSubtitle}</p>
+          </div>
+          <RunDispatchButton />
         </div>
       </header>
 

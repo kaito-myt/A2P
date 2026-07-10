@@ -914,6 +914,9 @@ model AppSettings {
   // docs/06: 組織エージェント。CEOティック(org.plan)を日次cronで自動起動するか。
   org_auto_plan_enabled           Boolean  @default(false)
   org_plan_cron                   String   @default("0 20 * * *") // 05:00 JST (UTC 20:00)
+  // docs/06 P2: 承認済 org_tasks を担当者が自動実行する dispatcher(org.execute.dispatch)を cron 有効化するか。
+  org_auto_execute_enabled        Boolean  @default(false)
+  org_execute_cron                String   @default("*/15 * * * *") // 15分毎に承認済タスクをディスパッチ
   updated_at                      DateTime @updatedAt
 
   @@map("app_settings")
@@ -954,6 +957,8 @@ model OrgTask {
   assignee_role String // 実行担当ロール (writer | metadata_worker | content_creator | human 等)
   channel       String? // 販促用: x | instagram | tiktok | note | blog
   account_ref   String? // 販促用: 対象アカウント識別
+  theme_id      String? // 制作 write: 起動元テーマ候補 ID (dispatcher が kickoff に使う)
+  account_id    String? // 制作: 発注 KDP アカウント (省略時は dispatcher が既定を解決)
   kind          String // docs/06 §6 の本部別動詞
   title         String
   instruction   String    @db.Text

@@ -123,6 +123,8 @@ interface OrgTaskCreateData {
   assignee_role: string;
   channel: string | null;
   account_ref: string | null;
+  theme_id: string | null;
+  account_id: string | null;
   kind: string;
   title: string;
   instruction: string;
@@ -313,6 +315,8 @@ export async function runOrgPlan(payload: unknown, deps: OrgPlanDeps = {}): Prom
             assignee_role: isHumanKind(draft.kind) ? 'human' : draft.assignee_role,
             channel: draft.channel ?? null,
             account_ref: draft.account_ref ?? null,
+            theme_id: draft.theme_id ?? null,
+            account_id: draft.account_id ?? null,
             kind: draft.kind,
             title: draft.title,
             instruction: draft.instruction,

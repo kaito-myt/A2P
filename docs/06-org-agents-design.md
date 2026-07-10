@@ -6,11 +6,12 @@
 > 開発時の Claude Code サブエージェント（`.claude/agents`）とは別物。本ドキュメントでは
 > これらを **Org エージェント** と呼ぶ。
 >
-> ステータス: **P1 実装済み（2026-07-09）**。CEO＋6本部長の起票系（経営神経系）が稼働。
-> P2 以降（担当者による実行＋効果検証、コスト実績紐付け、予算ガード）は未実装。
+> ステータス: **P2 実装済み（2026-07-10）**。P1 の起票系（経営神経系）に加え、
+> 担当者による**実行ディスパッチ（org.execute.dispatch）**＋コスト実績のタスク紐付け＋改善ToDoの
+> 連鎖起票が稼働。P3 以降（販促の org 統合、運用の自己復旧、経営の予算ガード）は未実装。
 >
 > 履歴: v1 は「販促のみの組織」。v2 で **本の作成・出版・データ分析・販促・システム運用・
-> 予算管理までを含む全社組織**へ拡張。v2.1（本書）で **P1 を実装**。
+> 予算管理までを含む全社組織**へ拡張。v2.1 で **P1**、v2.2（本書）で **P2 を実装**。
 
 ## 実装状況（P1）
 
@@ -21,10 +22,38 @@
 | エージェント | `ceo`＋6本部長（`editorial_mgr`/`publish_mgr`/`analytics_mgr`/`promo_mgr`/`ops_mgr`/`finance_mgr`）。`packages/agents/src/org/{ceo,manager}.ts`。prompts/model_assignments 本番 seed 済（`apply-org-roles.ts`）|
 | worker | `org.plan`（CEOティック）`apps/worker/src/tasks/org-plan.ts`。`AppSettings.org_auto_plan_enabled=true` で日次cron条件付き有効化（既定 05:00 JST）＋ web から手動起動 |
 | web | `/org`（経営ダッシュボード）＋ `/org/tasks`（全社ToDoカンバン）＋ `actions/org.ts`（runOrgPlan/approve/complete/cancel）＋ サイドバー「経営（組織）」節 |
-| コスト | 全 Org 呼出は `withTokenLogging` の `orgTaskId` で `token_usage.org_task_id` に記録（P1は起票のCEO/本部長呼出。担当実行はP2）|
+| コスト | 全 Org 呼出は `withTokenLogging` の `orgTaskId` で `token_usage.org_task_id` に記録 |
 
 P1 で確定した運用: 本部長が起票したタスクは、人手前提 kind（create_account/connect_account/publish_kdp）→ `needs_human`、
-それ以外 → `approved`（自動承認）。実行（担当エージェント）とコスト実績のタスク紐付けは **P2** で接続する。
+それ以外 → `approved`（自動承認）。
+
+## 実装状況（P2 — 実行レイヤー）
+
+| 領域 | 実体 |
+| --- | --- |
+| DB | `org_tasks.theme_id/account_id`（制作起動用）＋ `AppSettings.org_auto_execute_enabled/org_execute_cron`。migration `20260710000000_org_execute_dispatch`（本番適用済）|
+| 共有型 | `@a2p/contracts/org`: `DISPATCHABLE_KINDS`・`depsSatisfied`・`priorityRank`・`DIVISION_DEFAULT_{KIND,ASSIGNEE}`、担当者 I/O スキーマ（`SalesAnalysisOutput`/`MarketResearchOutput`/`MetadataDraftOutput`）|
+| 担当者エージェント | `sales_analyst`/`market_analyst`/`metadata_worker`（`packages/agents/src/org/{sales-analyst,market-analyst,metadata-worker}.ts`）。prompts/model_assignments 本番 seed 済（`apply-org-workers.ts`）|
+| worker | `org.execute.dispatch`（`apps/worker/src/tasks/org-execute.ts`）。`approved`＋依存充足＋期限到来のタスクを担当ロール別に実行。`AppSettings.org_auto_execute_enabled=true` で 15分毎 cron 条件付き有効化＋ web から手動起動 |
+| web | `/org/tasks` に「承認済タスクを実行」ボタン（`runOrgDispatch`）＋各タスクの**成果(result)/ブロック理由/コスト**表示 |
+
+**P2 で dispatcher が自動実行する kind と実体:**
+
+| 本部 | kind | dispatcher の動作 |
+| --- | --- | --- |
+| analytics | `analyze_sales` / `report` | `sales_analyst` が売上を分析 → `result_json` に格納 → 示唆を改善ToDo(proposed)に連鎖起票 |
+| analytics | `research_market` | `market_analyst` が機会/テーマ案 → `result_json` → テーマ案を制作の企画ToDo(proposed)へ |
+| publishing | `prepare_metadata` / `set_price` | `metadata_worker` が KDP メタデータ**草案**を `result_json` に（既存 KdpMetadata は上書きしない。公開は人手ゲート）|
+| production | `plan_book` | `pipeline.theme.generate` を enqueue（テーマ候補を生成。以降は既存パイプラインの人手ゲートで進行）|
+| production | `write` | `theme_id`（承認済テーマ）があれば `pipeline.book.kickoff` を enqueue。無ければ `blocked`（要: plan_book→テーマ承認）|
+
+実行フロー: CAS で `approved→in_progress` を確保（二重処理防止）→ ハンドラ実行 → 成功なら `done`＋`result_json`＋
+`token_usage.org_task_id` 集計で `cost_jpy` 確定＋改善ToDo連鎖起票、失敗なら `blocked`＋`error`。
+暴走防止として 1 回の dispatch は最大 8 タスク、1 分析あたり改善ToDoは最大 3 件。
+
+**P2 で意図的に人手のまま残した点:** 制作パイプラインの 4 つの人手ゲート（アウトライン承認・本文承認・
+表紙採用・KDP公開）は安全のため据え置き（誤爆の実害が大きいため）。`write`/`edit`/`design_cover`/`qa` の
+中間工程は自走パイプラインが処理するため dispatcher は個別実行しない（起動＝`write`＝kickoff のみ）。
 
 ---
 
