@@ -917,6 +917,12 @@ model AppSettings {
   // docs/06 P2: 承認済 org_tasks を担当者が自動実行する dispatcher(org.execute.dispatch)を cron 有効化するか。
   org_auto_execute_enabled        Boolean  @default(false)
   org_execute_cron                String   @default("*/15 * * * *") // 15分毎に承認済タスクをディスパッチ
+  // docs/06 P3: 運用の自己復旧監視(org.ops.watch)を cron 有効化するか。
+  org_ops_watch_enabled           Boolean  @default(false)
+  org_ops_watch_cron              String   @default("*/10 * * * *") // 10分毎にジョブ健全性を走査
+  // docs/06 P3: 経営の予算ガード(org.finance.tick)を cron 有効化するか。
+  org_finance_tick_enabled        Boolean  @default(false)
+  org_finance_tick_cron           String   @default("0 * * * *") // 毎時、本部別コスト集計＋予算ガード
   updated_at                      DateTime @updatedAt
 
   @@map("app_settings")

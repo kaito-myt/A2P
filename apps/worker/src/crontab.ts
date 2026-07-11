@@ -10,6 +10,8 @@ import { SALES_FETCH_DISPATCHER_TASK_NAME } from './tasks/sales-fetch-dispatcher
 import { PROMOTION_DISPATCH_TASK_NAME } from './tasks/promotion-dispatch.js';
 import { ORG_PLAN_TASK_NAME } from './tasks/org-plan.js';
 import { ORG_EXECUTE_DISPATCH_TASK_NAME } from './tasks/org-execute.js';
+import { ORG_OPS_WATCH_TASK_NAME } from './tasks/org-ops-watch.js';
+import { ORG_FINANCE_TICK_TASK_NAME } from './tasks/org-finance-tick.js';
 
 /**
  * graphile-worker cron 定義 (docs/05 §5.4 / SP-01 仕様: `apps/worker/src/crontab.ts`)
@@ -147,6 +149,34 @@ export const ORG_EXECUTE_CRON_ITEM: CronItem = {
   payload: { trigger: 'cron' },
 };
 
+/**
+ * docs/06 P3: 運用の自己復旧監視 (org.ops.watch)。既定 10分毎。
+ * AppSettings.org_ops_watch_enabled=true のときだけ条件付き追加する。
+ */
+export const ORG_OPS_WATCH_CRON_DEFAULT = '*/10 * * * *';
+
+/** `org.ops.watch` の CronItem 定義。 */
+export const ORG_OPS_WATCH_CRON_ITEM: CronItem = {
+  task: ORG_OPS_WATCH_TASK_NAME,
+  match: ORG_OPS_WATCH_CRON_DEFAULT,
+  identifier: 'org-ops-watch',
+  payload: { trigger: 'cron' },
+};
+
+/**
+ * docs/06 P3: 経営の予算ガード (org.finance.tick)。既定 毎時。
+ * AppSettings.org_finance_tick_enabled=true のときだけ条件付き追加する。
+ */
+export const ORG_FINANCE_TICK_CRON_DEFAULT = '0 * * * *';
+
+/** `org.finance.tick` の CronItem 定義。 */
+export const ORG_FINANCE_TICK_CRON_ITEM: CronItem = {
+  task: ORG_FINANCE_TICK_TASK_NAME,
+  match: ORG_FINANCE_TICK_CRON_DEFAULT,
+  identifier: 'org-finance-tick',
+  payload: { trigger: 'cron' },
+};
+
 /** AppSettings の自動運用トグルに応じて CronItem 配列を組み立てる。 */
 export interface CronRuntimeSettings {
   sales_auto_fetch_enabled: boolean;
@@ -164,6 +194,14 @@ export interface CronRuntimeSettings {
   org_auto_execute_enabled?: boolean;
   /** docs/06 P2: org.execute.dispatch cron (省略時は既定 15分毎)。 */
   org_execute_cron?: string | null;
+  /** docs/06 P3: 運用の自己復旧監視 (org.ops.watch) を cron 有効化するか。 */
+  org_ops_watch_enabled?: boolean;
+  /** docs/06 P3: org.ops.watch cron (省略時は既定 10分毎)。 */
+  org_ops_watch_cron?: string | null;
+  /** docs/06 P3: 経営の予算ガード (org.finance.tick) を cron 有効化するか。 */
+  org_finance_tick_enabled?: boolean;
+  /** docs/06 P3: org.finance.tick cron (省略時は既定 毎時)。 */
+  org_finance_tick_cron?: string | null;
 }
 
 /** 後方互換エイリアス (旧名)。 */
@@ -211,6 +249,22 @@ export function buildCronItemsWithSettings(settings: CronRuntimeSettings): CronI
         ? settings.org_execute_cron.trim()
         : ORG_EXECUTE_CRON_DEFAULT;
     items.push({ ...ORG_EXECUTE_CRON_ITEM, match: cronMatch });
+  }
+
+  if (settings.org_ops_watch_enabled) {
+    const cronMatch =
+      typeof settings.org_ops_watch_cron === 'string' && settings.org_ops_watch_cron.trim().length > 0
+        ? settings.org_ops_watch_cron.trim()
+        : ORG_OPS_WATCH_CRON_DEFAULT;
+    items.push({ ...ORG_OPS_WATCH_CRON_ITEM, match: cronMatch });
+  }
+
+  if (settings.org_finance_tick_enabled) {
+    const cronMatch =
+      typeof settings.org_finance_tick_cron === 'string' && settings.org_finance_tick_cron.trim().length > 0
+        ? settings.org_finance_tick_cron.trim()
+        : ORG_FINANCE_TICK_CRON_DEFAULT;
+    items.push({ ...ORG_FINANCE_TICK_CRON_ITEM, match: cronMatch });
   }
 
   return items;

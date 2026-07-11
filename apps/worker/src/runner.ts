@@ -123,6 +123,8 @@ import {
 import { BAKEOFF_RUN_TASK_NAME, bakeoffRunTask } from './tasks/bakeoff-run.js';
 import { ORG_PLAN_TASK_NAME, orgPlanTask } from './tasks/org-plan.js';
 import { ORG_EXECUTE_DISPATCH_TASK_NAME, orgExecuteDispatchTask } from './tasks/org-execute.js';
+import { ORG_OPS_WATCH_TASK_NAME, orgOpsWatchTask } from './tasks/org-ops-watch.js';
+import { ORG_FINANCE_TICK_TASK_NAME, orgFinanceTickTask } from './tasks/org-finance-tick.js';
 
 /**
  * graphile-worker runner 起動 (docs/05 §5 共通ポリシー / SP-01 T-01-12)
@@ -203,6 +205,8 @@ export function buildTaskList(): TaskList {
     [BATCH_PLAN_DISPATCHER_TASK_NAME]: batchPlanDispatcherTask,
     [ORG_PLAN_TASK_NAME]: orgPlanTask,
     [ORG_EXECUTE_DISPATCH_TASK_NAME]: orgExecuteDispatchTask,
+    [ORG_OPS_WATCH_TASK_NAME]: orgOpsWatchTask,
+    [ORG_FINANCE_TICK_TASK_NAME]: orgFinanceTickTask,
   };
 }
 
@@ -290,6 +294,10 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
     org_plan_cron: null,
     org_auto_execute_enabled: false,
     org_execute_cron: null,
+    org_ops_watch_enabled: false,
+    org_ops_watch_cron: null,
+    org_finance_tick_enabled: false,
+    org_finance_tick_cron: null,
   };
   try {
     const row = await prisma.appSettings.findUnique({
@@ -303,6 +311,10 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
         org_plan_cron: true,
         org_auto_execute_enabled: true,
         org_execute_cron: true,
+        org_ops_watch_enabled: true,
+        org_ops_watch_cron: true,
+        org_finance_tick_enabled: true,
+        org_finance_tick_cron: true,
       },
     });
     if (!row) {
@@ -321,6 +333,10 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
       org_plan_cron: row.org_plan_cron,
       org_auto_execute_enabled: row.org_auto_execute_enabled,
       org_execute_cron: row.org_execute_cron,
+      org_ops_watch_enabled: row.org_ops_watch_enabled,
+      org_ops_watch_cron: row.org_ops_watch_cron,
+      org_finance_tick_enabled: row.org_finance_tick_enabled,
+      org_finance_tick_cron: row.org_finance_tick_cron,
     };
   } catch (err) {
     log.warn({ err }, 'failed to read AppSettings; auto-dispatch crons disabled (safe default)');

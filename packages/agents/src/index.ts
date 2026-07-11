@@ -174,6 +174,22 @@ export {
   type MetadataContext,
 } from './org/metadata-worker.js';
 
+export {
+  analyzePromotion,
+  buildPromoAnalystUserMessage,
+  type PromoAnalystInput,
+  type PromoAnalystDeps,
+  type PromoSnapshot,
+} from './org/promo-analyst.js';
+
+export {
+  reviewCosts,
+  buildCostAccountantUserMessage,
+  type CostAccountantInput,
+  type CostAccountantDeps,
+  type CostSnapshot,
+} from './org/cost-accountant.js';
+
 export { kanaToRomaji } from './lib/kana-to-romaji.js';
 
 export {

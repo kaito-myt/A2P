@@ -123,8 +123,18 @@ export function kindLabel(kind: string): string {
   return KIND_LABELS[kind] ?? kind;
 }
 
-/** 実行に人手を要する種別 → 起票時 status='needs_human'。 */
-export const HUMAN_KINDS = new Set<string>(['create_account', 'connect_account', 'publish_kdp']);
+/**
+ * 実行に人手を要する種別 → 起票時 status='needs_human'。
+ * - create_account/connect_account/publish_kdp: 外部公開・KYC（P1）。
+ * - enforce_limit/triage_error: 予算超過の凍結/再配分・原因不明ジョブ障害の判断（P3）— CEO/CFO/運営者が決める。
+ */
+export const HUMAN_KINDS = new Set<string>([
+  'create_account',
+  'connect_account',
+  'publish_kdp',
+  'enforce_limit',
+  'triage_error',
+]);
 
 export function isHumanKind(kind: string): boolean {
   return HUMAN_KINDS.has(kind);
@@ -290,6 +300,25 @@ export const MetadataDraftOutputSchema = z.object({
 });
 export type MetadataDraftOutput = z.infer<typeof MetadataDraftOutputSchema>;
 
+/** 販促アナリスト (promo_analyst) の出力 — 投稿実績×売上の効果検証。 */
+export const PromoAnalysisOutputSchema = z.object({
+  summary: z.string().min(1).max(2000),
+  highlights: z.array(z.string().max(300)).max(12).default([]),
+  underperformers: z.array(z.string().max(300)).max(10).default([]),
+  suggestions: z.array(AnalysisSuggestionSchema).max(6).default([]),
+});
+export type PromoAnalysisOutput = z.infer<typeof PromoAnalysisOutputSchema>;
+
+/** コスト会計 (cost_accountant) の出力 — 本部別コスト×書籍別ROIの講評＋是正示唆。 */
+export const CostReportOutputSchema = z.object({
+  summary: z.string().min(1).max(2000),
+  findings: z.array(z.string().max(300)).max(12).default([]),
+  /** 赤字/低ROI書籍のタイトル（人が読む形）。 */
+  loss_making: z.array(z.string().max(200)).max(10).default([]),
+  suggestions: z.array(AnalysisSuggestionSchema).max(6).default([]),
+});
+export type CostReportOutput = z.infer<typeof CostReportOutputSchema>;
+
 // ---------------------------------------------------------------------------
 // ディスパッチ (org.execute.dispatch) の語彙
 // ---------------------------------------------------------------------------
@@ -311,6 +340,15 @@ export const DISPATCHABLE_KINDS = new Set<string>([
   'analyze_sales',
   'research_market',
   'report',
+  // promotion (P3) — v1 販促エンジンへ接続。create_account/connect_account は human。
+  'create_content',
+  'publish_post',
+  'analyze_promo',
+  // sysops (P3) — 自己復旧。triage_error は needs_human、monitor は cron(org.ops.watch)が担う。
+  'recover_job',
+  // finance (P3) — 本部別コスト/ROI集計。enforce_limit は needs_human、cron(org.finance.tick)が予算ガード。
+  'cost_report',
+  'budget_review',
 ]);
 
 export function isDispatchableKind(kind: string): boolean {
@@ -426,4 +464,40 @@ export function buildBudgetLines(
     const ratio = allocated && allocated > 0 ? spent / allocated : null;
     return { division, label: DIVISION_LABELS[division], allocated, spent, ratio };
   });
+}
+
+export interface BudgetBreach {
+  scope: 'total' | Division;
+  label: string;
+  allocated: number;
+  spent: number;
+  ratio: number;
+}
+
+/**
+ * 予算ガード (docs/06 §9) — 全社/本部別で消化率が閾値を超えた項目を返す。
+ * finance.tick が超過項目について enforce_limit(needs_human) を起票する根拠。
+ *
+ * @param threshold 0..1（既定 1.0 = 100%）。0.9 なら 90% 到達で検知。
+ */
+export function detectBudgetBreaches(
+  totalBudget: number | null | undefined,
+  totalSpent: number,
+  allocation: Partial<Record<Division, number>> | null | undefined,
+  spentByDivision: Partial<Record<Division, number>>,
+  threshold = 1.0,
+): BudgetBreach[] {
+  const out: BudgetBreach[] = [];
+  if (totalBudget && totalBudget > 0 && totalSpent >= totalBudget * threshold) {
+    out.push({ scope: 'total', label: '全社', allocated: totalBudget, spent: totalSpent, ratio: totalSpent / totalBudget });
+  }
+  for (const division of DIVISIONS) {
+    const allocated = allocation?.[division];
+    if (!allocated || allocated <= 0) continue;
+    const spent = spentByDivision[division] ?? 0;
+    if (spent >= allocated * threshold) {
+      out.push({ scope: division, label: DIVISION_LABELS[division], allocated, spent, ratio: spent / allocated });
+    }
+  }
+  return out;
 }

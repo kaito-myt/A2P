@@ -8,14 +8,15 @@
 ---
 
 > **関連**: KDP出版事業を丸ごと回す **組織エージェント（CEO→6本部長→担当者＋全社ToDoバックログ）** の
-> 設計は [`docs/06-org-agents-design.md`](06-org-agents-design.md) に分離。**P2 実装済み（2026-07-10）**。
+> 設計は [`docs/06-org-agents-design.md`](06-org-agents-design.md) に分離。**P3 実装済み（2026-07-11）**。
 > 既存パイプライン/販促自動運用を実行レイヤーとして再利用し、その上に計画・実行・検証・コスト統治を載せる。
 >
-> P1（起票）＋P2（実行）追加物（本ドキュメントの各レジストリへの反映）:
-> - **DB**: `org_objectives` / `org_tasks`（+`token_usage.org_task_id`、`org_tasks.theme_id/account_id`、`app_settings.org_auto_plan_enabled/org_plan_cron/org_auto_execute_enabled/org_execute_cron`）
-> - **worker タスク**: `org.plan`（CEOティック。`org_auto_plan_enabled` で日次cron。既定 05:00 JST）／`org.execute.dispatch`（承認済タスクの実行。`org_auto_execute_enabled` で 15分毎cron）
-> - **エージェント役割**: `ceo` ＋ 6本部長（`editorial_mgr`/`publish_mgr`/`analytics_mgr`/`promo_mgr`/`ops_mgr`/`finance_mgr`）＋ 担当者 `sales_analyst`/`market_analyst`/`metadata_worker`
-> - **画面**: `/org`（経営ダッシュボード）・`/org/tasks`（全社ToDoカンバン＋「承認済タスクを実行」＋成果/コスト表示）
+> P1（起票）＋P2（制作/出版/分析の実行）＋P3（販促/運用/経営の統合）追加物（本ドキュメントの各レジストリへの反映）:
+> - **DB**: `org_objectives` / `org_tasks`（+`token_usage.org_task_id`、`org_tasks.theme_id/account_id`、`app_settings.org_auto_plan_enabled/org_plan_cron/org_auto_execute_enabled/org_execute_cron/org_ops_watch_enabled/org_ops_watch_cron/org_finance_tick_enabled/org_finance_tick_cron`）
+> - **worker タスク**: `org.plan`（CEOティック。日次cron 既定05:00 JST）／`org.execute.dispatch`（承認済タスクの実行。15分毎cron）／`org.ops.watch`（運用の自己復旧監視。10分毎cron）／`org.finance.tick`（経営の予算ガード。毎時cron）。いずれも AppSettings フラグで条件付き有効化
+> - **dispatch 対象 kind**: 制作 `plan_book`/`write`、出版 `prepare_metadata`/`set_price`、分析 `analyze_sales`/`research_market`/`report`、販促 `create_content`/`publish_post`/`analyze_promo`、運用 `recover_job`、経営 `cost_report`/`budget_review`。`enforce_limit`/`triage_error`/`publish_kdp`/`create_account`/`connect_account` は `needs_human`
+> - **エージェント役割**: `ceo` ＋ 6本部長 ＋ 担当者 `sales_analyst`/`market_analyst`/`metadata_worker`（P2）・`promo_analyst`/`cost_accountant`（P3）
+> - **画面**: `/org`（経営ダッシュボード）・`/org/tasks`（全社ToDoカンバン＋「承認済タスクを実行」「運用監視を実行」「予算ガードを実行」＋成果/コスト表示）
 
 ## 0. 本ドキュメントの読み方
 

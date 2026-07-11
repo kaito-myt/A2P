@@ -11,7 +11,10 @@ import {
   MetadataDraftOutputSchema,
   SalesAnalysisOutputSchema,
   MarketResearchOutputSchema,
+  PromoAnalysisOutputSchema,
+  CostReportOutputSchema,
   buildBudgetLines,
+  detectBudgetBreaches,
   depsSatisfied,
   groupByDivision,
   groupByStatus,
@@ -34,7 +37,20 @@ describe('org constants', () => {
     expect(isHumanKind('create_account')).toBe(true);
     expect(isHumanKind('connect_account')).toBe(true);
     expect(isHumanKind('publish_kdp')).toBe(true);
+    // P3: 予算凍結/原因調査は人手判断
+    expect(isHumanKind('enforce_limit')).toBe(true);
+    expect(isHumanKind('triage_error')).toBe(true);
     expect(isHumanKind('write')).toBe(false);
+  });
+
+  it('P3 の販促/運用/経営 kind が dispatch 可能（人手 kind は除く）', () => {
+    for (const k of ['create_content', 'publish_post', 'analyze_promo', 'recover_job', 'cost_report', 'budget_review']) {
+      expect(isDispatchableKind(k)).toBe(true);
+    }
+    // 人手 kind は dispatch しない
+    expect(isDispatchableKind('enforce_limit')).toBe(false);
+    expect(isDispatchableKind('triage_error')).toBe(false);
+    expect(isDispatchableKind('publish_kdp')).toBe(false);
   });
 
   it('kindLabel は未知の kind をそのまま返す', () => {
@@ -171,7 +187,7 @@ describe('P2 worker output schemas', () => {
       summary: '売上は先月比+20%',
       suggestions: [{ division: 'production', action: 'Xジャンルを3冊', rationale: '需要増' }],
     });
-    expect(out.suggestions[0].division).toBe('production');
+    expect(out.suggestions[0]!.division).toBe('production');
     expect(out.trends).toEqual([]); // default
   });
 
@@ -180,7 +196,7 @@ describe('P2 worker output schemas', () => {
       summary: '自己啓発が伸長',
       theme_ideas: [{ title: '朝活の科学', angle: '習慣化' }],
     });
-    expect(out.theme_ideas[0].title).toBe('朝活の科学');
+    expect(out.theme_ideas[0]!.title).toBe('朝活の科学');
   });
 
   it('MetadataDraftOutputSchema は keywords 7枠まで', () => {
@@ -192,5 +208,52 @@ describe('P2 worker output schemas', () => {
     });
     expect(out.keywords).toHaveLength(3);
     expect(out.price_jpy).toBe(500);
+  });
+});
+
+describe('P3 worker output schemas', () => {
+  it('PromoAnalysisOutputSchema は suggestions を検証する', () => {
+    const out = PromoAnalysisOutputSchema.parse({
+      summary: 'Xが効いている',
+      highlights: ['初速◎'],
+      suggestions: [{ division: 'promotion', action: '頻度up', rationale: 'CVR高' }],
+    });
+    expect(out.suggestions[0]!.division).toBe('promotion');
+    expect(out.underperformers).toEqual([]);
+  });
+
+  it('CostReportOutputSchema は loss_making と suggestions を許容', () => {
+    const out = CostReportOutputSchema.parse({
+      summary: '制作過多',
+      loss_making: ['実用書A'],
+      suggestions: [{ division: 'finance', action: '再配分' }],
+    });
+    expect(out.loss_making).toEqual(['実用書A']);
+    expect(out.suggestions[0]!.rationale).toBe(''); // default
+  });
+});
+
+describe('P3 detectBudgetBreaches', () => {
+  it('全社/本部の消化超過を検出する', () => {
+    const breaches = detectBudgetBreaches(
+      1000,
+      1200, // 全社超過
+      { production: 500, promotion: 100 },
+      { production: 600, promotion: 50 }, // production だけ超過
+    );
+    const scopes = breaches.map((b) => b.scope);
+    expect(scopes).toContain('total');
+    expect(scopes).toContain('production');
+    expect(scopes).not.toContain('promotion');
+  });
+
+  it('予算未設定/消化内なら空', () => {
+    expect(detectBudgetBreaches(null, 999, null, {})).toEqual([]);
+    expect(detectBudgetBreaches(1000, 500, { production: 500 }, { production: 100 })).toEqual([]);
+  });
+
+  it('threshold で早期検知できる', () => {
+    const breaches = detectBudgetBreaches(1000, 900, null, {}, 0.9);
+    expect(breaches.some((b) => b.scope === 'total')).toBe(true);
   });
 });

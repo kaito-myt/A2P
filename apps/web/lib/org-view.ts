@@ -50,15 +50,23 @@ export function summarizeResult(result: unknown): string | null {
   const r = result as Record<string, unknown>;
   // 分析系: summary。
   if (typeof r.summary === 'string' && r.summary.length > 0) return r.summary.slice(0, 160);
+  // コスト会計レポート: report.summary。
+  if (r.report && typeof r.report === 'object') {
+    const rep = r.report as Record<string, unknown>;
+    if (typeof rep.summary === 'string' && rep.summary.length > 0) return rep.summary.slice(0, 160);
+  }
   // メタデータ草案。
   if (r.draft && typeof r.draft === 'object') {
     const d = r.draft as Record<string, unknown>;
     if (typeof d.title === 'string') return `メタデータ草案: ${d.title}`.slice(0, 160);
   }
-  // 制作起動系。
+  // 制作/販促/運用の起動系。
   if (typeof r.action === 'string') {
     if (r.action === 'theme_generate_enqueued') return `テーマ生成を起動（${r.count ?? '?'}件）`;
     if (r.action === 'book_kickoff_enqueued') return '本の制作を起動';
+    if (r.action === 'promotion_generate_enqueued') return '販促プラン生成を起動';
+    if (r.action === 'promotion_dispatch_enqueued') return '予約投稿の配信を起動';
+    if (r.action === 'job_recovered') return `ジョブ復旧: ${String(r.recovered_step ?? '').replace('pipeline.book.', '')}`.slice(0, 160);
     return String(r.action).slice(0, 160);
   }
   return null;

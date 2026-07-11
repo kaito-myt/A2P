@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { MetadataDraftOutput, SalesAnalysisOutput, MarketResearchOutput } from '@a2p/contracts/org';
+import type {
+  MetadataDraftOutput,
+  SalesAnalysisOutput,
+  MarketResearchOutput,
+  PromoAnalysisOutput,
+  CostReportOutput,
+} from '@a2p/contracts/org';
 
 import {
   runOrgExecute,
@@ -98,10 +104,38 @@ function makeHarness(opts: HarnessOpts) {
     },
     tokenUsage: {
       aggregate: vi.fn(async () => ({ _sum: { cost_jpy: 12.34 } })),
+      // finance-lib (cost_report) 用
+      findMany: vi.fn(async () => [
+        { org_task_id: 'tprod', book_id: 'b1', cost_jpy: 100 },
+        { org_task_id: 'tpromo', book_id: 'b1', cost_jpy: 50 },
+      ]),
+    },
+    orgObjective: {
+      findFirst: vi.fn(async () => ({ budget_jpy: 1000, budget_allocation_json: { production: 80, promotion: 40 } })),
+    },
+    appSettings: {
+      findUnique: vi.fn(async () => ({ monthly_cost_red_jpy: 50000 })),
+    },
+    promotionPost: {
+      findMany: vi.fn(async () => [
+        { book_id: 'b1', channel: 'x', status: 'posted', book: { title: '実用書A', theme: { genre: 'practical' } } },
+        { book_id: 'b1', channel: 'x', status: 'failed', book: { title: '実用書A', theme: { genre: 'practical' } } },
+        { book_id: 'b1', channel: 'note', status: 'scheduled', book: { title: '実用書A', theme: { genre: 'practical' } } },
+      ]),
+    },
+    promotionChannelSetting: {
+      findMany: vi.fn(async () => [
+        { channel: 'x', auto_enabled: true },
+        { channel: 'note', auto_enabled: false },
+      ]),
     },
     job: {
       create: vi.fn(async () => ({ id: 'job-new' })),
       update: vi.fn(async () => ({})),
+      findMany: vi.fn(async () => [
+        { id: 'jf1', kind: 'pipeline.book.editor', status: 'failed', retries: 1, payload_json: { book_id: 'b1', job_id: 'old' } },
+        { id: 'jf2', kind: 'pipeline.book.marketer', status: 'failed', retries: 0, payload_json: { book_id: 'b1' } },
+      ]),
     },
   } as unknown as OrgExecutePrisma;
 
@@ -135,6 +169,20 @@ const metaOut: MetadataDraftOutput = {
   rationale: '根拠',
 };
 
+const promoOut: PromoAnalysisOutput = {
+  summary: 'Xが効いている',
+  highlights: ['X投稿→初速'],
+  underperformers: ['noteは反応薄'],
+  suggestions: [{ division: 'promotion', action: 'X頻度を上げる', rationale: 'CVR高' }],
+};
+
+const costOut: CostReportOutput = {
+  summary: '制作コスト過多',
+  findings: ['制作80%消化'],
+  loss_making: ['実用書A'],
+  suggestions: [{ division: 'finance', action: '制作を絞る', rationale: '低ROI' }],
+};
+
 function baseDeps(over: Partial<OrgExecuteDeps> = {}): OrgExecuteDeps {
   return {
     logger: silentLogger,
@@ -143,6 +191,8 @@ function baseDeps(over: Partial<OrgExecuteDeps> = {}): OrgExecuteDeps {
     analyzeSales: vi.fn(async () => salesOut),
     researchMarket: vi.fn(async () => marketOut),
     draftMetadata: vi.fn(async () => metaOut),
+    analyzePromotion: vi.fn(async () => promoOut),
+    reviewCosts: vi.fn(async () => costOut),
     enqueueJob: vi.fn(async () => 'gj-1'),
     ...over,
   };
@@ -216,6 +266,90 @@ describe('runOrgExecute — production/publishing', () => {
     expect(res.done).toBe(1);
     const done = updated.find((u) => u.id === 't5')!;
     expect((done.data.result_json as { draft: MetadataDraftOutput }).draft.title).toBe('実用書A');
+  });
+});
+
+describe('runOrgExecute — P3 promotion', () => {
+  it('create_content は販促プラン生成ジョブを enqueue する', async () => {
+    const { prisma, updated } = makeHarness({
+      candidates: [task({ id: 'p1', division: 'promotion', kind: 'create_content', book_id: 'b1' })],
+    });
+    const enqueueJob = vi.fn(async () => 'gj');
+    const res = await runOrgExecute({}, { ...baseDeps({ enqueueJob }), prisma });
+    expect(res.done).toBe(1);
+    expect(enqueueJob).toHaveBeenCalledWith(
+      'pipeline.book.promotion.generate',
+      expect.objectContaining({ book_id: 'b1', job_id: 'job-new' }),
+    );
+    const done = updated.find((u) => u.id === 'p1')!;
+    expect((done.data.result_json as { action: string }).action).toBe('promotion_generate_enqueued');
+  });
+
+  it('publish_post は promotion.dispatch を enqueue する', async () => {
+    const { prisma } = makeHarness({
+      candidates: [task({ id: 'p2', division: 'promotion', kind: 'publish_post' })],
+    });
+    const enqueueJob = vi.fn(async () => 'gj');
+    const res = await runOrgExecute({}, { ...baseDeps({ enqueueJob }), prisma });
+    expect(res.done).toBe(1);
+    expect(enqueueJob).toHaveBeenCalledWith('promotion.dispatch', {});
+  });
+
+  it('analyze_promo は効果検証し改善ToDoを連鎖起票する', async () => {
+    const { prisma, updated, created } = makeHarness({
+      candidates: [task({ id: 'p3', division: 'promotion', kind: 'analyze_promo' })],
+    });
+    const res = await runOrgExecute({}, { ...baseDeps(), prisma });
+    expect(res.done).toBe(1);
+    const done = updated.find((u) => u.id === 'p3')!;
+    expect((done.data.result_json as PromoAnalysisOutput).summary).toBe('Xが効いている');
+    expect(created.filter((c) => c.status === 'proposed')).toHaveLength(1);
+  });
+});
+
+describe('runOrgExecute — P3 sysops recover_job', () => {
+  it('最進捗の失敗パイプラインステップを再投入する', async () => {
+    const { prisma, updated } = makeHarness({
+      candidates: [task({ id: 'r1', division: 'sysops', kind: 'recover_job', book_id: 'b1' })],
+    });
+    const enqueueJob = vi.fn(async () => 'gj');
+    const res = await runOrgExecute({}, { ...baseDeps({ enqueueJob }), prisma });
+    expect(res.done).toBe(1);
+    // editor (index 5) が marketer (index 1) より進んでいる → editor を再投入
+    expect(enqueueJob).toHaveBeenCalledWith(
+      'pipeline.book.editor',
+      expect.objectContaining({ book_id: 'b1', job_id: 'job-new' }),
+    );
+    const done = updated.find((u) => u.id === 'r1')!;
+    expect((done.data.result_json as { recovered_step: string }).recovered_step).toBe('pipeline.book.editor');
+  });
+
+  it('book_id が無いと blocked', async () => {
+    const { prisma, updated } = makeHarness({
+      candidates: [task({ id: 'r2', division: 'sysops', kind: 'recover_job', book_id: null })],
+    });
+    const res = await runOrgExecute({}, { ...baseDeps(), prisma });
+    expect(res.blocked).toBe(1);
+    expect(String(updated.find((u) => u.id === 'r2')!.data.error)).toContain('book_id');
+  });
+});
+
+describe('runOrgExecute — P3 finance cost_report', () => {
+  it('本部別/書籍別コストを集計し講評＋改善ToDoを起票する', async () => {
+    const { prisma, updated, created } = makeHarness({
+      candidates: [task({ id: 'f1', division: 'finance', kind: 'cost_report' })],
+    });
+    const reviewCosts = vi.fn(async () => costOut);
+    const res = await runOrgExecute({}, { ...baseDeps({ reviewCosts }), prisma });
+    expect(res.done).toBe(1);
+    // snapshot に本部別/書籍別が入っている
+    const calls = (reviewCosts as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const arg = calls[0]![0] as { snapshot: { by_division: unknown[]; per_book: unknown[] } };
+    expect(arg.snapshot.by_division.length).toBeGreaterThan(0);
+    expect(arg.snapshot.per_book.length).toBeGreaterThan(0);
+    const done = updated.find((u) => u.id === 'f1')!;
+    expect((done.data.result_json as { report: CostReportOutput }).report.summary).toBe('制作コスト過多');
+    expect(created.filter((c) => c.status === 'proposed')).toHaveLength(1);
   });
 });
 

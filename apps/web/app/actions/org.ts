@@ -18,6 +18,8 @@ import { messages } from '@/lib/messages';
 
 const ORG_PLAN_TASK = 'org.plan';
 const ORG_EXECUTE_TASK = 'org.execute.dispatch';
+const ORG_OPS_WATCH_TASK = 'org.ops.watch';
+const ORG_FINANCE_TICK_TASK = 'org.finance.tick';
 
 function revalidateOrg(): void {
   revalidatePath('/org');
@@ -82,6 +84,46 @@ export async function runOrgDispatch(): Promise<ActionResult<{ job_id: string }>
     if (isA2PError(err)) return err.toActionResult();
     return fail('unknown', messages.org.dashboard.runError);
   }
+}
+
+/** dedup + enqueue の共通処理（org.plan/dispatch/ops.watch/finance.tick 共用）。 */
+async function runOrgTick(taskName: string): Promise<ActionResult<{ job_id: string }>> {
+  try {
+    await getSessionOrThrow();
+  } catch (err) {
+    if (isA2PError(err)) return err.toActionResult();
+    return fail('unknown', messages.org.dashboard.runError);
+  }
+
+  try {
+    const existing = await prisma.job.findFirst({
+      where: { kind: taskName, status: { in: ['queued', 'running'] } },
+      select: { id: true },
+    });
+    let jobId = existing?.id ?? null;
+    if (!jobId) {
+      const job = await prisma.job.create({
+        data: { kind: taskName, status: 'queued', payload_json: { trigger: 'manual' } },
+      });
+      jobId = job.id;
+      await enqueueJob(taskName, { job_id: jobId, trigger: 'manual' });
+    }
+    revalidateOrg();
+    return ok({ job_id: jobId });
+  } catch (err) {
+    if (isA2PError(err)) return err.toActionResult();
+    return fail('unknown', messages.org.dashboard.runError);
+  }
+}
+
+/** docs/06 P3: 運用の自己復旧監視 (org.ops.watch) を手動起動。 */
+export function runOrgOpsWatch(): Promise<ActionResult<{ job_id: string }>> {
+  return runOrgTick(ORG_OPS_WATCH_TASK);
+}
+
+/** docs/06 P3: 経営の予算ガード (org.finance.tick) を手動起動。 */
+export function runOrgFinanceTick(): Promise<ActionResult<{ job_id: string }>> {
+  return runOrgTick(ORG_FINANCE_TICK_TASK);
 }
 
 const TaskIdSchema = z.object({ task_id: z.string().min(1) });

@@ -6,12 +6,12 @@
 > 開発時の Claude Code サブエージェント（`.claude/agents`）とは別物。本ドキュメントでは
 > これらを **Org エージェント** と呼ぶ。
 >
-> ステータス: **P2 実装済み（2026-07-10）**。P1 の起票系（経営神経系）に加え、
-> 担当者による**実行ディスパッチ（org.execute.dispatch）**＋コスト実績のタスク紐付け＋改善ToDoの
-> 連鎖起票が稼働。P3 以降（販促の org 統合、運用の自己復旧、経営の予算ガード）は未実装。
+> ステータス: **P3 実装済み（2026-07-11）**。P1（起票）・P2（制作/出版/分析の実行）に加え、
+> **販促の org 統合（v1販促エンジン接続）**・**運用の自己復旧（org.ops.watch）**・
+> **経営の予算ガード/ROI（org.finance.tick＋cost_report）** が稼働。残りは P4（高度化）。
 >
 > 履歴: v1 は「販促のみの組織」。v2 で **本の作成・出版・データ分析・販促・システム運用・
-> 予算管理までを含む全社組織**へ拡張。v2.1 で **P1**、v2.2（本書）で **P2 を実装**。
+> 予算管理までを含む全社組織**へ拡張。v2.1 で **P1**、v2.2 で **P2**、v2.3（本書）で **P3 を実装**。
 
 ## 実装状況（P1）
 
@@ -54,6 +54,39 @@ P1 で確定した運用: 本部長が起票したタスクは、人手前提 ki
 **P2 で意図的に人手のまま残した点:** 制作パイプラインの 4 つの人手ゲート（アウトライン承認・本文承認・
 表紙採用・KDP公開）は安全のため据え置き（誤爆の実害が大きいため）。`write`/`edit`/`design_cover`/`qa` の
 中間工程は自走パイプラインが処理するため dispatcher は個別実行しない（起動＝`write`＝kickoff のみ）。
+
+## 実装状況（P3 — 販促＋運用＋経営の統合）
+
+| 領域 | 実体 |
+| --- | --- |
+| DB | `AppSettings.org_ops_watch_enabled/org_ops_watch_cron`（既定10分毎）＋ `org_finance_tick_enabled/org_finance_tick_cron`（既定毎時）。migration `20260711000000_org_p3_promo_ops_finance`（本番適用済）|
+| 共有型 | `@a2p/contracts/org`: `DISPATCHABLE_KINDS` に販促/運用/経営 kind 追加、`HUMAN_KINDS` に `enforce_limit`/`triage_error`、`detectBudgetBreaches`、担当者 I/O（`PromoAnalysisOutput`/`CostReportOutput`）|
+| 担当者エージェント | `promo_analyst`/`cost_accountant`（`packages/agents/src/org/{promo-analyst,cost-accountant}.ts`）。prompts/model_assignments 本番 seed 済（`apply-org-p3.ts`）|
+| worker（dispatch拡張）| `org.execute.dispatch` に P3 ハンドラ追加（下表）|
+| worker（横断cron）| `org.ops.watch`（`apps/worker/src/tasks/org-ops-watch.ts`）＝運用の自己復旧監視 / `org.finance.tick`（`org-finance-tick.ts`＋集計は `org-finance-lib.ts`）＝予算ガード。いずれも AppSettings フラグで cron 条件付き有効化＋ web 手動起動 |
+| web | `/org/tasks` に「運用監視を実行」「予算ガードを実行」ボタン（`runOrgOpsWatch`/`runOrgFinanceTick`）＋成果表示（販促起動/ジョブ復旧/コスト講評）|
+
+**P3 で dispatcher が自動実行する kind と実体:**
+
+| 本部 | kind | dispatcher の動作 |
+| --- | --- | --- |
+| promotion | `create_content` | `pipeline.book.promotion.generate` を enqueue（promoter が販促プラン→投稿キュー自動生成。v1エンジン接続）|
+| promotion | `publish_post` | `promotion.dispatch` を enqueue（auto_enabled チャンネルの期限到来投稿を配信）|
+| promotion | `analyze_promo` | `promo_analyst` が投稿実績×売上を効果検証 → `result_json` → 改善ToDo連鎖 |
+| sysops | `recover_job` | 対象書籍の最進捗の失敗パイプラインジョブを再投入（`job` 新規行＋enqueue）|
+| finance | `cost_report` / `budget_review` | token_usage を本部別/書籍別に集計（`org-finance-lib`）→ `cost_accountant` が講評＋是正示唆 → 改善ToDo連鎖 |
+
+**P3 の横断cron:**
+
+- **`org.ops.watch`（運用, 10分毎）** — 直近の失敗パイプラインジョブ／長時間スタック(running>30分)を走査し、
+  リトライ余地あり→`recover_job`(approved, 自動再投入)、上限到達/スタック→`triage_error`(needs_human)を起票。
+  1 book につき開いている sysops タスクがあれば重複起票しない。1 回の起票上限 10 件。
+- **`org.finance.tick`（経営, 毎時）** — token_usage を本部別に集計し、Objective の本部別配分・全社予算・
+  月次上限(`monthly_cost_red_jpy`)と突き合わせ。消化100%到達の項目があれば `enforce_limit`(needs_human,
+  凍結/再配分の承認要求)を1件起票。開いている `enforce_limit` があれば重複起票しない。
+
+**P3 で意図的に人手のまま残した点:** `enforce_limit`（予算凍結/再配分）と `triage_error`（原因不明のジョブ障害）は
+`needs_human` として運営者/CEO/CFO の判断に委ねる。KDP公開・アカウント作成の人手ゲートは P1〜継続。
 
 ---
 

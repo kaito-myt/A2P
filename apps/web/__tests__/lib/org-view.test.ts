@@ -97,4 +97,17 @@ describe('summarizeResult / mapOrgTaskRow result', () => {
     expect(row.error).toBe('theme_id が必要');
     expect(row.resultSummary).toBeNull();
   });
+
+  it('P3 販促/運用の起動アクションを人が読める文にする', () => {
+    expect(mapOrgTaskRow(db({ result_json: { action: 'promotion_generate_enqueued' } })).resultSummary).toContain('販促プラン');
+    expect(mapOrgTaskRow(db({ result_json: { action: 'promotion_dispatch_enqueued' } })).resultSummary).toContain('配信');
+    expect(
+      mapOrgTaskRow(db({ result_json: { action: 'job_recovered', recovered_step: 'pipeline.book.editor' } })).resultSummary,
+    ).toContain('editor');
+  });
+
+  it('P3 コスト会計レポートは report.summary を要約に使う', () => {
+    const row = mapOrgTaskRow(db({ result_json: { report: { summary: '制作コスト過多' }, aggregate: {} } }));
+    expect(row.resultSummary).toBe('制作コスト過多');
+  });
 });

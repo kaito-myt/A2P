@@ -7,12 +7,18 @@ import {
   analyzeSales as defaultAnalyzeSales,
   researchMarket as defaultResearchMarket,
   draftMetadata as defaultDraftMetadata,
+  analyzePromotion as defaultAnalyzePromotion,
+  reviewCosts as defaultReviewCosts,
   type SalesAnalystInput,
   type SalesAnalystDeps,
   type MarketAnalystInput,
   type MarketAnalystDeps,
   type MetadataWorkerInput,
   type MetadataWorkerDeps,
+  type PromoAnalystInput,
+  type PromoAnalystDeps,
+  type CostAccountantInput,
+  type CostAccountantDeps,
 } from '@a2p/agents';
 import {
   DISPATCHABLE_KINDS,
@@ -26,12 +32,31 @@ import {
   type MetadataDraftOutput,
   type SalesAnalysisOutput,
   type MarketResearchOutput,
+  type PromoAnalysisOutput,
+  type CostReportOutput,
 } from '@a2p/contracts/org';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
 import { prisma as defaultPrisma } from '@a2p/db';
 
 import { PIPELINE_THEME_GENERATE_TASK_NAME } from './pipeline-theme-generate.js';
 import { PIPELINE_BOOK_KICKOFF_TASK_NAME } from './pipeline-book-kickoff.js';
+import { PIPELINE_BOOK_PROMOTION_GENERATE_TASK_NAME } from './pipeline-book-promotion-generate.js';
+import { PROMOTION_DISPATCH_TASK_NAME } from './promotion-dispatch.js';
+import { computeCostAggregate, aggregateToSnapshot, type FinancePrisma } from './org-finance-lib.js';
+
+/** 制作パイプラインのステップ進行順（recover_job で最進捗の失敗ステップを選ぶ）。 */
+const PIPELINE_STEP_ORDER: readonly string[] = [
+  'pipeline.book.kickoff',
+  'pipeline.book.marketer',
+  'pipeline.book.writer.outline',
+  'pipeline.book.writer.chapters.dispatch',
+  'pipeline.book.writer.chapter',
+  'pipeline.book.editor',
+  'pipeline.book.thumbnail.text',
+  'pipeline.book.thumbnail.image',
+  'pipeline.book.judge',
+  'pipeline.book.export',
+];
 
 /** `helpers.addJob` の最小 I/F（テスト時は mock を差し込む）。 */
 export type EnqueueJobLike = (taskName: string, payload: unknown) => Promise<unknown>;
@@ -149,16 +174,30 @@ export interface OrgExecutePrisma {
   };
   job: {
     create: (args: { data: Record<string, unknown> }) => Promise<{ id: string }>;
+    findMany?: (args: unknown) => Promise<
+      Array<{ id: string; kind: string; status: string; retries: number; payload_json: unknown }>
+    >;
     update?: (args: {
       where: { id: string };
       data: Record<string, unknown>;
     }) => Promise<unknown>;
+  };
+  // P3 promotion 効果検証（analyze_promo）用。
+  promotionPost?: {
+    findMany: (args: unknown) => Promise<
+      Array<{ book_id: string; channel: string; status: string; book: { title: string; theme: { genre: string } | null } | null }>
+    >;
+  };
+  promotionChannelSetting?: {
+    findMany: (args: unknown) => Promise<Array<{ channel: string; auto_enabled: boolean }>>;
   };
 }
 
 type AnalyzeSalesFn = (input: SalesAnalystInput, deps?: SalesAnalystDeps) => Promise<SalesAnalysisOutput>;
 type ResearchMarketFn = (input: MarketAnalystInput, deps?: MarketAnalystDeps) => Promise<MarketResearchOutput>;
 type DraftMetadataFn = (input: MetadataWorkerInput, deps?: MetadataWorkerDeps) => Promise<MetadataDraftOutput>;
+type AnalyzePromotionFn = (input: PromoAnalystInput, deps?: PromoAnalystDeps) => Promise<PromoAnalysisOutput>;
+type ReviewCostsFn = (input: CostAccountantInput, deps?: CostAccountantDeps) => Promise<CostReportOutput>;
 
 export interface OrgExecuteDeps {
   prisma?: OrgExecutePrisma;
@@ -166,6 +205,8 @@ export interface OrgExecuteDeps {
   analyzeSales?: AnalyzeSalesFn;
   researchMarket?: ResearchMarketFn;
   draftMetadata?: DraftMetadataFn;
+  analyzePromotion?: AnalyzePromotionFn;
+  reviewCosts?: ReviewCostsFn;
   enqueueJob?: EnqueueJobLike;
   now?: () => Date;
   genId?: () => string;
@@ -301,7 +342,19 @@ async function buildMarketContext(prisma: OrgExecutePrisma, now: Date, instructi
 
 interface HandlerCtx {
   prisma: OrgExecutePrisma;
-  deps: Required<Pick<OrgExecuteDeps, 'analyzeSales' | 'researchMarket' | 'draftMetadata' | 'enqueueJob' | 'now' | 'genId'>>;
+  deps: Required<
+    Pick<
+      OrgExecuteDeps,
+      | 'analyzeSales'
+      | 'researchMarket'
+      | 'draftMetadata'
+      | 'analyzePromotion'
+      | 'reviewCosts'
+      | 'enqueueJob'
+      | 'now'
+      | 'genId'
+    >
+  >;
   log: Logger;
 }
 
@@ -444,6 +497,189 @@ async function handleWrite(task: DispatchTaskRow, ctx: HandlerCtx): Promise<Hand
   };
 }
 
+// --- P3 promotion（販促の org 統合） --------------------------------------
+
+/** create_content — 本の販促プラン生成(promoter)＋投稿キュー生成を既存パイプラインで起動。 */
+async function handleCreateContent(task: DispatchTaskRow, ctx: HandlerCtx): Promise<HandlerResult> {
+  if (!task.book_id) {
+    throw new Error('create_content には book_id が必要です（対象書籍未指定）');
+  }
+  const jobPayload = { book_id: task.book_id };
+  const job = await ctx.prisma.job.create({
+    data: { kind: PIPELINE_BOOK_PROMOTION_GENERATE_TASK_NAME, book_id: task.book_id, status: 'queued', payload_json: jobPayload },
+  });
+  await ctx.deps.enqueueJob(PIPELINE_BOOK_PROMOTION_GENERATE_TASK_NAME, { book_id: task.book_id, job_id: job.id });
+  return {
+    result_json: { action: 'promotion_generate_enqueued', book_id: task.book_id, job_id: job.id },
+  };
+}
+
+/** publish_post — 期限到来した投稿を配信（既存 promotion.dispatch を起動）。auto_enabled チャンネルのみ実投稿。 */
+async function handlePublishPost(_task: DispatchTaskRow, ctx: HandlerCtx): Promise<HandlerResult> {
+  await ctx.deps.enqueueJob(PROMOTION_DISPATCH_TASK_NAME, {});
+  return {
+    result_json: {
+      action: 'promotion_dispatch_enqueued',
+      note: 'auto_enabled チャンネルかつ出版済みの本の、期限到来した予約投稿を配信します。',
+    },
+  };
+}
+
+async function buildPromoSnapshot(prisma: OrgExecutePrisma, now: Date, instruction: string) {
+  const posts = prisma.promotionPost
+    ? await prisma.promotionPost.findMany({
+        select: {
+          book_id: true,
+          channel: true,
+          status: true,
+          book: { select: { title: true, theme: { select: { genre: true } } } },
+        },
+      })
+    : [];
+  const channelSettings = prisma.promotionChannelSetting
+    ? await prisma.promotionChannelSetting.findMany({ select: { channel: true, auto_enabled: true } })
+    : [];
+  const sales = await prisma.salesRecord.findMany({
+    select: {
+      book_id: true,
+      year_month: true,
+      royalty_jpy: true,
+      book: { select: { title: true, theme: { select: { genre: true } } } },
+    },
+  });
+
+  const isPosted = (s: string) => s === 'posted';
+  const isFailed = (s: string) => s === 'failed';
+  const isScheduled = (s: string) => s === 'scheduled' || s === 'draft' || s === 'posting';
+
+  const chAuto = new Map(channelSettings.map((c) => [c.channel, c.auto_enabled]));
+  const chAgg = new Map<string, { posted: number; scheduled: number; failed: number }>();
+  const bookAgg = new Map<string, { title: string; posted: number; genre: string | null }>();
+  let totalPosted = 0;
+  let totalFailed = 0;
+  for (const p of posts) {
+    const c = chAgg.get(p.channel) ?? { posted: 0, scheduled: 0, failed: 0 };
+    if (isPosted(p.status)) {
+      c.posted += 1;
+      totalPosted += 1;
+    } else if (isFailed(p.status)) {
+      c.failed += 1;
+      totalFailed += 1;
+    } else if (isScheduled(p.status)) {
+      c.scheduled += 1;
+    }
+    chAgg.set(p.channel, c);
+
+    const b = bookAgg.get(p.book_id) ?? { title: p.book?.title ?? '(不明)', posted: 0, genre: p.book?.theme?.genre ?? null };
+    if (isPosted(p.status)) b.posted += 1;
+    bookAgg.set(p.book_id, b);
+  }
+
+  const royaltyByBook = new Map<string, number>();
+  for (const r of sales) royaltyByBook.set(r.book_id, (royaltyByBook.get(r.book_id) ?? 0) + toNumber(r.royalty_jpy));
+
+  const channels = [...new Set([...chAgg.keys(), ...chAuto.keys()])].map((channel) => {
+    const a = chAgg.get(channel) ?? { posted: 0, scheduled: 0, failed: 0 };
+    return { channel, posted: a.posted, scheduled: a.scheduled, failed: a.failed, auto_enabled: chAuto.get(channel) ?? false };
+  });
+
+  const bookIds = new Set<string>([...bookAgg.keys(), ...royaltyByBook.keys()]);
+  const perBook = [...bookIds]
+    .map((id) => {
+      const b = bookAgg.get(id);
+      return {
+        title: b?.title ?? '(不明)',
+        posted: b?.posted ?? 0,
+        royalty_jpy: royaltyByBook.get(id) ?? 0,
+        genre: b?.genre ?? null,
+      };
+    })
+    .sort((a, b) => b.royalty_jpy - a.royalty_jpy);
+
+  return {
+    period_label: periodLabel(now),
+    channels,
+    per_book: perBook,
+    total_posted: totalPosted,
+    total_failed: totalFailed,
+    instruction,
+  };
+}
+
+async function handleAnalyzePromo(task: DispatchTaskRow, ctx: HandlerCtx): Promise<HandlerResult> {
+  const snapshot = await buildPromoSnapshot(ctx.prisma, ctx.deps.now(), task.instruction);
+  const out = await ctx.deps.analyzePromotion({ snapshot }, { orgTaskId: task.id });
+  return { result_json: out, follow_ups: suggestionsToFollowUps(out.suggestions) };
+}
+
+// --- P3 sysops（自己復旧） --------------------------------------------------
+
+/** recover_job — 対象書籍の最進捗の失敗パイプラインジョブを再投入する。 */
+async function handleRecoverJob(task: DispatchTaskRow, ctx: HandlerCtx): Promise<HandlerResult> {
+  if (!task.book_id) {
+    throw new Error('recover_job には対象書籍(book_id)が必要です');
+  }
+  if (!ctx.prisma.job.findMany) {
+    throw new Error('job.findMany 未提供（recover_job の対象探索に必須）');
+  }
+  const failed = await ctx.prisma.job.findMany({
+    where: { book_id: task.book_id, status: 'failed', kind: { startsWith: 'pipeline.book.' } },
+    select: { id: true, kind: true, status: true, retries: true, payload_json: true },
+  });
+  if (failed.length === 0) {
+    throw new Error(`復旧対象の失敗ジョブがありません（book=${task.book_id}）`);
+  }
+  const stepIndex = (kind: string) => {
+    const i = PIPELINE_STEP_ORDER.indexOf(kind);
+    return i >= 0 ? i : -1;
+  };
+  const target = failed.reduce((best, cur) => (stepIndex(cur.kind) > stepIndex(best.kind) ? cur : best), failed[0]!);
+
+  const base =
+    target.payload_json && typeof target.payload_json === 'object' && !Array.isArray(target.payload_json)
+      ? (() => {
+          const { job_id: _drop, ...rest } = target.payload_json as Record<string, unknown>;
+          return rest;
+        })()
+      : {};
+
+  const newJob = await ctx.prisma.job.create({
+    data: { kind: target.kind, book_id: task.book_id, status: 'queued', payload_json: { ...base, book_id: task.book_id } },
+  });
+  await ctx.deps.enqueueJob(target.kind, { ...base, book_id: task.book_id, job_id: newJob.id });
+  return {
+    result_json: {
+      action: 'job_recovered',
+      recovered_step: target.kind,
+      from_job_id: target.id,
+      new_job_id: newJob.id,
+      failed_count: failed.length,
+    },
+  };
+}
+
+// --- P3 finance（コスト集計/ROI） -------------------------------------------
+
+async function handleCostReport(task: DispatchTaskRow, ctx: HandlerCtx): Promise<HandlerResult> {
+  const agg = await computeCostAggregate(ctx.prisma as unknown as FinancePrisma, ctx.deps.now());
+  const snapshot = aggregateToSnapshot(agg, task.instruction);
+  const out = await ctx.deps.reviewCosts({ snapshot }, { orgTaskId: task.id });
+  return {
+    result_json: {
+      report: out,
+      aggregate: {
+        period_label: agg.period_label,
+        total_cost_jpy: agg.total_cost_jpy,
+        total_royalty_jpy: agg.total_royalty_jpy,
+        total_budget_jpy: agg.total_budget_jpy,
+        by_division: agg.budget_lines,
+        per_book: agg.per_book.slice(0, 20),
+      },
+    },
+    follow_ups: suggestionsToFollowUps(out.suggestions),
+  };
+}
+
 async function runHandler(task: DispatchTaskRow, ctx: HandlerCtx): Promise<HandlerResult> {
   switch (task.kind) {
     case 'analyze_sales':
@@ -459,6 +695,20 @@ async function runHandler(task: DispatchTaskRow, ctx: HandlerCtx): Promise<Handl
       return handlePlanBook(task, ctx);
     case 'write':
       return handleWrite(task, ctx);
+    // P3 promotion
+    case 'create_content':
+      return handleCreateContent(task, ctx);
+    case 'publish_post':
+      return handlePublishPost(task, ctx);
+    case 'analyze_promo':
+      return handleAnalyzePromo(task, ctx);
+    // P3 sysops
+    case 'recover_job':
+      return handleRecoverJob(task, ctx);
+    // P3 finance
+    case 'cost_report':
+    case 'budget_review':
+      return handleCostReport(task, ctx);
     default:
       throw new Error(`dispatch 未対応の kind: ${task.kind}`);
   }
@@ -481,6 +731,8 @@ export async function runOrgExecute(payload: unknown, deps: OrgExecuteDeps = {})
       analyzeSales: deps.analyzeSales ?? defaultAnalyzeSales,
       researchMarket: deps.researchMarket ?? defaultResearchMarket,
       draftMetadata: deps.draftMetadata ?? defaultDraftMetadata,
+      analyzePromotion: deps.analyzePromotion ?? defaultAnalyzePromotion,
+      reviewCosts: deps.reviewCosts ?? defaultReviewCosts,
       enqueueJob:
         deps.enqueueJob ??
         (() => {

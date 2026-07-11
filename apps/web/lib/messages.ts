@@ -151,6 +151,13 @@ export const messages = {
       dispatchQueued: 'ディスパッチを起動しました。数十秒後に成果が反映されます。',
       result: '成果',
       blockedReason: 'ブロック理由',
+      opsWatch: '運用監視を実行',
+      opsWatchHint: '失敗/スタックしたジョブを検知し、復旧ToDo（自動再投入）または要調査ToDoを起票します',
+      opsWatchQueued: '運用監視を起動しました。数十秒後に復旧/要調査ToDoが反映されます。',
+      financeTick: '予算ガードを実行',
+      financeTickHint: '本部別コストを集計し、予算/月次上限の超過があれば予算ガードToDo（要人手）を起票します',
+      financeTickQueued: '予算ガードを起動しました。数十秒後に集計・超過検知が反映されます。',
+      tickError: '起動に失敗しました',
     },
   },
   accounts: {
