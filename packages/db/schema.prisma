@@ -277,6 +277,34 @@ model PromotionChannelSetting {
 }
 
 // =====================================================================
+// 販促アカウント台帳 [docs/06 P4] — チャンネル×アカウントの多アカウント運用
+//   org(account_strategist)がジャンル/ターゲットの穴を分析し、必要なニッチ専用
+//   アカウントを「戦略」として立案する。新規作成そのものは規約/KYC のため人手
+//   (create_account=needs_human) だが、作成仕様(handle案/bio/投稿方針)まで org が埋める。
+//   接続後は org が戦略に沿って投稿先を自動振り分けする(投稿ルーティングは後続増分)。
+// =====================================================================
+model PromotionAccount {
+  id             String   @id @default(cuid())
+  channel        String // x | instagram | tiktok | note | blog
+  handle         String? // @handle / URL (接続後に確定)
+  niche          String // このアカウントの切り口/ニッチ (戦略の核)
+  target_reader  String? // 想定ターゲット読者
+  bio            String?  @db.Text // 推奨プロフィール文 (作成仕様)
+  posting_policy String?  @db.Text // 投稿方針/頻度 (作成仕様)
+  // pending (要人手作成待ち) | connected (接続済・運用中) | archived
+  status         String   @default("pending")
+  // 接続後のトークン多重管理 (AES-256-GCM)。未接続なら null。
+  token_enc      String?  @db.Text
+  token_mask     String?
+  config_json    Json?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@index([channel, status])
+  @@map("promotion_accounts")
+}
+
+// =====================================================================
 // 所有ブログ記事 [F-052b] — ツール自身が公開・運用するブログ (第三者接続不要で完全自律)
 // =====================================================================
 model BlogPost {

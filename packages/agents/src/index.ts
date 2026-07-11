@@ -190,6 +190,14 @@ export {
   type CostSnapshot,
 } from './org/cost-accountant.js';
 
+export {
+  planAccountStrategy,
+  buildAccountStrategistUserMessage,
+  type AccountStrategistInput,
+  type AccountStrategistDeps,
+  type AccountSnapshot,
+} from './org/account-strategist.js';
+
 export { kanaToRomaji } from './lib/kana-to-romaji.js';
 
 export {

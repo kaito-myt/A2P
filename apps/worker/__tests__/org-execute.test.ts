@@ -6,6 +6,7 @@ import type {
   MarketResearchOutput,
   PromoAnalysisOutput,
   CostReportOutput,
+  AccountStrategyOutput,
 } from '@a2p/contracts/org';
 
 import {
@@ -45,11 +46,14 @@ function task(over: Partial<DispatchTaskRow>): DispatchTaskRow {
 interface HarnessOpts {
   candidates: DispatchTaskRow[];
   doneIds?: string[];
+  /** promotion_accounts 台帳の既存行（plan_accounts の重複判定用）。 */
+  ledger?: Array<{ channel: string; niche: string; handle: string | null; status: string }>;
 }
 
 function makeHarness(opts: HarnessOpts) {
   const updated: Array<{ id: string; data: Record<string, unknown> }> = [];
   const created: Array<Record<string, unknown>> = [];
+  const accountsCreated: Array<Record<string, unknown>> = [];
   const claims = new Set<string>(); // id が既に in_progress になったか
 
   const prisma = {
@@ -125,9 +129,16 @@ function makeHarness(opts: HarnessOpts) {
     },
     promotionChannelSetting: {
       findMany: vi.fn(async () => [
-        { channel: 'x', auto_enabled: true },
-        { channel: 'note', auto_enabled: false },
+        { channel: 'x', auto_enabled: true, handle: '@main', token_mask: null },
+        { channel: 'note', auto_enabled: false, handle: null, token_mask: null },
       ]),
+    },
+    promotionAccount: {
+      findMany: vi.fn(async () => opts.ledger ?? []),
+      create: vi.fn(async (args: { data: Record<string, unknown> }) => {
+        accountsCreated.push(args.data);
+        return { id: `acct-${accountsCreated.length}` };
+      }),
     },
     job: {
       create: vi.fn(async () => ({ id: 'job-new' })),
@@ -139,7 +150,7 @@ function makeHarness(opts: HarnessOpts) {
     },
   } as unknown as OrgExecutePrisma;
 
-  return { prisma, updated, created };
+  return { prisma, updated, created, accountsCreated };
 }
 
 const salesOut: SalesAnalysisOutput = {
@@ -183,6 +194,32 @@ const costOut: CostReportOutput = {
   suggestions: [{ division: 'finance', action: '制作を絞る', rationale: '低ROI' }],
 };
 
+const accountOut: AccountStrategyOutput = {
+  summary: '朝活ニッチに専用アカウントが無い',
+  recommended_accounts: [
+    {
+      channel: 'x',
+      niche: '朝活・習慣化',
+      target_reader: '20-30代の会社員',
+      handle_suggestion: 'asakatsu_lab',
+      bio: '朝活と習慣化の実用書を紹介',
+      posting_policy: '毎朝6時に1投稿',
+      rationale: '在庫に朝活本が複数あるが専用露出が無い',
+    },
+    {
+      channel: 'note',
+      niche: '副業・お金',
+      target_reader: '副業志望',
+      handle_suggestion: 'fukugyo_note',
+      bio: '副業ノウハウ',
+      posting_policy: '週2記事',
+      rationale: '需要増',
+    },
+  ],
+  routing: [{ target: '@main (x)', use_for: '全書籍の告知' }],
+  suggestions: [{ division: 'promotion', action: 'X頻度を上げる', rationale: 'CVR高' }],
+};
+
 function baseDeps(over: Partial<OrgExecuteDeps> = {}): OrgExecuteDeps {
   return {
     logger: silentLogger,
@@ -193,6 +230,7 @@ function baseDeps(over: Partial<OrgExecuteDeps> = {}): OrgExecuteDeps {
     draftMetadata: vi.fn(async () => metaOut),
     analyzePromotion: vi.fn(async () => promoOut),
     reviewCosts: vi.fn(async () => costOut),
+    planAccountStrategy: vi.fn(async () => accountOut),
     enqueueJob: vi.fn(async () => 'gj-1'),
     ...over,
   };
@@ -304,6 +342,36 @@ describe('runOrgExecute — P3 promotion', () => {
     const done = updated.find((u) => u.id === 'p3')!;
     expect((done.data.result_json as PromoAnalysisOutput).summary).toBe('Xが効いている');
     expect(created.filter((c) => c.status === 'proposed')).toHaveLength(1);
+  });
+});
+
+describe('runOrgExecute — P4 promotion plan_accounts', () => {
+  it('推奨アカウントを台帳(pending)登録＋作成仕様付き create_account(needs_human) を起票', async () => {
+    const { prisma, created, accountsCreated } = makeHarness({
+      candidates: [task({ id: 'a1', division: 'promotion', kind: 'plan_accounts' })],
+    });
+    const res = await runOrgExecute({}, { ...baseDeps(), prisma });
+    expect(res.done).toBe(1);
+    // 2件の推奨 → 台帳2件 + create_account 2件
+    expect(accountsCreated).toHaveLength(2);
+    expect(accountsCreated[0]!.status).toBe('pending');
+    const createAccts = created.filter((c) => c.kind === 'create_account');
+    expect(createAccts).toHaveLength(2);
+    expect(createAccts[0]!.status).toBe('needs_human');
+    expect(createAccts[0]!.assignee_role).toBe('human');
+    // 作成仕様(handle案/bio)が instruction に埋まっている
+    expect(String(createAccts[0]!.instruction)).toContain('asakatsu_lab');
+  });
+
+  it('既に台帳にあるニッチは重複起票しない', async () => {
+    const { prisma, created, accountsCreated } = makeHarness({
+      candidates: [task({ id: 'a2', division: 'promotion', kind: 'plan_accounts' })],
+      ledger: [{ channel: 'x', niche: '朝活・習慣化', handle: null, status: 'pending' }],
+    });
+    await runOrgExecute({}, { ...baseDeps(), prisma });
+    // 朝活はスキップ → note の1件のみ
+    expect(accountsCreated).toHaveLength(1);
+    expect(created.filter((c) => c.kind === 'create_account')).toHaveLength(1);
   });
 });
 

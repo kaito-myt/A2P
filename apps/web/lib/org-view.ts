@@ -67,6 +67,7 @@ export function summarizeResult(result: unknown): string | null {
     if (r.action === 'promotion_generate_enqueued') return '販促プラン生成を起動';
     if (r.action === 'promotion_dispatch_enqueued') return '予約投稿の配信を起動';
     if (r.action === 'job_recovered') return `ジョブ復旧: ${String(r.recovered_step ?? '').replace('pipeline.book.', '')}`.slice(0, 160);
+    if (r.action === 'account_strategy_planned') return `アカウント戦略立案（新規${r.accounts_proposed ?? 0}件を人手作成へ）`;
     return String(r.action).slice(0, 160);
   }
   return null;

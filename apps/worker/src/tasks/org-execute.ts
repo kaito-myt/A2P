@@ -9,6 +9,7 @@ import {
   draftMetadata as defaultDraftMetadata,
   analyzePromotion as defaultAnalyzePromotion,
   reviewCosts as defaultReviewCosts,
+  planAccountStrategy as defaultPlanAccountStrategy,
   type SalesAnalystInput,
   type SalesAnalystDeps,
   type MarketAnalystInput,
@@ -19,6 +20,8 @@ import {
   type PromoAnalystDeps,
   type CostAccountantInput,
   type CostAccountantDeps,
+  type AccountStrategistInput,
+  type AccountStrategistDeps,
 } from '@a2p/agents';
 import {
   DISPATCHABLE_KINDS,
@@ -34,6 +37,7 @@ import {
   type MarketResearchOutput,
   type PromoAnalysisOutput,
   type CostReportOutput,
+  type AccountStrategyOutput,
 } from '@a2p/contracts/org';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
 import { prisma as defaultPrisma } from '@a2p/db';
@@ -191,6 +195,13 @@ export interface OrgExecutePrisma {
   promotionChannelSetting?: {
     findMany: (args: unknown) => Promise<Array<{ channel: string; auto_enabled: boolean }>>;
   };
+  // P4 アカウント戦略（plan_accounts）用の台帳。
+  promotionAccount?: {
+    findMany: (args: unknown) => Promise<
+      Array<{ channel: string; niche: string; handle: string | null; status: string }>
+    >;
+    create: (args: { data: Record<string, unknown> }) => Promise<{ id: string }>;
+  };
 }
 
 type AnalyzeSalesFn = (input: SalesAnalystInput, deps?: SalesAnalystDeps) => Promise<SalesAnalysisOutput>;
@@ -198,6 +209,10 @@ type ResearchMarketFn = (input: MarketAnalystInput, deps?: MarketAnalystDeps) =>
 type DraftMetadataFn = (input: MetadataWorkerInput, deps?: MetadataWorkerDeps) => Promise<MetadataDraftOutput>;
 type AnalyzePromotionFn = (input: PromoAnalystInput, deps?: PromoAnalystDeps) => Promise<PromoAnalysisOutput>;
 type ReviewCostsFn = (input: CostAccountantInput, deps?: CostAccountantDeps) => Promise<CostReportOutput>;
+type PlanAccountStrategyFn = (
+  input: AccountStrategistInput,
+  deps?: AccountStrategistDeps,
+) => Promise<AccountStrategyOutput>;
 
 export interface OrgExecuteDeps {
   prisma?: OrgExecutePrisma;
@@ -207,6 +222,7 @@ export interface OrgExecuteDeps {
   draftMetadata?: DraftMetadataFn;
   analyzePromotion?: AnalyzePromotionFn;
   reviewCosts?: ReviewCostsFn;
+  planAccountStrategy?: PlanAccountStrategyFn;
   enqueueJob?: EnqueueJobLike;
   now?: () => Date;
   genId?: () => string;
@@ -350,6 +366,7 @@ interface HandlerCtx {
       | 'draftMetadata'
       | 'analyzePromotion'
       | 'reviewCosts'
+      | 'planAccountStrategy'
       | 'enqueueJob'
       | 'now'
       | 'genId'
@@ -612,6 +629,132 @@ async function handleAnalyzePromo(task: DispatchTaskRow, ctx: HandlerCtx): Promi
   return { result_json: out, follow_ups: suggestionsToFollowUps(out.suggestions) };
 }
 
+/** ニッチ文字列の正規化（重複アカウント判定用）。 */
+function normalizeNiche(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * plan_accounts (P4) — 多アカウント運用の戦略を自律立案。
+ * 新規アカウント作成そのものは規約/KYC のため org は行わず、作成仕様を埋めた
+ * `create_account`(needs_human) を起票＋台帳(promotion_accounts, pending)に登録する。
+ */
+async function handlePlanAccounts(task: DispatchTaskRow, ctx: HandlerCtx): Promise<HandlerResult> {
+  const now = ctx.deps.now();
+
+  // 既存の接続済みチャンネル（channel×1 の v1 設定）。
+  const channelSettings = ctx.prisma.promotionChannelSetting
+    ? ((await ctx.prisma.promotionChannelSetting.findMany({
+        select: { channel: true, auto_enabled: true, handle: true, token_mask: true },
+      })) as unknown as Array<{ channel: string; handle: string | null; token_mask: string | null }>)
+    : [];
+  // 既存の台帳アカウント（多アカウント）。
+  const ledger = ctx.prisma.promotionAccount
+    ? await ctx.prisma.promotionAccount.findMany({
+        where: { status: { in: ['pending', 'connected'] } },
+        select: { channel: true, niche: true, handle: true, status: true },
+      })
+    : [];
+
+  const connected = [
+    ...channelSettings
+      .filter((c) => c.handle || c.token_mask)
+      .map((c) => ({ channel: c.channel, handle: c.handle, niche: null as string | null })),
+    ...ledger.filter((a) => a.status === 'connected').map((a) => ({ channel: a.channel, handle: a.handle, niche: a.niche })),
+  ];
+  const pending = ledger.filter((a) => a.status === 'pending').map((a) => ({ channel: a.channel, niche: a.niche }));
+
+  // 在庫本のジャンル内訳＋ターゲットサンプル。
+  const books = (await ctx.prisma.book.findMany({
+    select: { id: true, theme: { select: { genre: true, target_reader: true } } },
+  })) as unknown as Array<{ theme: { genre: string; target_reader: string | null } | null }>;
+  const inventory: Record<string, number> = {};
+  const targetSet = new Set<string>();
+  for (const b of books) {
+    const g = b.theme?.genre ?? '未分類';
+    inventory[g] = (inventory[g] ?? 0) + 1;
+    if (b.theme?.target_reader) targetSet.add(b.theme.target_reader.slice(0, 120));
+  }
+
+  const out = await ctx.deps.planAccountStrategy(
+    {
+      snapshot: {
+        period_label: periodLabel(now),
+        connected,
+        pending,
+        genre_inventory: inventory,
+        target_samples: [...targetSet],
+        instruction: task.instruction,
+      },
+    },
+    { orgTaskId: task.id },
+  );
+
+  // 既存（台帳）ニッチ集合 — 重複起票を避ける。
+  const existingKeys = new Set(ledger.map((a) => `${a.channel}::${normalizeNiche(a.niche)}`));
+  let accountsCreated = 0;
+  for (const rec of out.recommended_accounts) {
+    const key = `${rec.channel}::${normalizeNiche(rec.niche)}`;
+    if (existingKeys.has(key)) continue;
+    existingKeys.add(key);
+
+    // 台帳へ pending 登録（作成仕様を保持）。
+    if (ctx.prisma.promotionAccount) {
+      await ctx.prisma.promotionAccount.create({
+        data: {
+          channel: rec.channel,
+          niche: rec.niche,
+          target_reader: rec.target_reader || null,
+          bio: rec.bio || null,
+          posting_policy: rec.posting_policy || null,
+          status: 'pending',
+        },
+      });
+    }
+
+    // 作成仕様を埋めた create_account を needs_human で起票（作成そのものは人手）。
+    const instruction = [
+      `【${rec.channel} 新規アカウント作成依頼】ニッチ: ${rec.niche}`,
+      rec.target_reader ? `ターゲット: ${rec.target_reader}` : '',
+      rec.handle_suggestion ? `推奨ハンドル案: @${rec.handle_suggestion}` : '',
+      rec.bio ? `\nプロフィール文（そのまま貼付可）:\n${rec.bio}` : '',
+      rec.posting_policy ? `\n投稿方針:\n${rec.posting_policy}` : '',
+      rec.rationale ? `\n狙い: ${rec.rationale}` : '',
+      '\n※ 規約/本人確認のためアカウント作成・接続は運営者が一度だけ行ってください。接続後は org が自動運用します。',
+    ]
+      .filter((l) => l !== '')
+      .join('\n')
+      .slice(0, 3900);
+    await ctx.prisma.orgTask.create({
+      data: {
+        objective_id: task.objective_id,
+        parent_id: task.id,
+        division: 'promotion',
+        owner_role: 'promo_mgr',
+        assignee_role: 'human',
+        channel: rec.channel,
+        kind: 'create_account',
+        title: `アカウント作成: ${rec.channel} / ${rec.niche}`.slice(0, 160),
+        instruction,
+        status: 'needs_human',
+        priority: 'should',
+        result_json: { spec: rec },
+      },
+    });
+    accountsCreated += 1;
+  }
+
+  return {
+    result_json: {
+      action: 'account_strategy_planned',
+      strategy: out,
+      accounts_proposed: accountsCreated,
+      note: '推奨アカウントは台帳(pending)に登録し、作成仕様付きで create_account(要人手)を起票。',
+    },
+    follow_ups: suggestionsToFollowUps(out.suggestions),
+  };
+}
+
 // --- P3 sysops（自己復旧） --------------------------------------------------
 
 /** recover_job — 対象書籍の最進捗の失敗パイプラインジョブを再投入する。 */
@@ -695,6 +838,9 @@ async function runHandler(task: DispatchTaskRow, ctx: HandlerCtx): Promise<Handl
       return handlePlanBook(task, ctx);
     case 'write':
       return handleWrite(task, ctx);
+    // P4 promotion
+    case 'plan_accounts':
+      return handlePlanAccounts(task, ctx);
     // P3 promotion
     case 'create_content':
       return handleCreateContent(task, ctx);
@@ -733,6 +879,7 @@ export async function runOrgExecute(payload: unknown, deps: OrgExecuteDeps = {})
       draftMetadata: deps.draftMetadata ?? defaultDraftMetadata,
       analyzePromotion: deps.analyzePromotion ?? defaultAnalyzePromotion,
       reviewCosts: deps.reviewCosts ?? defaultReviewCosts,
+      planAccountStrategy: deps.planAccountStrategy ?? defaultPlanAccountStrategy,
       enqueueJob:
         deps.enqueueJob ??
         (() => {

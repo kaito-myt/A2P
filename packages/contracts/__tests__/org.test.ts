@@ -13,6 +13,7 @@ import {
   MarketResearchOutputSchema,
   PromoAnalysisOutputSchema,
   CostReportOutputSchema,
+  AccountStrategyOutputSchema,
   buildBudgetLines,
   detectBudgetBreaches,
   depsSatisfied,
@@ -47,6 +48,10 @@ describe('org constants', () => {
     for (const k of ['create_content', 'publish_post', 'analyze_promo', 'recover_job', 'cost_report', 'budget_review']) {
       expect(isDispatchableKind(k)).toBe(true);
     }
+    // P4: アカウント戦略立案は dispatch 可能（作成そのものは create_account=human）
+    expect(isDispatchableKind('plan_accounts')).toBe(true);
+    expect(isHumanKind('plan_accounts')).toBe(false);
+    expect(DIVISION_KINDS.promotion).toContain('plan_accounts');
     // 人手 kind は dispatch しない
     expect(isDispatchableKind('enforce_limit')).toBe(false);
     expect(isDispatchableKind('triage_error')).toBe(false);
@@ -230,6 +235,16 @@ describe('P3 worker output schemas', () => {
     });
     expect(out.loss_making).toEqual(['実用書A']);
     expect(out.suggestions[0]!.rationale).toBe(''); // default
+  });
+
+  it('AccountStrategyOutputSchema は推奨アカウントを検証する', () => {
+    const out = AccountStrategyOutputSchema.parse({
+      summary: '朝活ニッチ',
+      recommended_accounts: [{ channel: 'x', niche: '朝活', handle_suggestion: 'asakatsu' }],
+    });
+    expect(out.recommended_accounts[0]!.channel).toBe('x');
+    expect(out.recommended_accounts[0]!.bio).toBe(''); // default
+    expect(out.routing).toEqual([]);
   });
 });
 

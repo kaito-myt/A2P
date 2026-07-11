@@ -110,4 +110,10 @@ describe('summarizeResult / mapOrgTaskRow result', () => {
     const row = mapOrgTaskRow(db({ result_json: { report: { summary: '制作コスト過多' }, aggregate: {} } }));
     expect(row.resultSummary).toBe('制作コスト過多');
   });
+
+  it('P4 アカウント戦略の起票を人が読める文にする', () => {
+    const row = mapOrgTaskRow(db({ result_json: { action: 'account_strategy_planned', accounts_proposed: 2 } }));
+    expect(row.resultSummary).toContain('アカウント戦略');
+    expect(row.resultSummary).toContain('2');
+  });
 });

@@ -72,6 +72,7 @@ export const ORG_ROLE_LABELS: Record<string, string> = {
   content_creator: 'コンテンツ担当',
   publisher_worker: '投稿担当',
   promo_analyst: '販促アナリスト',
+  account_strategist: 'アカウント戦略担当',
   ops_worker: '運用担当',
   cost_accountant: 'コスト会計',
   human: '運営者(人手)',
@@ -89,7 +90,7 @@ export const DIVISION_KINDS: Record<Division, readonly string[]> = {
   production: ['plan_book', 'write', 'edit', 'design_cover', 'qa'],
   publishing: ['prepare_metadata', 'set_price', 'publish_kdp'],
   analytics: ['analyze_sales', 'research_market', 'report'],
-  promotion: ['create_content', 'publish_post', 'analyze_promo', 'create_account', 'connect_account'],
+  promotion: ['plan_accounts', 'create_content', 'publish_post', 'analyze_promo', 'create_account', 'connect_account'],
   sysops: ['monitor', 'recover_job', 'triage_error'],
   finance: ['budget_review', 'cost_report', 'enforce_limit'],
 };
@@ -106,6 +107,7 @@ export const KIND_LABELS: Record<string, string> = {
   analyze_sales: '売上分析',
   research_market: '市場リサーチ',
   report: 'レポート',
+  plan_accounts: 'アカウント戦略',
   create_content: 'コンテンツ作成',
   publish_post: '投稿',
   analyze_promo: '効果検証',
@@ -319,6 +321,34 @@ export const CostReportOutputSchema = z.object({
 });
 export type CostReportOutput = z.infer<typeof CostReportOutputSchema>;
 
+/** アカウント戦略担当 (account_strategist) の出力 — 多アカウント運用の戦略。 */
+export const AccountStrategyOutputSchema = z.object({
+  summary: z.string().min(1).max(2000),
+  /** 新規に用意すべきニッチ専用アカウント（作成仕様まで含む。作成は人手ゲート）。 */
+  recommended_accounts: z
+    .array(
+      z.object({
+        channel: z.enum(PROMOTION_TASK_CHANNELS),
+        niche: z.string().min(1).max(120),
+        target_reader: z.string().max(200).default(''),
+        /** 推奨ハンドル案（@なし・英数字）。 */
+        handle_suggestion: z.string().max(60).default(''),
+        bio: z.string().max(600).default(''),
+        posting_policy: z.string().max(600).default(''),
+        rationale: z.string().max(600).default(''),
+      }),
+    )
+    .max(8)
+    .default([]),
+  /** 既存の接続済みアカウント/チャンネルの活用方針。 */
+  routing: z
+    .array(z.object({ target: z.string().max(120), use_for: z.string().max(400).default('') }))
+    .max(12)
+    .default([]),
+  suggestions: z.array(AnalysisSuggestionSchema).max(6).default([]),
+});
+export type AccountStrategyOutput = z.infer<typeof AccountStrategyOutputSchema>;
+
 // ---------------------------------------------------------------------------
 // ディスパッチ (org.execute.dispatch) の語彙
 // ---------------------------------------------------------------------------
@@ -344,6 +374,8 @@ export const DISPATCHABLE_KINDS = new Set<string>([
   'create_content',
   'publish_post',
   'analyze_promo',
+  // promotion (P4) — アカウント戦略の自律立案（新規作成そのものは needs_human で起票）。
+  'plan_accounts',
   // sysops (P3) — 自己復旧。triage_error は needs_human、monitor は cron(org.ops.watch)が担う。
   'recover_job',
   // finance (P3) — 本部別コスト/ROI集計。enforce_limit は needs_human、cron(org.finance.tick)が予算ガード。

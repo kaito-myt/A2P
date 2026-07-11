@@ -6,12 +6,15 @@
 > 開発時の Claude Code サブエージェント（`.claude/agents`）とは別物。本ドキュメントでは
 > これらを **Org エージェント** と呼ぶ。
 >
-> ステータス: **P3 実装済み（2026-07-11）**。P1（起票）・P2（制作/出版/分析の実行）に加え、
-> **販促の org 統合（v1販促エンジン接続）**・**運用の自己復旧（org.ops.watch）**・
-> **経営の予算ガード/ROI（org.finance.tick＋cost_report）** が稼働。残りは P4（高度化）。
+> ステータス: **P4 着手（増分1 実装済み 2026-07-12）**。P1〜P3 に加え、**多アカウント運用の
+> アカウント戦略プランナー（account_strategist / plan_accounts）** が稼働。org がジャンル/ターゲットの
+> 穴を分析して必要なアカウントを立案し、**作成仕様（handle案/bio/投稿方針）付きで `create_account`
+> (needs_human) を起票**＋台帳 `promotion_accounts` に pending 登録する。
+> **アカウント作成そのものは規約/KYC のため org は行わない（connect-once の人手）** — 固定仕様。
+> P4 残り（KDP条件付き自動公開=ゲート付き既定OFF・SNSエンゲージメント読取・多アカウント投稿routing・
+> bakeoffモデル最適化・勝ちパターン学習）は後続増分。
 >
-> 履歴: v1 は「販促のみの組織」。v2 で **本の作成・出版・データ分析・販促・システム運用・
-> 予算管理までを含む全社組織**へ拡張。v2.1 で **P1**、v2.2 で **P2**、v2.3（本書）で **P3 を実装**。
+> 履歴: v1「販促のみ」→ v2 全社組織 → v2.1 **P1** → v2.2 **P2** → v2.3 **P3** → v2.4（本書）**P4増分1**。
 
 ## 実装状況（P1）
 
@@ -87,6 +90,32 @@ P1 で確定した運用: 本部長が起票したタスクは、人手前提 ki
 
 **P3 で意図的に人手のまま残した点:** `enforce_limit`（予算凍結/再配分）と `triage_error`（原因不明のジョブ障害）は
 `needs_human` として運営者/CEO/CFO の判断に委ねる。KDP公開・アカウント作成の人手ゲートは P1〜継続。
+
+## 実装状況（P4 増分1 — 多アカウント運用のアカウント戦略）
+
+| 領域 | 実体 |
+| --- | --- |
+| DB | `promotion_accounts`（channel×account 台帳。niche/target_reader/bio/posting_policy/status=pending\|connected\|archived）。migration `20260712000000_org_p4_promotion_accounts`（本番適用済）|
+| 共有型 | `@a2p/contracts/org`: `plan_accounts` を promotion kind＋`DISPATCHABLE_KINDS` に追加、`AccountStrategyOutput` スキーマ |
+| 担当者エージェント | `account_strategist`（`packages/agents/src/org/account-strategist.ts`）。prompts/model_assignments 本番 seed 済（`apply-org-p4.ts`）|
+| worker（dispatch拡張）| `org.execute.dispatch` の `plan_accounts` ハンドラ |
+| web | `/org/tasks` の成果表示に「アカウント戦略立案（新規N件を人手作成へ）」を追加 |
+
+**`plan_accounts` の動作:** 在庫本のジャンル/ターゲット＋接続済みアカウント＋台帳を集約 → `account_strategist` が
+「読者が居るのに専用アカウントが無いニッチ」への増設アカウントを立案。各推奨について：
+
+1. 台帳 `promotion_accounts` に **`status=pending`** で登録（作成仕様 handle案/bio/投稿方針を保持）
+2. **作成仕様を全部埋めた `create_account`（`needs_human`, assignee=human）を起票** — 運営者は数分でサインアップ&接続
+3. 既存（pending/connected）と同一ニッチは重複起票しない
+
+**アカウント作成の固定仕様（§10 再掲・最重要）:** 各SNS/KDPは自動サインアップを規約で禁止し、
+電話/本人確認(KYC)/CAPTCHA が絡む。**org はアカウントを自分で作らない**。作成・接続は運営者が一度だけ行い、
+接続後は org が戦略に沿って完全自動運用する（connect-once）。P4 の多アカウントは「作成」ではなく
+「既接続アカウント間のルーティング＋戦略立案」の高度化であり、この方針は変えない。
+
+**P4 の残り（後続増分）:** 多アカウント投稿ルーティング（`promotion_posts` を台帳アカウントへ振り分け）、
+KDP条件付き自動公開（ゲート付き・既定OFF）、SNSエンゲージメント読取（read-port）、
+bakeoff による各 org ロールのモデル最適化、方針の自動学習（勝ちパターン蓄積）。
 
 ---
 

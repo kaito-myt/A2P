@@ -41,7 +41,9 @@ export type AgentRole =
   | 'metadata_worker'
   // docs/06 P3 — 販促/経営の担当者ロール。
   | 'promo_analyst'
-  | 'cost_accountant';
+  | 'cost_accountant'
+  // docs/06 P4 — アカウント戦略担当。
+  | 'account_strategist';
 
 /**
  * マルチモーダル入力用の画像添付。`content` (テキスト) と併せてユーザーメッセージに付与する。
