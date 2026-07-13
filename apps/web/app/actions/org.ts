@@ -118,17 +118,17 @@ async function runOrgTick(taskName: string): Promise<ActionResult<{ job_id: stri
 }
 
 /** docs/06 P3: 運用の自己復旧監視 (org.ops.watch) を手動起動。 */
-export function runOrgOpsWatch(): Promise<ActionResult<{ job_id: string }>> {
+export async function runOrgOpsWatch(): Promise<ActionResult<{ job_id: string }>> {
   return runOrgTick(ORG_OPS_WATCH_TASK);
 }
 
 /** docs/06 P3: 経営の予算ガード (org.finance.tick) を手動起動。 */
-export function runOrgFinanceTick(): Promise<ActionResult<{ job_id: string }>> {
+export async function runOrgFinanceTick(): Promise<ActionResult<{ job_id: string }>> {
   return runOrgTick(ORG_FINANCE_TICK_TASK);
 }
 
 /** docs/06 P4 増分3: KDP 公開の事前スクリーニング (org.kdp.screen) を手動起動。 */
-export function runOrgKdpScreen(): Promise<ActionResult<{ job_id: string }>> {
+export async function runOrgKdpScreen(): Promise<ActionResult<{ job_id: string }>> {
   return runOrgTick(ORG_KDP_SCREEN_TASK);
 }
 
@@ -168,14 +168,14 @@ async function transitionTask(
   }
 }
 
-export function approveOrgTask(input: unknown) {
+export async function approveOrgTask(input: unknown) {
   return transitionTask(input, 'approved');
 }
 
-export function completeOrgTask(input: unknown) {
+export async function completeOrgTask(input: unknown) {
   return transitionTask(input, 'done');
 }
 
-export function cancelOrgTask(input: unknown) {
+export async function cancelOrgTask(input: unknown) {
   return transitionTask(input, 'canceled');
 }
