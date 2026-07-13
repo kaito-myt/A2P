@@ -124,4 +124,13 @@ describe('summarizeResult / mapOrgTaskRow result', () => {
     expect(ngRow.resultSummary).toContain('公開不可');
     expect(ngRow.resultSummary).toContain('品質');
   });
+
+  it('P4 モデル最適化提案を人が読める文にする', () => {
+    const row = mapOrgTaskRow(
+      db({ result_json: { action: 'model_optimization_proposal', proposal: { role: 'ceo', provider: 'anthropic', model: 'sonnet' } } }),
+    );
+    expect(row.resultSummary).toContain('モデル最適化提案');
+    expect(row.resultSummary).toContain('ceo');
+    expect(row.resultSummary).toContain('sonnet');
+  });
 });

@@ -186,6 +186,16 @@ export const messages = {
       empty: 'まだアカウント戦略がありません。全社ToDoで「アカウント戦略」を実行すると提案されます。',
       error: 'アカウント操作に失敗しました',
     },
+    bakeoff: {
+      title: 'モデル最適化（bakeoff）',
+      hint: 'org ロールの最適モデルを複数モデル比較で検証します。切替提案は要人手タスクに起票（適用は人手）',
+      roleLabel: '対象ロール',
+      cta: '検証を開始',
+      running: '起動中…',
+      queued: 'bakeoff を起動しました。完了後に切替提案が全社ToDoに起票されます（数分かかります）。',
+      notEnoughCandidates: '比較できる候補モデルが不足しています（モデルカタログを確認してください）。',
+      error: 'モデル最適化の起動に失敗しました',
+    },
   },
   accounts: {
     listPageTitle: 'アカウント一覧',

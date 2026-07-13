@@ -26,13 +26,19 @@ const InputJsonSchema = z.object({
   user: z.string().min(1),
   system_extra: z.string().optional(),
   candidates: z.array(z.object({ provider: z.string().min(1), model: z.string().min(1) })).min(1).max(8),
+  /** P4 増分5: org ロールのモデル最適化ラン。完了時に切替提案を起票する。 */
+  org_optimize: z.boolean().optional(),
 });
+
+export type BakeoffAddJob = (identifier: string, payload: unknown, spec?: Record<string, unknown>) => Promise<unknown>;
 
 export interface BakeoffRunDeps {
   prisma?: typeof defaultPrisma;
   logger?: Logger;
   runCandidate?: typeof defaultRunCandidate;
   rankOutputs?: typeof defaultRankOutputs;
+  /** org_optimize ラン完了時に org.bakeoff.recommend を enqueue する。 */
+  addJob?: BakeoffAddJob;
 }
 
 export async function runBakeoff(payload: unknown, deps: BakeoffRunDeps = {}): Promise<void> {
@@ -117,6 +123,15 @@ export async function runBakeoff(payload: unknown, deps: BakeoffRunDeps = {}): P
 
     await prisma.bakeoffRun.update({ where: { id: runId }, data: { status: 'done', error: null } });
     log.info({ task: BAKEOFF_RUN_TASK_NAME, runId, candidates: candidates.length }, 'bakeoff done');
+
+    // P4 増分5: org モデル最適化ランは、完了後に切替提案(org.bakeoff.recommend)へ連鎖。
+    if (inputParsed.data.org_optimize && deps.addJob) {
+      try {
+        await deps.addJob('org.bakeoff.recommend', { run_id: runId }, { maxAttempts: 3 });
+      } catch (enqErr) {
+        log.warn({ task: BAKEOFF_RUN_TASK_NAME, runId, err: enqErr }, 'failed to enqueue org.bakeoff.recommend');
+      }
+    }
   } catch (err) {
     await prisma.bakeoffRun.update({
       where: { id: runId },
@@ -126,6 +141,6 @@ export async function runBakeoff(payload: unknown, deps: BakeoffRunDeps = {}): P
   }
 }
 
-export const bakeoffRunTask: Task = async (payload: unknown, _helpers: JobHelpers) => {
-  await runBakeoff(payload);
+export const bakeoffRunTask: Task = async (payload: unknown, helpers: JobHelpers) => {
+  await runBakeoff(payload, { addJob: helpers.addJob as unknown as BakeoffAddJob });
 };

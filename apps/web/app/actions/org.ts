@@ -15,6 +15,7 @@ import { prisma } from '@a2p/db';
 import { getSessionOrThrow } from '@/lib/auth-helpers';
 import { enqueueJob } from '@/lib/graphile-client';
 import { messages } from '@/lib/messages';
+import { launchOrgModelBakeoffCore, type OrgBakeoffDeps } from '@/lib/org-bakeoff-core';
 
 const ORG_PLAN_TASK = 'org.plan';
 const ORG_EXECUTE_TASK = 'org.execute.dispatch';
@@ -130,6 +131,29 @@ export async function runOrgFinanceTick(): Promise<ActionResult<{ job_id: string
 /** docs/06 P4 増分3: KDP 公開の事前スクリーニング (org.kdp.screen) を手動起動。 */
 export async function runOrgKdpScreen(): Promise<ActionResult<{ job_id: string }>> {
   return runOrgTick(ORG_KDP_SCREEN_TASK);
+}
+
+/** docs/06 P4 増分5: org ロールのモデル最適化 bakeoff を起動。 */
+export async function launchOrgModelBakeoff(input: unknown): Promise<ActionResult<{ run_id: string; candidates: number }>> {
+  let session: { user: { id: string } };
+  try {
+    session = await getSessionOrThrow();
+  } catch (err) {
+    if (isA2PError(err)) return err.toActionResult();
+    return fail('unknown', messages.org.bakeoff.error);
+  }
+  const deps: OrgBakeoffDeps = {
+    assignmentRepo: prisma.modelAssignment as unknown as OrgBakeoffDeps['assignmentRepo'],
+    catalogRepo: prisma.modelCatalog as unknown as OrgBakeoffDeps['catalogRepo'],
+    bakeoffRunRepo: prisma.bakeoffRun as unknown as OrgBakeoffDeps['bakeoffRunRepo'],
+    session,
+    enqueue: async (task, payload) => {
+      await enqueueJob(task, payload);
+    },
+  };
+  const res = await launchOrgModelBakeoffCore(input, deps);
+  if (res.ok) revalidateOrg();
+  return res;
 }
 
 const TaskIdSchema = z.object({ task_id: z.string().min(1) });

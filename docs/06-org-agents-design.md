@@ -6,7 +6,10 @@
 > 開発時の Claude Code サブエージェント（`.claude/agents`）とは別物。本ドキュメントでは
 > これらを **Org エージェント** と呼ぶ。
 >
-> ステータス: **P4 進行中（増分1〜4 実装済み 2026-07-13）**。増分4 で **勝ちパターン学習** を追加：
+> ステータス: **P4 進行中（増分1〜5 実装済み 2026-07-13）**。増分5 で **モデル最適化（bakeoff）** を追加：
+> `/org` から org ロールを選び bakeoff 起動（現行＋カタログ候補×代表入力）→ 完了時に `org.bakeoff.recommend` が
+> 品質優先・コスト tiebreak で最良モデルを選定し、現行と異なれば `optimize_model`(needs_human) を**切替提案**として起票
+> （モデル割当変更は影響大のため**自動適用しない**）。以下は増分4: **勝ちパターン学習** を追加：
 > `org.plan` が実績（ジャンル×売上）から「効いている型」を決定的に抽出し、台帳 `org_playbook`(singleton) に蓄積、
 > **CEO のスナップショットに供給**して次サイクルの企画/予算配分の質を上げる（`/org` に「勝ちパターン」カード）。
 > 以下は増分3: **KDP 公開の事前スクリーニング
@@ -161,8 +164,21 @@ P1 で確定した運用: 本部長が起票したタスクは、人手前提 ki
 ループ: 実績（SalesRecord×Book.genre）→ 勝ちパターン抽出（決定的）→ 台帳蓄積＋CEOへ供給 → CEO が次サイクルの
 企画/予算配分を「効いている型」に寄せる。docs §13「意思決定の質」への対策。モデル設定や外部公開には触れない安全な学習。
 
-**P4 の残り（後続増分）:** 実 KDP 自動入稿（Phase 3 `kdp.submit` Playwright + 2FA push-and-wait）、
-SNSエンゲージメント読取（read-port → promo_analyst 接続）、bakeoff による各 org ロールのモデル最適化。
+### P4 増分5 — モデル最適化（bakeoff）
+
+| 領域 | 実体 |
+| --- | --- |
+| 共有型 | `@a2p/contracts/org`: `ORG_BAKEOFF_ROLES`・`orgBakeoffSampleInput(role)`（代表入力）・`computeBakeoffRecommendation(results, current)`（品質優先・コスト tiebreak）＋ `optimize_model` kind（sysops, HUMAN_KINDS）|
+| worker | 既存 `bakeoff.run` を拡張（`org_optimize` ランは完了時に `org.bakeoff.recommend` を enqueue）＋新規 `org.bakeoff.recommend`（`org-bakeoff-recommend.ts`）が最良モデルを選定し切替提案を起票 |
+| web | `/org` に「モデル最適化（bakeoff）」コントロール（ロール選択→起動）＋ `launchOrgModelBakeoff` アクション＋成果表示（切替提案）|
+
+フロー: `/org` でロールを選び起動 → 現行割当＋モデルカタログから候補（最大4）を組み、代表入力で BakeoffRun 作成
+→ `bakeoff.run`（各候補実行＋judge ランク付け）→ `org.bakeoff.recommend` が品質優先・コスト tiebreak で最良を選定
+→ 現行と異なれば `optimize_model`(needs_human) を根拠付きで起票 → 運営者がモデル割当画面で切替。**モデル割当の変更は
+影響が大きいため自動適用しない**（提案まで）。既存 F-053 bakeoff 基盤を再利用。
+
+**P4 の残り（後続増分・外部依存）:** 実 KDP 自動入稿（Phase 3 `kdp.submit` Playwright + 2FA push-and-wait）、
+SNSエンゲージメント読取（read-port → promo_analyst 接続）。
 
 ---
 

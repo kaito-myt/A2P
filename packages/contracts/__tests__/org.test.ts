@@ -18,6 +18,9 @@ import {
   detectBudgetBreaches,
   evaluateKdpPublishReadiness,
   computeWinningPatterns,
+  computeBakeoffRecommendation,
+  isOrgBakeoffRole,
+  orgBakeoffSampleInput,
   depsSatisfied,
   groupByDivision,
   groupByStatus,
@@ -343,5 +346,49 @@ describe('P4 computeWinningPatterns', () => {
     const wp = computeWinningPatterns([]);
     expect(wp.top_genres).toEqual([]);
     expect(wp.underexposed_genres).toEqual([]);
+  });
+});
+
+describe('P4 computeBakeoffRecommendation', () => {
+  it('品質優先で最良を選び、現行と異なれば is_change', () => {
+    const rec = computeBakeoffRecommendation(
+      [
+        { provider: 'anthropic', model: 'opus', quality_score: 80, cost_jpy: 10 },
+        { provider: 'anthropic', model: 'sonnet', quality_score: 90, cost_jpy: 3 },
+      ],
+      { provider: 'anthropic', model: 'opus' },
+    )!;
+    expect(rec.best.model).toBe('sonnet');
+    expect(rec.is_change).toBe(true);
+  });
+
+  it('品質同点はコストで tiebreak', () => {
+    const rec = computeBakeoffRecommendation([
+      { provider: 'a', model: 'x', quality_score: 88, cost_jpy: 9 },
+      { provider: 'a', model: 'y', quality_score: 88, cost_jpy: 4 },
+    ])!;
+    expect(rec.best.model).toBe('y');
+  });
+
+  it('現行が最良なら is_change=false', () => {
+    const rec = computeBakeoffRecommendation(
+      [
+        { provider: 'a', model: 'x', quality_score: 95, cost_jpy: 5 },
+        { provider: 'a', model: 'y', quality_score: 70, cost_jpy: 2 },
+      ],
+      { provider: 'a', model: 'x' },
+    )!;
+    expect(rec.is_change).toBe(false);
+  });
+
+  it('エラー候補は除外、全滅なら null', () => {
+    expect(computeBakeoffRecommendation([{ provider: 'a', model: 'x', quality_score: null, cost_jpy: null, error: 'boom' }])).toBeNull();
+  });
+
+  it('org ロール判定とサンプル入力', () => {
+    expect(isOrgBakeoffRole('ceo')).toBe(true);
+    expect(isOrgBakeoffRole('writer')).toBe(false);
+    expect(orgBakeoffSampleInput('ceo').length).toBeGreaterThan(0);
+    expect(orgBakeoffSampleInput('unknown_role').length).toBeGreaterThan(0); // 汎用フォールバック
   });
 });

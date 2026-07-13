@@ -75,6 +75,10 @@ export function summarizeResult(result: unknown): string | null {
     if (r.action === 'promotion_dispatch_enqueued') return '予約投稿の配信を起動';
     if (r.action === 'job_recovered') return `ジョブ復旧: ${String(r.recovered_step ?? '').replace('pipeline.book.', '')}`.slice(0, 160);
     if (r.action === 'account_strategy_planned') return `アカウント戦略立案（新規${r.accounts_proposed ?? 0}件を人手作成へ）`;
+    if (r.action === 'model_optimization_proposal') {
+      const p = r.proposal as { role?: string; provider?: string; model?: string } | undefined;
+      return `モデル最適化提案: ${p?.role ?? ''} → ${p?.provider ?? ''}/${p?.model ?? ''}`.slice(0, 160);
+    }
     return String(r.action).slice(0, 160);
   }
   return null;

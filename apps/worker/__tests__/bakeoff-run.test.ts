@@ -109,4 +109,21 @@ describe('runBakeoff', () => {
     const d = makeDeps({ run: null });
     await expect(runBakeoff({ run_id: 'x' }, d)).rejects.toThrow();
   });
+
+  it('P4: org_optimize ランは完了後に org.bakeoff.recommend を enqueue する', async () => {
+    const d = makeDeps({
+      run: { ...RUN, input_json: { ...RUN.input_json, org_optimize: true } },
+      candidateResults: [{ provider: 'anthropic', model: 'claude-opus-4-8', output: 'A', costJpy: 1 }],
+    });
+    const addJob = vi.fn(async () => ({}));
+    await runBakeoff({ run_id: 'run-1' }, { ...d, addJob });
+    expect(addJob).toHaveBeenCalledWith('org.bakeoff.recommend', { run_id: 'run-1' }, { maxAttempts: 3 });
+  });
+
+  it('P4: 通常ラン(org_optimize なし)は recommend を enqueue しない', async () => {
+    const d = makeDeps({ run: RUN, candidateResults: [{ provider: 'a', model: 'b', output: 'o', costJpy: 1 }] });
+    const addJob = vi.fn(async () => ({}));
+    await runBakeoff({ run_id: 'run-1' }, { ...d, addJob });
+    expect(addJob).not.toHaveBeenCalled();
+  });
 });

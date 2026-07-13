@@ -91,7 +91,7 @@ export const DIVISION_KINDS: Record<Division, readonly string[]> = {
   publishing: ['prepare_metadata', 'set_price', 'publish_kdp'],
   analytics: ['analyze_sales', 'research_market', 'report'],
   promotion: ['plan_accounts', 'create_content', 'publish_post', 'analyze_promo', 'create_account', 'connect_account'],
-  sysops: ['monitor', 'recover_job', 'triage_error'],
+  sysops: ['monitor', 'recover_job', 'triage_error', 'optimize_model'],
   finance: ['budget_review', 'cost_report', 'enforce_limit'],
 };
 
@@ -116,6 +116,7 @@ export const KIND_LABELS: Record<string, string> = {
   monitor: '監視',
   recover_job: 'ジョブ復旧',
   triage_error: 'エラー対応',
+  optimize_model: 'モデル最適化',
   budget_review: '予算レビュー',
   cost_report: 'コスト集計',
   enforce_limit: '予算ガード',
@@ -136,6 +137,8 @@ export const HUMAN_KINDS = new Set<string>([
   'publish_kdp',
   'enforce_limit',
   'triage_error',
+  // P4 増分5: モデル割当の切替は影響が大きいため人手承認。
+  'optimize_model',
 ]);
 
 export function isHumanKind(kind: string): boolean {
@@ -473,6 +476,107 @@ export function computeWinningPatterns(books: readonly BookPerf[]): WinningPatte
   }
 
   return { top_genres, underexposed_genres, insights };
+}
+
+// ---------------------------------------------------------------------------
+// モデル最適化 (P4 増分5) — bakeoff で各 org ロールの最適モデルを検証し切替提案
+// ---------------------------------------------------------------------------
+
+/** bakeoff でモデル最適化する対象の org ロール（LLM を使う役割のみ）。 */
+export const ORG_BAKEOFF_ROLES = [
+  'ceo',
+  'editorial_mgr',
+  'publish_mgr',
+  'analytics_mgr',
+  'promo_mgr',
+  'ops_mgr',
+  'finance_mgr',
+  'sales_analyst',
+  'market_analyst',
+  'metadata_worker',
+  'promo_analyst',
+  'cost_accountant',
+  'account_strategist',
+] as const;
+export type OrgBakeoffRole = (typeof ORG_BAKEOFF_ROLES)[number];
+
+export function isOrgBakeoffRole(role: string): boolean {
+  return (ORG_BAKEOFF_ROLES as readonly string[]).includes(role);
+}
+
+const ORG_BAKEOFF_SAMPLE_INPUTS: Partial<Record<string, string>> = {
+  ceo: '全社状況（書籍20冊/出版5冊、先月ロイヤリティ¥8,000、当月コスト¥12,000、接続チャンネルX）を踏まえ、今月の経営方針・本部別予算配分・各本部長へのブリーフを決めてください。',
+  editorial_mgr: '「実用書を2冊増やす」という方針を、企画→執筆の具体的なタスクに分解してください（対象書籍候補あり）。',
+  analytics_mgr: '直近の売上と在庫を踏まえ、分析本部が今サイクルに行うべき分析タスクを分解してください。',
+  promo_mgr: '出版済み書籍3冊について、接続済みチャンネルXを使った販促タスクを分解してください。',
+  sales_analyst: '月次推移（6月¥3,000→7月¥5,000）と書籍別ロイヤリティ（実用書A ¥3,000/自己啓発B ¥0）を分析し、トレンドと改善示唆をまとめてください。',
+  market_analyst: '在庫ジャンル（実用5/ビジネス2/自己啓発1）を踏まえ、伸びるジャンルの機会と次に作るべきテーマ案を提案してください。',
+  metadata_worker: 'タイトル「朝5分の習慣術」実用書について、KDPメタデータ（紹介文・キーワード7・カテゴリ3・価格）の草案を作ってください。',
+  cost_accountant: '本部別コスト（制作¥8,000/予算¥10,000、販促¥3,000/予算¥5,000）と書籍別ROIを分析し、是正示唆をまとめてください。',
+  account_strategist: '在庫ジャンル（実用5/自己啓発3）と接続済みアカウント（X @main のみ）を踏まえ、増設すべきニッチ専用アカウントを提案してください。',
+};
+
+/** 役割の代表入力（bakeoff の user メッセージ）。未定義ロールは汎用サンプル。 */
+export function orgBakeoffSampleInput(role: string): string {
+  return (
+    ORG_BAKEOFF_SAMPLE_INPUTS[role] ??
+    `あなたの役割「${role}」の典型的なタスクを1つ実行し、期待される出力を返してください。KDP出版事業の文脈で、具体的かつ実用的に。`
+  );
+}
+
+export interface BakeoffResultRow {
+  provider: string;
+  model: string;
+  quality_score: number | null;
+  cost_jpy: number | null;
+  error?: string | null;
+}
+
+export interface ModelRef {
+  provider: string;
+  model: string;
+}
+
+export interface BakeoffRecommendation {
+  best: { provider: string; model: string; quality_score: number | null; cost_jpy: number | null };
+  /** 現行と異なる（＝切替を推奨する）か。 */
+  is_change: boolean;
+  reason: string;
+}
+
+/**
+ * bakeoff の結果から最適モデルを選ぶ（決定的）。品質優先・コストで tiebreak。
+ * 現行モデルと異なれば is_change=true（切替提案）。エラー候補は除外。
+ */
+export function computeBakeoffRecommendation(
+  results: readonly BakeoffResultRow[],
+  current?: ModelRef | null,
+): BakeoffRecommendation | null {
+  const usable = results.filter((r) => !r.error);
+  const scored = usable.filter((r) => r.quality_score != null);
+  const pool = scored.length > 0 ? scored : usable;
+  if (pool.length === 0) return null;
+
+  const sorted = [...pool].sort((a, b) => {
+    const qa = a.quality_score ?? -1;
+    const qb = b.quality_score ?? -1;
+    if (qb !== qa) return qb - qa;
+    const ca = a.cost_jpy ?? Number.POSITIVE_INFINITY;
+    const cb = b.cost_jpy ?? Number.POSITIVE_INFINITY;
+    return ca - cb;
+  });
+  const best = sorted[0]!;
+  const is_change = !current || current.provider !== best.provider || current.model !== best.model;
+  const scoreStr = best.quality_score != null ? `品質${best.quality_score}` : '品質不明';
+  const costStr = best.cost_jpy != null ? ` / コスト¥${best.cost_jpy.toLocaleString('ja-JP')}` : '';
+  const reason = is_change
+    ? `${best.provider}/${best.model} が最良（${scoreStr}${costStr}）。${current ? `現行 ${current.provider}/${current.model} から切替を推奨。` : '割当設定を推奨。'}`
+    : `現行 ${best.provider}/${best.model} が最良（${scoreStr}${costStr}）。維持で問題なし。`;
+  return {
+    best: { provider: best.provider, model: best.model, quality_score: best.quality_score, cost_jpy: best.cost_jpy },
+    is_change,
+    reason,
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -18,6 +18,7 @@ import {
 
 import { messages } from '@/lib/messages';
 import { RunPlanButton } from '@/components/org/run-plan-button';
+import { ModelBakeoffControl } from '@/components/org/model-bakeoff-control';
 import {
   computeSpentByDivision,
   divisionTaskCounts,
@@ -137,6 +138,8 @@ export default async function OrgDashboardPage() {
           )}
         </section>
       )}
+
+      <ModelBakeoffControl />
 
       {!objective ? (
         <div className="rounded-card border border-border-warm bg-cream-light p-space-loose text-center">

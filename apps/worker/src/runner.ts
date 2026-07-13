@@ -126,6 +126,7 @@ import { ORG_EXECUTE_DISPATCH_TASK_NAME, orgExecuteDispatchTask } from './tasks/
 import { ORG_OPS_WATCH_TASK_NAME, orgOpsWatchTask } from './tasks/org-ops-watch.js';
 import { ORG_FINANCE_TICK_TASK_NAME, orgFinanceTickTask } from './tasks/org-finance-tick.js';
 import { ORG_KDP_SCREEN_TASK_NAME, orgKdpScreenTask } from './tasks/org-kdp-screen.js';
+import { ORG_BAKEOFF_RECOMMEND_TASK_NAME, orgBakeoffRecommendTask } from './tasks/org-bakeoff-recommend.js';
 
 /**
  * graphile-worker runner 起動 (docs/05 §5 共通ポリシー / SP-01 T-01-12)
@@ -209,6 +210,7 @@ export function buildTaskList(): TaskList {
     [ORG_OPS_WATCH_TASK_NAME]: orgOpsWatchTask,
     [ORG_FINANCE_TICK_TASK_NAME]: orgFinanceTickTask,
     [ORG_KDP_SCREEN_TASK_NAME]: orgKdpScreenTask,
+    [ORG_BAKEOFF_RECOMMEND_TASK_NAME]: orgBakeoffRecommendTask,
   };
 }
 
