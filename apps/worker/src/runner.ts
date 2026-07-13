@@ -125,6 +125,7 @@ import { ORG_PLAN_TASK_NAME, orgPlanTask } from './tasks/org-plan.js';
 import { ORG_EXECUTE_DISPATCH_TASK_NAME, orgExecuteDispatchTask } from './tasks/org-execute.js';
 import { ORG_OPS_WATCH_TASK_NAME, orgOpsWatchTask } from './tasks/org-ops-watch.js';
 import { ORG_FINANCE_TICK_TASK_NAME, orgFinanceTickTask } from './tasks/org-finance-tick.js';
+import { ORG_KDP_SCREEN_TASK_NAME, orgKdpScreenTask } from './tasks/org-kdp-screen.js';
 
 /**
  * graphile-worker runner 起動 (docs/05 §5 共通ポリシー / SP-01 T-01-12)
@@ -207,6 +208,7 @@ export function buildTaskList(): TaskList {
     [ORG_EXECUTE_DISPATCH_TASK_NAME]: orgExecuteDispatchTask,
     [ORG_OPS_WATCH_TASK_NAME]: orgOpsWatchTask,
     [ORG_FINANCE_TICK_TASK_NAME]: orgFinanceTickTask,
+    [ORG_KDP_SCREEN_TASK_NAME]: orgKdpScreenTask,
   };
 }
 
@@ -298,6 +300,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
     org_ops_watch_cron: null,
     org_finance_tick_enabled: false,
     org_finance_tick_cron: null,
+    org_kdp_auto_publish_enabled: false,
+    org_kdp_screen_cron: null,
   };
   try {
     const row = await prisma.appSettings.findUnique({
@@ -315,6 +319,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
         org_ops_watch_cron: true,
         org_finance_tick_enabled: true,
         org_finance_tick_cron: true,
+        org_kdp_auto_publish_enabled: true,
+        org_kdp_screen_cron: true,
       },
     });
     if (!row) {
@@ -337,6 +343,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
       org_ops_watch_cron: row.org_ops_watch_cron,
       org_finance_tick_enabled: row.org_finance_tick_enabled,
       org_finance_tick_cron: row.org_finance_tick_cron,
+      org_kdp_auto_publish_enabled: row.org_kdp_auto_publish_enabled,
+      org_kdp_screen_cron: row.org_kdp_screen_cron,
     };
   } catch (err) {
     log.warn({ err }, 'failed to read AppSettings; auto-dispatch crons disabled (safe default)');

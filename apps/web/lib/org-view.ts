@@ -48,6 +48,13 @@ export interface DbOrgTask {
 export function summarizeResult(result: unknown): string | null {
   if (result == null || typeof result !== 'object') return null;
   const r = result as Record<string, unknown>;
+  // KDP 公開審査 (P4)。
+  if (r.kdp_readiness && typeof r.kdp_readiness === 'object') {
+    const k = r.kdp_readiness as { eligible?: boolean; reasons?: unknown };
+    if (k.eligible) return '✅ KDP公開ガードレール通過（あとは公開操作）';
+    const reasons = Array.isArray(k.reasons) ? (k.reasons as string[]) : [];
+    return `KDP公開不可: ${reasons.slice(0, 3).join(' / ') || '要確認'}`.slice(0, 160);
+  }
   // 分析系: summary。
   if (typeof r.summary === 'string' && r.summary.length > 0) return r.summary.slice(0, 160);
   // コスト会計レポート: report.summary。

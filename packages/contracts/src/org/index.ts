@@ -412,6 +412,64 @@ export function priorityRank(priority: string): number {
   return idx < 0 ? TASK_PRIORITIES.length : idx;
 }
 
+// ---------------------------------------------------------------------------
+// KDP 公開可否ガードレール (P4 増分3) — 誤公開防止の決定的スクリーニング
+// ---------------------------------------------------------------------------
+
+export interface KdpReadinessInput {
+  /** Book.status（'done' 以外は不可）。 */
+  book_status: string;
+  /** Book.publish_status（'published' は既に公開済みで不可）。 */
+  publish_status: string;
+  /** must コメント（未解決なら不可）。 */
+  has_blocking_comments: boolean;
+  /** 直近の EvalResult.score_total（0..100, null=未採点）。 */
+  quality_score: number | null;
+  /** KdpMetadata。null=未整備。 */
+  metadata: { price_jpy: number | null; description_len: number; keywords_count: number } | null;
+}
+
+export interface KdpReadinessThresholds {
+  min_quality: number;
+  min_price_jpy: number;
+  max_price_jpy: number;
+}
+
+export interface KdpReadinessResult {
+  eligible: boolean;
+  /** 未達チェックの理由（eligible=true のとき空）。 */
+  reasons: string[];
+}
+
+/**
+ * 書籍が KDP 自動公開の安全条件を満たすか判定する（決定的・LLM 非依存）。
+ * すべての条件を満たしたときだけ eligible=true。1 つでも欠ければ理由を列挙して不可。
+ * 「誤公開の実害が大きい」ため、判定は保守的（不確実なら不可）。
+ */
+export function evaluateKdpPublishReadiness(
+  input: KdpReadinessInput,
+  thresholds: KdpReadinessThresholds,
+): KdpReadinessResult {
+  const reasons: string[] = [];
+  if (input.book_status !== 'done') reasons.push(`本の生成が未完了（status=${input.book_status}）`);
+  if (input.publish_status === 'published') reasons.push('すでに公開済み');
+  if (input.has_blocking_comments) reasons.push('未解決の must コメントあり');
+  if (input.quality_score == null) reasons.push('品質未採点');
+  else if (input.quality_score < thresholds.min_quality)
+    reasons.push(`品質スコアが基準未満（${input.quality_score} < ${thresholds.min_quality}）`);
+  if (!input.metadata) {
+    reasons.push('KDPメタデータ未整備');
+  } else {
+    const { price_jpy, description_len, keywords_count } = input.metadata;
+    if (price_jpy == null) reasons.push('価格未設定');
+    else if (price_jpy < thresholds.min_price_jpy || price_jpy > thresholds.max_price_jpy)
+      reasons.push(`価格が許容帯外（¥${price_jpy}／許容 ¥${thresholds.min_price_jpy}〜¥${thresholds.max_price_jpy}）`);
+    if (description_len <= 0) reasons.push('紹介文が空');
+    if (keywords_count <= 0) reasons.push('キーワード未設定');
+  }
+  return { eligible: reasons.length === 0, reasons };
+}
+
 export interface DependentLike {
   depends_on?: readonly string[] | null;
 }

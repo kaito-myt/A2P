@@ -13,6 +13,7 @@
 >
 > P4増分1: `promotion_accounts`（多アカウント台帳）＋ `plan_accounts`（account_strategist が推奨アカウントを台帳pending＋作成仕様付き create_account(needs_human) で起票。作成は規約/KYC のため人手=connect-once 固定）。
 > P4増分2: `promotion_posts.account_id`＋`pickAccountForChannel`。台帳を接続(connect-once, `/org/accounts`)すると `promotion.posts.generate` が投稿を接続済みアカウントへ自動振り分け、`promotion.post.publish` がそのアカウントの資格情報で投稿（未接続なら failed、account_id 無しは channel 既定にフォールバック）。
+> P4増分3: `evaluateKdpPublishReadiness`＋`org.kdp.screen`（AppSettings `org_kdp_auto_publish_enabled`(既定OFF)/閾値）。publish_kdp を品質/価格/メタで審査し result_json.kdp_readiness へ。ゲートONかつ合格のみ needs_human→approved(公開クリア)。実入稿(kdp.submit Playwright)は Phase 3 まで人手。
 >
 > P1（起票）＋P2（制作/出版/分析の実行）＋P3（販促/運用/経営の統合）追加物（本ドキュメントの各レジストリへの反映）:
 > - **DB**: `org_objectives` / `org_tasks`（+`token_usage.org_task_id`、`org_tasks.theme_id/account_id`、`app_settings.org_auto_plan_enabled/org_plan_cron/org_auto_execute_enabled/org_execute_cron/org_ops_watch_enabled/org_ops_watch_cron/org_finance_tick_enabled/org_finance_tick_cron`）

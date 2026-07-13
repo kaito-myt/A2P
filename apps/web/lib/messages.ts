@@ -158,6 +158,9 @@ export const messages = {
       financeTick: '予算ガードを実行',
       financeTickHint: '本部別コストを集計し、予算/月次上限の超過があれば予算ガードToDo（要人手）を起票します',
       financeTickQueued: '予算ガードを起動しました。数十秒後に集計・超過検知が反映されます。',
+      kdpScreen: 'KDP公開審査を実行',
+      kdpScreenHint: 'KDP公開待ちの本を品質/価格/メタデータで事前審査します（ゲートONなら合格を承認済へ。実際の入稿は人手）',
+      kdpScreenQueued: 'KDP公開審査を起動しました。数十秒後に可否が反映されます。',
       tickError: '起動に失敗しました',
     },
     accounts: {

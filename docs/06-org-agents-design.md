@@ -6,7 +6,11 @@
 > 開発時の Claude Code サブエージェント（`.claude/agents`）とは別物。本ドキュメントでは
 > これらを **Org エージェント** と呼ぶ。
 >
-> ステータス: **P4 進行中（増分1・2 実装済み 2026-07-13）**。P1〜P3 に加え、**多アカウント運用**が
+> ステータス: **P4 進行中（増分1・2・3 実装済み 2026-07-13）**。増分3 で **KDP 公開の事前スクリーニング
+> `org.kdp.screen`（ゲート付き・既定OFF）** を追加。品質/価格/メタデータ完備を決定的に審査し、ゲート ON かつ
+> 合格のときだけ publish_kdp を needs_human→approved（公開クリア）へ前進させる。**実際の外部入稿(kdp.submit,
+> Playwright)は Phase 3 まで人手のまま**で、本タスクは一切公開処理をしない（誤公開防止）。以下は P4増分1・2:
+> P1〜P3 に加え、**多アカウント運用**が
 > 立案〜接続〜投稿ルーティングまで通線した。増分1: `account_strategist`/`plan_accounts` が必要アカウントを
 > 立案し**作成仕様付き `create_account`(needs_human)＋台帳 `promotion_accounts`(pending)** を起票。
 > 増分2: 運営者が台帳を**接続(connect-once)**すると、`promotion.posts.generate` が投稿を接続済み
@@ -129,8 +133,22 @@ P1 で確定した運用: 本部長が起票したタスクは、人手前提 ki
 従来どおり channel 既定設定（`PromotionChannelSetting`）で投稿（後方互換）。誤爆防止の channel 別 auto_enabled
 マスタスイッチは維持。
 
-**P4 の残り（後続増分）:** KDP条件付き自動公開（ゲート付き・既定OFF）、SNSエンゲージメント読取（read-port →
-promo_analyst 接続）、bakeoff による各 org ロールのモデル最適化、方針の自動学習（勝ちパターン蓄積）。
+### P4 増分3 — KDP 公開の事前スクリーニング（ゲート付き・既定OFF）
+
+| 領域 | 実体 |
+| --- | --- |
+| DB | `AppSettings.org_kdp_auto_publish_enabled`(既定false)＋`org_kdp_screen_cron`(既定毎時30分)＋`org_kdp_min_quality`(70)/`org_kdp_min_price_jpy`(250)/`org_kdp_max_price_jpy`(1250)。migration `20260713100000_org_p4_kdp_screen` |
+| 共有型 | `@a2p/contracts/org`: `evaluateKdpPublishReadiness(input, thresholds)`（決定的。生成完了/未公開/mustコメント無し/品質≥基準/メタ完備&価格帯内 の全満足で eligible）|
+| worker | `org.kdp.screen`（`org-kdp-screen.ts`）。publish_kdp タスクを審査し `result_json.kdp_readiness` に記録。ゲート ON かつ eligible な needs_human のみ `approved`（公開クリア）へ。ゲート ON で毎時cron条件付き有効化＋web手動起動 |
+| web | `/org/tasks` に「KDP公開審査を実行」ボタン＋成果表示（通過/理由付き不可）|
+
+安全設計: 既定OFF（何も自動で進まない）。ゲート ON でも本タスクは **合格書籍を「公開クリア(approved)」にするだけ**で、
+実際の外部入稿は行わない（`kdp.submit` = Phase 3 の Playwright 実装が前提）。誤公開の実害が大きいため判定は保守的
+（不確実なら不可）。1 回の審査は最大 20 件。
+
+**P4 の残り（後続増分）:** 実 KDP 自動入稿（Phase 3 `kdp.submit` Playwright + 2FA push-and-wait）、
+SNSエンゲージメント読取（read-port → promo_analyst 接続）、bakeoff による各 org ロールのモデル最適化、
+方針の自動学習（勝ちパターン蓄積）。
 
 ---
 

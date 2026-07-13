@@ -20,6 +20,7 @@ const ORG_PLAN_TASK = 'org.plan';
 const ORG_EXECUTE_TASK = 'org.execute.dispatch';
 const ORG_OPS_WATCH_TASK = 'org.ops.watch';
 const ORG_FINANCE_TICK_TASK = 'org.finance.tick';
+const ORG_KDP_SCREEN_TASK = 'org.kdp.screen';
 
 function revalidateOrg(): void {
   revalidatePath('/org');
@@ -124,6 +125,11 @@ export function runOrgOpsWatch(): Promise<ActionResult<{ job_id: string }>> {
 /** docs/06 P3: 経営の予算ガード (org.finance.tick) を手動起動。 */
 export function runOrgFinanceTick(): Promise<ActionResult<{ job_id: string }>> {
   return runOrgTick(ORG_FINANCE_TICK_TASK);
+}
+
+/** docs/06 P4 増分3: KDP 公開の事前スクリーニング (org.kdp.screen) を手動起動。 */
+export function runOrgKdpScreen(): Promise<ActionResult<{ job_id: string }>> {
+  return runOrgTick(ORG_KDP_SCREEN_TASK);
 }
 
 const TaskIdSchema = z.object({ task_id: z.string().min(1) });

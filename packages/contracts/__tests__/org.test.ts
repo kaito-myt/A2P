@@ -16,6 +16,7 @@ import {
   AccountStrategyOutputSchema,
   buildBudgetLines,
   detectBudgetBreaches,
+  evaluateKdpPublishReadiness,
   depsSatisfied,
   groupByDivision,
   groupByStatus,
@@ -270,5 +271,40 @@ describe('P3 detectBudgetBreaches', () => {
   it('threshold で早期検知できる', () => {
     const breaches = detectBudgetBreaches(1000, 900, null, {}, 0.9);
     expect(breaches.some((b) => b.scope === 'total')).toBe(true);
+  });
+});
+
+describe('P4 evaluateKdpPublishReadiness', () => {
+  const th = { min_quality: 70, min_price_jpy: 250, max_price_jpy: 1250 };
+  const ok = {
+    book_status: 'done',
+    publish_status: 'unlisted',
+    has_blocking_comments: false,
+    quality_score: 82,
+    metadata: { price_jpy: 500, description_len: 120, keywords_count: 7 },
+  };
+
+  it('全条件を満たせば eligible', () => {
+    const r = evaluateKdpPublishReadiness(ok, th);
+    expect(r.eligible).toBe(true);
+    expect(r.reasons).toEqual([]);
+  });
+
+  it('品質未達/未採点は不可', () => {
+    expect(evaluateKdpPublishReadiness({ ...ok, quality_score: 60 }, th).eligible).toBe(false);
+    expect(evaluateKdpPublishReadiness({ ...ok, quality_score: null }, th).eligible).toBe(false);
+  });
+
+  it('公開済み/未完了/mustコメントは不可', () => {
+    expect(evaluateKdpPublishReadiness({ ...ok, publish_status: 'published' }, th).eligible).toBe(false);
+    expect(evaluateKdpPublishReadiness({ ...ok, book_status: 'editing' }, th).eligible).toBe(false);
+    expect(evaluateKdpPublishReadiness({ ...ok, has_blocking_comments: true }, th).eligible).toBe(false);
+  });
+
+  it('価格帯外/メタ不備は理由付きで不可', () => {
+    expect(evaluateKdpPublishReadiness({ ...ok, metadata: { ...ok.metadata, price_jpy: 3000 } }, th).eligible).toBe(false);
+    expect(evaluateKdpPublishReadiness({ ...ok, metadata: null }, th).reasons.length).toBeGreaterThan(0);
+    const noKw = evaluateKdpPublishReadiness({ ...ok, metadata: { ...ok.metadata, keywords_count: 0 } }, th);
+    expect(noKw.eligible).toBe(false);
   });
 });

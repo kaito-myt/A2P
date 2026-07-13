@@ -956,6 +956,14 @@ model AppSettings {
   // docs/06 P3: 経営の予算ガード(org.finance.tick)を cron 有効化するか。
   org_finance_tick_enabled        Boolean  @default(false)
   org_finance_tick_cron           String   @default("0 * * * *") // 毎時、本部別コスト集計＋予算ガード
+  // docs/06 P4 増分3: KDP 公開の事前スクリーニング(org.kdp.screen)を cron 有効化＋
+  // 合格書籍を自動で承認済(公開クリア)へ前進させるゲート。既定OFF（誤公開防止）。
+  // 実際の外部入稿(kdp.submit, Playwright)は Phase 3 まで人手のまま。
+  org_kdp_auto_publish_enabled    Boolean  @default(false)
+  org_kdp_screen_cron             String   @default("30 * * * *") // 毎時30分、公開レディを事前審査
+  org_kdp_min_quality             Int      @default(70) // 公開に必要な最低品質スコア(0..100)
+  org_kdp_min_price_jpy           Int      @default(250) // 許容価格帯の下限
+  org_kdp_max_price_jpy           Int      @default(1250) // 許容価格帯の上限
   updated_at                      DateTime @updatedAt
 
   @@map("app_settings")

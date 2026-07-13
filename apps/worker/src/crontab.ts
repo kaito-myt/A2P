@@ -12,6 +12,7 @@ import { ORG_PLAN_TASK_NAME } from './tasks/org-plan.js';
 import { ORG_EXECUTE_DISPATCH_TASK_NAME } from './tasks/org-execute.js';
 import { ORG_OPS_WATCH_TASK_NAME } from './tasks/org-ops-watch.js';
 import { ORG_FINANCE_TICK_TASK_NAME } from './tasks/org-finance-tick.js';
+import { ORG_KDP_SCREEN_TASK_NAME } from './tasks/org-kdp-screen.js';
 
 /**
  * graphile-worker cron 定義 (docs/05 §5.4 / SP-01 仕様: `apps/worker/src/crontab.ts`)
@@ -177,6 +178,20 @@ export const ORG_FINANCE_TICK_CRON_ITEM: CronItem = {
   payload: { trigger: 'cron' },
 };
 
+/**
+ * docs/06 P4 増分3: KDP 公開の事前スクリーニング (org.kdp.screen)。既定 毎時30分。
+ * AppSettings.org_kdp_auto_publish_enabled=true のときだけ条件付き追加する（既定OFF）。
+ */
+export const ORG_KDP_SCREEN_CRON_DEFAULT = '30 * * * *';
+
+/** `org.kdp.screen` の CronItem 定義。 */
+export const ORG_KDP_SCREEN_CRON_ITEM: CronItem = {
+  task: ORG_KDP_SCREEN_TASK_NAME,
+  match: ORG_KDP_SCREEN_CRON_DEFAULT,
+  identifier: 'org-kdp-screen',
+  payload: { trigger: 'cron' },
+};
+
 /** AppSettings の自動運用トグルに応じて CronItem 配列を組み立てる。 */
 export interface CronRuntimeSettings {
   sales_auto_fetch_enabled: boolean;
@@ -202,6 +217,10 @@ export interface CronRuntimeSettings {
   org_finance_tick_enabled?: boolean;
   /** docs/06 P3: org.finance.tick cron (省略時は既定 毎時)。 */
   org_finance_tick_cron?: string | null;
+  /** docs/06 P4 増分3: KDP 公開の事前スクリーニング (org.kdp.screen) を cron 有効化するか（既定OFF）。 */
+  org_kdp_auto_publish_enabled?: boolean;
+  /** docs/06 P4 増分3: org.kdp.screen cron (省略時は既定 毎時30分)。 */
+  org_kdp_screen_cron?: string | null;
 }
 
 /** 後方互換エイリアス (旧名)。 */
@@ -265,6 +284,14 @@ export function buildCronItemsWithSettings(settings: CronRuntimeSettings): CronI
         ? settings.org_finance_tick_cron.trim()
         : ORG_FINANCE_TICK_CRON_DEFAULT;
     items.push({ ...ORG_FINANCE_TICK_CRON_ITEM, match: cronMatch });
+  }
+
+  if (settings.org_kdp_auto_publish_enabled) {
+    const cronMatch =
+      typeof settings.org_kdp_screen_cron === 'string' && settings.org_kdp_screen_cron.trim().length > 0
+        ? settings.org_kdp_screen_cron.trim()
+        : ORG_KDP_SCREEN_CRON_DEFAULT;
+    items.push({ ...ORG_KDP_SCREEN_CRON_ITEM, match: cronMatch });
   }
 
   return items;

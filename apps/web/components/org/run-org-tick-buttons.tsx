@@ -7,9 +7,9 @@
  */
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { LifeBuoy, ShieldAlert } from 'lucide-react';
+import { LifeBuoy, ShieldAlert, BookCheck } from 'lucide-react';
 
-import { runOrgOpsWatch, runOrgFinanceTick } from '@/app/actions/org';
+import { runOrgOpsWatch, runOrgFinanceTick, runOrgKdpScreen } from '@/app/actions/org';
 import { messages } from '@/lib/messages';
 
 const m = messages.org.board;
@@ -80,6 +80,14 @@ export function RunOrgTickButtons() {
         queued={m.financeTickQueued}
         icon={<ShieldAlert aria-hidden className="h-4 w-4" />}
         testid="org-run-finance-tick"
+      />
+      <TickButton
+        action={runOrgKdpScreen}
+        label={m.kdpScreen}
+        hint={m.kdpScreenHint}
+        queued={m.kdpScreenQueued}
+        icon={<BookCheck aria-hidden className="h-4 w-4" />}
+        testid="org-run-kdp-screen"
       />
     </div>
   );

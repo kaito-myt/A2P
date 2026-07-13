@@ -116,4 +116,12 @@ describe('summarizeResult / mapOrgTaskRow result', () => {
     expect(row.resultSummary).toContain('アカウント戦略');
     expect(row.resultSummary).toContain('2');
   });
+
+  it('P4 KDP公開審査の合否を人が読める文にする', () => {
+    const okRow = mapOrgTaskRow(db({ result_json: { kdp_readiness: { eligible: true, reasons: [] } } }));
+    expect(okRow.resultSummary).toContain('通過');
+    const ngRow = mapOrgTaskRow(db({ result_json: { kdp_readiness: { eligible: false, reasons: ['品質スコアが基準未満'] } } }));
+    expect(ngRow.resultSummary).toContain('公開不可');
+    expect(ngRow.resultSummary).toContain('品質');
+  });
 });
