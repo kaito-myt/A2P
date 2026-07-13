@@ -45,11 +45,19 @@ export interface PromotionPostPublishPrisma {
       select: {
         id: true;
         channel: true;
+        account_id: true;
         title: true;
         body: true;
         status: true;
       };
-    }) => Promise<{ id: string; channel: string; title: string | null; body: string; status: string } | null>;
+    }) => Promise<{
+      id: string;
+      channel: string;
+      account_id: string | null;
+      title: string | null;
+      body: string;
+      status: string;
+    } | null>;
     updateMany: (args: {
       where: { id: string; status: string };
       data: { status: string };
@@ -74,6 +82,13 @@ export interface PromotionPostPublishPrisma {
       token_enc: string | null;
       config_json: unknown;
     } | null>;
+  };
+  // P4 増分2: 投稿が特定の台帳アカウントに紐づく場合、その資格情報で投稿する。
+  promotionAccount?: {
+    findUnique: (args: {
+      where: { id: string };
+      select: { status: true; handle: true; token_enc: true; config_json: true };
+    }) => Promise<{ status: string; handle: string | null; token_enc: string | null; config_json: unknown } | null>;
   };
 }
 
@@ -124,7 +139,7 @@ export async function runPromotionPostPublish(
 
   const post = await prisma.promotionPost.findUnique({
     where: { id: postId },
-    select: { id: true, channel: true, title: true, body: true, status: true },
+    select: { id: true, channel: true, account_id: true, title: true, body: true, status: true },
   });
   if (!post) {
     log.warn({ task: PROMOTION_POST_PUBLISH_TASK_NAME, postId }, 'post not found — skip');
@@ -158,10 +173,32 @@ export async function runPromotionPostPublish(
     return { status: 'skipped', reason: 'already_taken' };
   }
 
+  // P4 増分2: 投稿が台帳アカウントに紐づく場合、そのアカウントの資格情報で投稿する
+  // （多アカウント routing）。接続済みでなければ投稿しない。null なら channel 既定設定を使う。
+  let credSource: { handle: string | null; token_enc: string | null; config_json: unknown } = setting;
+  if (post.account_id && prisma.promotionAccount) {
+    const account = await prisma.promotionAccount.findUnique({
+      where: { id: post.account_id },
+      select: { status: true, handle: true, token_enc: true, config_json: true },
+    });
+    if (!account || account.status !== 'connected') {
+      await prisma.promotionPost.update({
+        where: { id: postId },
+        data: { status: 'failed', error: 'routed account not connected'.slice(0, 500) },
+      });
+      log.info(
+        { task: PROMOTION_POST_PUBLISH_TASK_NAME, postId, accountId: post.account_id },
+        'routed account not connected — fail',
+      );
+      return { status: 'failed', reason: 'account_not_connected', message: 'routed account not connected' };
+    }
+    credSource = account;
+  }
+
   let token: string | null = null;
-  if (setting.token_enc) {
+  if (credSource.token_enc) {
     try {
-      token = decrypt(setting.token_enc);
+      token = decrypt(credSource.token_enc);
     } catch (err) {
       log.warn({ task: PROMOTION_POST_PUBLISH_TASK_NAME, postId, err }, 'token decrypt failed');
       token = null;
@@ -170,8 +207,8 @@ export async function runPromotionPostPublish(
 
   const config: PublishChannelConfig = {
     token,
-    handle: setting.handle,
-    extra: (setting.config_json as Record<string, unknown> | null) ?? {},
+    handle: credSource.handle,
+    extra: (credSource.config_json as Record<string, unknown> | null) ?? {},
   };
 
   try {

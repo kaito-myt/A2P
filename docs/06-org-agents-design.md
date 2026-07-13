@@ -6,15 +6,16 @@
 > 開発時の Claude Code サブエージェント（`.claude/agents`）とは別物。本ドキュメントでは
 > これらを **Org エージェント** と呼ぶ。
 >
-> ステータス: **P4 着手（増分1 実装済み 2026-07-12）**。P1〜P3 に加え、**多アカウント運用の
-> アカウント戦略プランナー（account_strategist / plan_accounts）** が稼働。org がジャンル/ターゲットの
-> 穴を分析して必要なアカウントを立案し、**作成仕様（handle案/bio/投稿方針）付きで `create_account`
-> (needs_human) を起票**＋台帳 `promotion_accounts` に pending 登録する。
+> ステータス: **P4 進行中（増分1・2 実装済み 2026-07-13）**。P1〜P3 に加え、**多アカウント運用**が
+> 立案〜接続〜投稿ルーティングまで通線した。増分1: `account_strategist`/`plan_accounts` が必要アカウントを
+> 立案し**作成仕様付き `create_account`(needs_human)＋台帳 `promotion_accounts`(pending)** を起票。
+> 増分2: 運営者が台帳を**接続(connect-once)**すると、`promotion.posts.generate` が投稿を接続済み
+> アカウントへ**自動振り分け**し、`promotion.post.publish` が**そのアカウントの資格情報で投稿**する。
 > **アカウント作成そのものは規約/KYC のため org は行わない（connect-once の人手）** — 固定仕様。
-> P4 残り（KDP条件付き自動公開=ゲート付き既定OFF・SNSエンゲージメント読取・多アカウント投稿routing・
-> bakeoffモデル最適化・勝ちパターン学習）は後続増分。
+> P4 残り（KDP条件付き自動公開=ゲート付き既定OFF・SNSエンゲージメント読取・bakeoffモデル最適化・
+> 勝ちパターン学習）は後続増分。
 >
-> 履歴: v1「販促のみ」→ v2 全社組織 → v2.1 **P1** → v2.2 **P2** → v2.3 **P3** → v2.4（本書）**P4増分1**。
+> 履歴: v1「販促のみ」→ v2 全社組織 → v2.1 **P1** → v2.2 **P2** → v2.3 **P3** → v2.4 **P4増分1** → v2.5（本書）**P4増分2**。
 
 ## 実装状況（P1）
 
@@ -113,9 +114,23 @@ P1 で確定した運用: 本部長が起票したタスクは、人手前提 ki
 接続後は org が戦略に沿って完全自動運用する（connect-once）。P4 の多アカウントは「作成」ではなく
 「既接続アカウント間のルーティング＋戦略立案」の高度化であり、この方針は変えない。
 
-**P4 の残り（後続増分）:** 多アカウント投稿ルーティング（`promotion_posts` を台帳アカウントへ振り分け）、
-KDP条件付き自動公開（ゲート付き・既定OFF）、SNSエンゲージメント読取（read-port）、
-bakeoff による各 org ロールのモデル最適化、方針の自動学習（勝ちパターン蓄積）。
+### P4 増分2 — 多アカウント投稿ルーティング
+
+| 領域 | 実体 |
+| --- | --- |
+| DB | `promotion_posts.account_id`（→`promotion_accounts`, SetNull）＋`promotion_accounts` に接続情報（token_enc/token_mask/handle）。migration `20260713000000_org_p4_post_account_routing` |
+| 共有型 | `@a2p/contracts/promotion/channels`: `pickAccountForChannel(channel, genre, accounts)`（接続済みから niche 一致優先で1件選定、無ければ null）|
+| worker | `promotion.posts.generate`: 生成時に各投稿を接続済みアカウントへ振り分け（account_id）。`promotion.post.publish`: account_id があればそのアカウントの資格情報で投稿（未接続なら failed）|
+| web | `/org/accounts`（台帳一覧＋接続フォーム。`connectPromotionAccount`/`archivePromotionAccount`）＋ `/org/tasks` からの導線 |
+
+フロー: plan_accounts（増分1）で台帳に pending＋作成仕様付き create_account 起票 → 運営者が各SNSで作成し
+`/org/accounts` で**一度だけ接続（handle＋暗号化トークン → connected）** → 以降 `posts.generate` が
+書籍ジャンル×ニッチで投稿先を自動選定し、`post.publish` がそのアカウントで投稿する。account_id が無い投稿は
+従来どおり channel 既定設定（`PromotionChannelSetting`）で投稿（後方互換）。誤爆防止の channel 別 auto_enabled
+マスタスイッチは維持。
+
+**P4 の残り（後続増分）:** KDP条件付き自動公開（ゲート付き・既定OFF）、SNSエンゲージメント読取（read-port →
+promo_analyst 接続）、bakeoff による各 org ロールのモデル最適化、方針の自動学習（勝ちパターン蓄積）。
 
 ---
 

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildPromotionPosts,
+  pickAccountForChannel,
   PROMOTION_CHANNELS,
   PromotionChannelSchema,
 } from '../src/promotion/channels.js';
@@ -94,5 +95,27 @@ describe('buildPromotionPosts', () => {
     });
     // note_article is effectively empty → no note post
     expect(drafts).toHaveLength(0);
+  });
+});
+
+describe('pickAccountForChannel (P4 多アカウント routing)', () => {
+  const accounts = [
+    { id: 'x1', channel: 'x', niche: '朝活・習慣化' },
+    { id: 'x2', channel: 'x', niche: 'business 実務' },
+    { id: 'n1', channel: 'note', niche: '副業' },
+  ];
+
+  it('接続アカウントが無ければ null（channel 既定にフォールバック）', () => {
+    expect(pickAccountForChannel('x', 'practical', [])).toBeNull();
+    expect(pickAccountForChannel('tiktok', 'practical', accounts)).toBeNull();
+  });
+
+  it('genre が niche に一致する候補を優先', () => {
+    expect(pickAccountForChannel('x', 'business', accounts)).toBe('x2');
+  });
+
+  it('一致が無ければ同一チャンネルの先頭候補', () => {
+    expect(pickAccountForChannel('x', 'self_help', accounts)).toBe('x1');
+    expect(pickAccountForChannel('note', null, accounts)).toBe('n1');
   });
 });

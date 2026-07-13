@@ -1,7 +1,7 @@
 import type { JobHelpers, Task } from 'graphile-worker';
 import { z } from 'zod';
 
-import { buildPromotionPosts } from '@a2p/contracts/promotion/channels';
+import { buildPromotionPosts, pickAccountForChannel } from '@a2p/contracts/promotion/channels';
 import type { PromotionPlanOutput } from '@a2p/contracts/agents/promoter';
 import { ValidationError } from '@a2p/contracts/errors';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
@@ -33,6 +33,18 @@ export interface PromotionPostsGeneratePrisma {
       select: { plan_json: true };
     }) => Promise<{ plan_json: unknown } | null>;
   };
+  book: {
+    findUnique: (args: {
+      where: { id: string };
+      select: { theme: { select: { genre: true } } };
+    }) => Promise<{ theme: { genre: string } | null } | null>;
+  };
+  promotionAccount: {
+    findMany: (args: {
+      where: { status: string };
+      select: { id: true; channel: true; niche: true };
+    }) => Promise<Array<{ id: string; channel: string; niche: string }>>;
+  };
   promotionPost: {
     deleteMany: (args: {
       where: { book_id: string; status: { in: string[] } };
@@ -41,6 +53,7 @@ export interface PromotionPostsGeneratePrisma {
       data: Array<{
         book_id: string;
         channel: string;
+        account_id: string | null;
         title: string | null;
         body: string;
         scheduled_for: Date;
@@ -102,10 +115,22 @@ export async function runPromotionPostsGenerate(
     return { created: 0, removed: removed.count };
   }
 
+  // P4 増分2: 接続済み台帳アカウントへ投稿をルーティング（無ければ channel 既定設定を使う）。
+  const bookRow = await prisma.book.findUnique({
+    where: { id: bookId },
+    select: { theme: { select: { genre: true } } },
+  });
+  const genre = bookRow?.theme?.genre ?? null;
+  const connectedAccounts = await prisma.promotionAccount.findMany({
+    where: { status: 'connected' },
+    select: { id: true, channel: true, niche: true },
+  });
+
   const created = await prisma.promotionPost.createMany({
     data: drafts.map((d) => ({
       book_id: bookId,
       channel: d.channel,
+      account_id: pickAccountForChannel(d.channel, genre, connectedAccounts),
       title: d.title,
       body: d.body,
       scheduled_for: new Date(baseMs + d.offsetMinutes * 60_000),

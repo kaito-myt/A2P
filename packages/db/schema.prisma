@@ -300,6 +300,8 @@ model PromotionAccount {
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
+  posts PromotionPost[]
+
   @@index([channel, status])
   @@map("promotion_accounts")
 }
@@ -328,7 +330,9 @@ model BlogPost {
 model PromotionPost {
   id            String    @id @default(cuid())
   book_id       String
-  channel       String // sns | note | blog
+  channel       String // x | instagram | tiktok | note | blog
+  // P4 増分2: 投稿先の台帳アカウント (多アカウント routing)。null なら channel 既定設定を使う。
+  account_id    String?
   title         String? // note/blog の見出し (SNS は null)
   body          String    @db.Text // 投稿本文 (SNS 文面 / note 記事 / ブログ骨子)
   scheduled_for DateTime // この時刻を過ぎたら投稿対象
@@ -340,7 +344,8 @@ model PromotionPost {
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
 
-  book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
+  book    Book              @relation(fields: [book_id], references: [id], onDelete: Cascade)
+  account PromotionAccount? @relation(fields: [account_id], references: [id], onDelete: SetNull)
 
   @@index([status, scheduled_for])
   @@index([book_id])

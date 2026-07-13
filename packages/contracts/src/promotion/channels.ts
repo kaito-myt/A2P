@@ -120,6 +120,35 @@ export function buildPromotionPosts(
   return drafts;
 }
 
+/**
+ * docs/06 P4 増分2 — 多アカウント投稿ルーティング。
+ * 接続済み(connected)アカウントの中から、この投稿(チャンネル×書籍ジャンル)に使う
+ * アカウントを1つ選ぶ。無ければ null（＝チャンネル既定の接続設定にフォールバック）。
+ *
+ * 選定: 同一チャンネルの connected アカウントのうち、niche が genre と一致する候補を優先し、
+ * 無ければ最初の候補。決定的（LLM 非依存）。
+ */
+export interface RoutableAccount {
+  id: string;
+  channel: string;
+  niche: string;
+}
+
+export function pickAccountForChannel(
+  channel: string,
+  genre: string | null | undefined,
+  accounts: readonly RoutableAccount[],
+): string | null {
+  const candidates = accounts.filter((a) => a.channel === channel);
+  if (candidates.length === 0) return null;
+  if (genre) {
+    const g = genre.toLowerCase();
+    const matched = candidates.find((a) => a.niche.toLowerCase().includes(g));
+    if (matched) return matched.id;
+  }
+  return candidates[0]!.id;
+}
+
 /** 記事見出しを summary / 本文の先頭行から決める (最大 60 字)。 */
 function deriveTitle(summary: string | undefined, body: string): string {
   const firstLine = (s: string): string => {

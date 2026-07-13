@@ -61,6 +61,9 @@ export default async function OrgTasksPage() {
           <div className="flex flex-col">
             <h1 className="text-sub-heading text-foreground">{m.pageTitle}</h1>
             <p className="text-body text-muted">{m.pageSubtitle}</p>
+            <Link href="/org/accounts" className="text-button-sm text-muted no-underline hover:underline">
+              {m.accountsLink} →
+            </Link>
           </div>
           <div className="flex flex-col gap-space-snug">
             <RunDispatchButton />

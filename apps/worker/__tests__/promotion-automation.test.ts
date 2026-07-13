@@ -34,6 +34,8 @@ describe('runPromotionPostsGenerate', () => {
     const deleteMany = vi.fn(async () => ({ count: 0 }));
     const prisma = {
       promotionPlan: { findUnique: vi.fn(async () => ({ plan_json: PLAN })) },
+      book: { findUnique: vi.fn(async () => ({ theme: { genre: 'practical' } })) },
+      promotionAccount: { findMany: vi.fn(async () => []) },
       promotionPost: { deleteMany, createMany },
     };
     const now = () => new Date('2026-07-08T00:00:00Z');
@@ -64,6 +66,8 @@ describe('runPromotionPostsGenerate', () => {
     const deleteMany = vi.fn(async () => ({ count: 3 }));
     const prisma = {
       promotionPlan: { findUnique: vi.fn(async () => ({ plan_json: PLAN })) },
+      book: { findUnique: vi.fn(async () => ({ theme: { genre: 'practical' } })) },
+      promotionAccount: { findMany: vi.fn(async () => []) },
       promotionPost: { deleteMany, createMany: vi.fn(async (a: { data: unknown[] }) => ({ count: a.data.length })) },
     };
     const res = await runPromotionPostsGenerate({ book_id: 'b1' }, { prisma });
@@ -74,11 +78,30 @@ describe('runPromotionPostsGenerate', () => {
   it('プランが無ければ何もしない', async () => {
     const prisma = {
       promotionPlan: { findUnique: vi.fn(async () => null) },
+      book: { findUnique: vi.fn(async () => ({ theme: { genre: 'practical' } })) },
+      promotionAccount: { findMany: vi.fn(async () => []) },
       promotionPost: { deleteMany: vi.fn(), createMany: vi.fn() },
     };
     const res = await runPromotionPostsGenerate({ book_id: 'b1' }, { prisma });
     expect(res).toEqual({ created: 0, removed: 0 });
     expect(prisma.promotionPost.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('P4: 接続済み台帳アカウントがあれば account_id を振り分ける', async () => {
+    const createMany = vi.fn(async (args: { data: unknown[] }) => ({ count: args.data.length }));
+    const prisma = {
+      promotionPlan: { findUnique: vi.fn(async () => ({ plan_json: PLAN })) },
+      book: { findUnique: vi.fn(async () => ({ theme: { genre: 'practical' } })) },
+      promotionAccount: {
+        findMany: vi.fn(async () => [{ id: 'x-acct', channel: 'x', niche: 'practical 実用' }]),
+      },
+      promotionPost: { deleteMany: vi.fn(async () => ({ count: 0 })), createMany },
+    };
+    await runPromotionPostsGenerate({ book_id: 'b1' }, { prisma });
+    const rows = createMany.mock.calls[0]![0].data as Array<{ channel: string; account_id: string | null }>;
+    // x はニッチ一致で振り分け、note/blog は接続アカウント無しで null
+    expect(rows.filter((r) => r.channel === 'x').every((r) => r.account_id === 'x-acct')).toBe(true);
+    expect(rows.find((r) => r.channel === 'note')!.account_id).toBeNull();
   });
 });
 
@@ -91,10 +114,12 @@ type AnyArgs = Record<string, unknown>;
 function publishPrisma(overrides: {
   post?: Record<string, unknown> | null;
   setting?: Record<string, unknown> | null;
+  account?: Record<string, unknown> | null;
   casCount?: number;
 }) {
   const update = vi.fn((_args: AnyArgs) => Promise.resolve({}));
   const updateMany = vi.fn((_args: AnyArgs) => Promise.resolve({ count: overrides.casCount ?? 1 }));
+  const accountFindUnique = vi.fn((_args: AnyArgs) => Promise.resolve(overrides.account ?? null));
   const prisma = {
     promotionPost: {
       findUnique: vi.fn((_args: AnyArgs) => Promise.resolve(overrides.post ?? null)),
@@ -104,9 +129,12 @@ function publishPrisma(overrides: {
     promotionChannelSetting: {
       findUnique: vi.fn((_args: AnyArgs) => Promise.resolve(overrides.setting ?? null)),
     },
+    promotionAccount: {
+      findUnique: accountFindUnique,
+    },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
-  return { update, updateMany, prisma };
+  return { update, updateMany, accountFindUnique, prisma };
 }
 
 describe('runPromotionPostPublish', () => {
@@ -173,6 +201,41 @@ describe('runPromotionPostPublish', () => {
     const arg = publish.mock.calls[0]![0] as { config: { token: string; extra: Record<string, unknown> } };
     expect(arg.config.token).toBe('SECRET');
     expect(arg.config.extra.webhook_url).toBe('https://h');
+  });
+
+  it('P4: account_id 付き投稿は接続済み台帳アカウントの資格情報で投稿する', async () => {
+    const publish = vi.fn((_a: AnyArgs) => Promise.resolve({ ok: true as const, externalUrl: 'https://x.test/9' }));
+    const { prisma, accountFindUnique } = publishPrisma({
+      post: { id: 'p1', channel: 'x', account_id: 'acct-1', title: null, body: 'x', status: 'scheduled' },
+      setting: { auto_enabled: true, handle: '@channel', token_enc: 'CHAN', config_json: {} },
+      account: { status: 'connected', handle: '@niche', token_enc: 'ACCT', config_json: { webhook_url: 'https://a' } },
+    });
+    await runPromotionPostPublish(
+      { post_id: 'p1' },
+      { prisma, resolvePort: () => ({ publish } as unknown as PublisherPort), decryptToken: (e) => `dec:${e}` },
+    );
+    expect(accountFindUnique).toHaveBeenCalled();
+    const arg = publish.mock.calls[0]![0] as { config: { token: string; handle: string | null } };
+    // チャンネル既定(CHAN)ではなくアカウント(ACCT)のトークン/ハンドルを使う
+    expect(arg.config.token).toBe('dec:ACCT');
+    expect(arg.config.handle).toBe('@niche');
+  });
+
+  it('P4: account_id 付きだがアカウント未接続なら failed(account_not_connected)', async () => {
+    const publish = vi.fn();
+    const { prisma, update } = publishPrisma({
+      post: { id: 'p1', channel: 'x', account_id: 'acct-1', title: null, body: 'x', status: 'scheduled' },
+      setting: { auto_enabled: true, handle: '@channel', token_enc: 'CHAN', config_json: {} },
+      account: { status: 'pending', handle: null, token_enc: null, config_json: null },
+    });
+    const res = await runPromotionPostPublish(
+      { post_id: 'p1' },
+      { prisma, resolvePort: () => ({ publish } as unknown as PublisherPort) },
+    );
+    expect(res.status).toBe('failed');
+    expect((res as { reason: string }).reason).toBe('account_not_connected');
+    expect(publish).not.toHaveBeenCalled();
+    expect((update.mock.calls.at(-1)![0] as { data: { status: string } }).data.status).toBe('failed');
   });
 });
 
