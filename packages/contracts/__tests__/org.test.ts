@@ -17,6 +17,7 @@ import {
   buildBudgetLines,
   detectBudgetBreaches,
   evaluateKdpPublishReadiness,
+  computeWinningPatterns,
   depsSatisfied,
   groupByDivision,
   groupByStatus,
@@ -306,5 +307,41 @@ describe('P4 evaluateKdpPublishReadiness', () => {
     expect(evaluateKdpPublishReadiness({ ...ok, metadata: null }, th).reasons.length).toBeGreaterThan(0);
     const noKw = evaluateKdpPublishReadiness({ ...ok, metadata: { ...ok.metadata, keywords_count: 0 } }, th);
     expect(noKw.eligible).toBe(false);
+  });
+});
+
+describe('P4 computeWinningPatterns', () => {
+  it('稼ぐジャンルを royalty 降順で並べる', () => {
+    const wp = computeWinningPatterns([
+      { genre: 'self_help', royalty_jpy: 1000, published: true },
+      { genre: 'business', royalty_jpy: 300, published: true },
+      { genre: 'self_help', royalty_jpy: 500, published: true },
+    ]);
+    expect(wp.top_genres[0]!.genre).toBe('self_help');
+    expect(wp.top_genres[0]!.royalty_jpy).toBe(1500);
+    expect(wp.top_genres[0]!.book_count).toBe(2);
+    expect(wp.insights.length).toBeGreaterThan(0);
+  });
+
+  it('在庫はあるが売上0のジャンルを underexposed に', () => {
+    const wp = computeWinningPatterns([
+      { genre: 'practical', royalty_jpy: 0, published: false },
+      { genre: 'practical', royalty_jpy: 0, published: false },
+      { genre: 'business', royalty_jpy: 200, published: true },
+    ]);
+    expect(wp.underexposed_genres.some((u) => u.genre === 'practical' && u.book_count === 2)).toBe(true);
+    expect(wp.insights.some((s) => s.includes('practical'))).toBe(true);
+  });
+
+  it('売上が全く無ければ「まず在庫と露出」を示唆', () => {
+    const wp = computeWinningPatterns([{ genre: 'business', royalty_jpy: 0, published: false }]);
+    expect(wp.top_genres).toEqual([]);
+    expect(wp.insights.some((s) => s.includes('在庫'))).toBe(true);
+  });
+
+  it('空入力でも落ちない', () => {
+    const wp = computeWinningPatterns([]);
+    expect(wp.top_genres).toEqual([]);
+    expect(wp.underexposed_genres).toEqual([]);
   });
 });

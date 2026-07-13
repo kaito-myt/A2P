@@ -110,6 +110,8 @@ export const messages = {
       runHint: '全社状況を集約し、方針＋本部別ToDoを自動起票します',
       noObjective: 'まだ方針がありません。「CEO に立案させる」で最初の経営サイクルを開始してください。',
       objectiveTitle: '現在の方針',
+      winningPatternsTitle: '勝ちパターン（学習）',
+      winningPatternsHint: '実績から抽出した効いている型。CEO の次サイクルの企画・予算配分に供給されます',
       period: '対象期間',
       goals: 'ゴール',
       kpi: 'KPI',

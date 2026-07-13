@@ -1034,3 +1034,14 @@ model OrgTask {
   @@index([objective_id], map: "org_tasks_objective_idx")
   @@map("org_tasks")
 }
+
+/// 勝ちパターン台帳（P4 増分4）。org.plan が毎ティック、実績から抽出した「効いている型」を
+/// 蓄積し、CEO の意思決定に供給する。singleton（最新の学習知見を保持）。
+model OrgPlaybook {
+  id            String   @id @default("singleton")
+  // type: WinningPatterns { top_genres[], underexposed_genres[], insights[] }
+  patterns_json Json
+  updated_at    DateTime @updatedAt
+
+  @@map("org_playbook")
+}

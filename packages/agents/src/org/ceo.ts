@@ -42,6 +42,11 @@ export interface CompanySnapshot {
     auto_enabled: string[];
   };
   open_tasks: number;
+  /** 勝ちパターン学習（P4 増分4）— 実績から抽出した効いている型（あれば）。 */
+  winning_patterns?: {
+    top_genres: Array<{ genre: string; royalty_jpy: number; book_count: number }>;
+    insights: string[];
+  };
   /** 前サイクルの分析示唆など（あれば）。 */
   notes?: string;
 }
@@ -131,6 +136,9 @@ export function buildCeoUserMessage(s: CompanySnapshot): string {
     `- 自動投稿ON: ${s.channels.auto_enabled.join(', ') || '(なし)'}`,
     '',
     `【進行中の全社タスク数】${s.open_tasks}`,
+    s.winning_patterns && s.winning_patterns.insights.length > 0
+      ? `\n【勝ちパターン(学習)】\n${s.winning_patterns.insights.map((i) => `- ${i}`).join('\n')}`
+      : '',
     s.notes ? `\n【申し送り/示唆】\n${s.notes}` : '',
     '',
     '出力要件:',

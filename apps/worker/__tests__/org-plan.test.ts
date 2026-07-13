@@ -20,6 +20,7 @@ const silentLogger = {
 function makePrisma(overrides: Partial<Record<string, unknown>> = {}) {
   const created = { objectives: [] as unknown[], tasks: [] as Record<string, unknown>[] };
   const closedActive = { count: 0 };
+  const playbookUpserts: unknown[] = [];
 
   const prisma = {
     book: {
@@ -63,10 +64,16 @@ function makePrisma(overrides: Partial<Record<string, unknown>> = {}) {
         return { id: 'obj1' };
       }),
     },
+    orgPlaybook: {
+      upsert: vi.fn(async ({ create }: { create: { patterns_json: unknown } }) => {
+        playbookUpserts.push(create.patterns_json);
+        return {};
+      }),
+    },
     ...overrides,
   } as unknown as OrgPlanPrisma;
 
-  return { prisma, created, closedActive };
+  return { prisma, created, closedActive, playbookUpserts };
 }
 
 const ceoOutput: CeoPlanOutput = {
@@ -116,6 +123,9 @@ describe('buildCompanySnapshot', () => {
     expect(snapshot.cost.monthly_budget_jpy).toBe(50000);
     expect(snapshot.channels.connected).toEqual(['x']); // note は未接続
     expect(snapshot.channels.auto_enabled).toEqual(['x']);
+    // 勝ちパターン: practical が稼ぐジャンル、self_help は在庫あるが売上0
+    expect(snapshot.winning_patterns?.top_genres[0]?.genre).toBe('practical');
+    expect(snapshot.winning_patterns?.insights.length ?? 0).toBeGreaterThan(0);
     expect(candidateBooks).toHaveLength(2);
     expect(channels).toHaveLength(2);
   });
@@ -123,7 +133,7 @@ describe('buildCompanySnapshot', () => {
 
 describe('runOrgPlan', () => {
   it('方針を作成し前アクティブを閉じ、本部長のタスクを起票する', async () => {
-    const { prisma, created, closedActive } = makePrisma();
+    const { prisma, created, closedActive, playbookUpserts } = makePrisma();
     const planObjective = vi.fn(async () => ceoOutput);
     const planDivisionTasks = vi.fn(async ({ division }: { division: string }) => managerFor(division));
 
@@ -135,6 +145,10 @@ describe('runOrgPlan', () => {
     // 前アクティブを閉じてから作成
     expect(closedActive.count).toBe(1);
     expect(created.objectives).toHaveLength(1);
+
+    // 勝ちパターン台帳を蓄積
+    expect(playbookUpserts).toHaveLength(1);
+    expect((playbookUpserts[0] as { top_genres: unknown[] }).top_genres.length).toBeGreaterThan(0);
 
     // ブリーフのある本部のみ起動（production + promotion）
     expect(planDivisionTasks).toHaveBeenCalledTimes(2);

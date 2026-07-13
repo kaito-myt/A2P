@@ -14,9 +14,12 @@ import {
   DIVISIONS,
   DIVISION_MANAGER_ROLE,
   isHumanKind,
+  computeWinningPatterns,
+  type BookPerf,
   type CeoPlanOutput,
   type Division,
   type ManagerPlanOutput,
+  type WinningPatterns,
 } from '@a2p/contracts/org';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
 import { prisma as defaultPrisma } from '@a2p/db';
@@ -98,6 +101,13 @@ export interface OrgPlanPrisma {
     updateMany: (args: { where: { status: string }; data: { status: string } }) => Promise<{ count: number }>;
     create: (args: { data: OrgObjectiveCreateData }) => Promise<{ id: string }>;
   };
+  orgPlaybook?: {
+    upsert: (args: {
+      where: { id: string };
+      create: { id: string; patterns_json: unknown };
+      update: { patterns_json: unknown };
+    }) => Promise<unknown>;
+  };
   job?: {
     update: (args: {
       where: { id: string };
@@ -168,6 +178,7 @@ export async function buildCompanySnapshot(
   candidateBooks: Array<{ id: string; title: string; status: string; publish_status: string; genre: string | null }>;
   channels: Array<{ channel: string; auto_enabled: boolean; handle: string | null }>;
   openTasks: Array<{ division: string; kind: string; title: string; status: string }>;
+  winningPatterns: WinningPatterns;
 }> {
   const books = await prisma.book.findMany({
     select: { id: true, title: true, status: true, publish_status: true, theme: { select: { genre: true } } },
@@ -220,6 +231,14 @@ export async function buildCompanySnapshot(
     select: { division: true, kind: true, title: true, status: true },
   });
 
+  // 勝ちパターン学習（P4 増分4）: 書籍別実績（ジャンル×売上）から効いている型を抽出。
+  const bookPerf: BookPerf[] = books.map((b) => ({
+    genre: b.theme?.genre ?? null,
+    royalty_jpy: perBook.get(b.id)?.royalty ?? 0,
+    published: b.publish_status === 'published',
+  }));
+  const winningPatterns = computeWinningPatterns(bookPerf);
+
   const snapshot: CompanySnapshot = {
     period_label: periodLabel(now),
     books: { total: books.length, by_status: byStatus, needs_human_review: needsHuman, published },
@@ -227,6 +246,7 @@ export async function buildCompanySnapshot(
     cost: { month_jpy: Math.round(monthCost), monthly_budget_jpy: settings?.monthly_cost_red_jpy ?? null },
     channels: { connected, auto_enabled: autoEnabled },
     open_tasks: openTasks.length,
+    winning_patterns: { top_genres: winningPatterns.top_genres, insights: winningPatterns.insights },
   };
 
   const candidateBooks = books
@@ -239,7 +259,7 @@ export async function buildCompanySnapshot(
       genre: b.theme?.genre ?? null,
     }));
 
-  return { snapshot, candidateBooks, channels, openTasks };
+  return { snapshot, candidateBooks, channels, openTasks, winningPatterns };
 }
 
 export async function runOrgPlan(payload: unknown, deps: OrgPlanDeps = {}): Promise<OrgPlanResult> {
@@ -253,7 +273,20 @@ export async function runOrgPlan(payload: unknown, deps: OrgPlanDeps = {}): Prom
   const now = deps.now ?? (() => new Date());
 
   try {
-    const { snapshot, candidateBooks, channels, openTasks } = await buildCompanySnapshot(prisma, now());
+    const { snapshot, candidateBooks, channels, openTasks, winningPatterns } = await buildCompanySnapshot(prisma, now());
+
+    // 勝ちパターン台帳を更新（蓄積・可視化）。ベストエフォート。
+    if (prisma.orgPlaybook) {
+      try {
+        await prisma.orgPlaybook.upsert({
+          where: { id: 'singleton' },
+          create: { id: 'singleton', patterns_json: winningPatterns },
+          update: { patterns_json: winningPatterns },
+        });
+      } catch (err) {
+        log.warn({ task: ORG_PLAN_TASK_NAME, err }, 'failed to upsert org_playbook (best-effort)');
+      }
+    }
 
     // 1. CEO 方針
     const plan = await planObj({ snapshot });

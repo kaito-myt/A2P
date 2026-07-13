@@ -84,6 +84,13 @@ export default async function OrgDashboardPage() {
   });
   const monthCost = Number(costAgg._sum.cost_jpy ?? 0);
 
+  // 勝ちパターン学習（P4 増分4）— org.plan が蓄積した「効いている型」。
+  const playbook = await prisma.orgPlaybook.findUnique({ where: { id: 'singleton' } });
+  const patterns = (playbook?.patterns_json ?? null) as {
+    top_genres?: Array<{ genre: string; royalty_jpy: number; book_count: number }>;
+    insights?: string[];
+  } | null;
+
   const body = (objective?.body_json ?? {}) as ObjectiveBody;
   const allocation = (objective?.budget_allocation_json ?? null) as Partial<Record<Division, number>> | null;
   const spent = computeSpentByDivision(tasks);
@@ -106,6 +113,30 @@ export default async function OrgDashboardPage() {
           <RunPlanButton />
         </div>
       </header>
+
+      {patterns && ((patterns.insights?.length ?? 0) > 0 || (patterns.top_genres?.length ?? 0) > 0) && (
+        <section
+          className="flex flex-col gap-space-snug rounded-card border border-border-warm bg-cream-light p-space-relaxed"
+          data-testid="org-winning-patterns"
+        >
+          <h2 className="text-card-title font-medium text-charcoal">{m.winningPatternsTitle}</h2>
+          <p className="text-caption text-muted">{m.winningPatternsHint}</p>
+          {patterns.top_genres && patterns.top_genres.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {patterns.top_genres.slice(0, 6).map((g) => (
+                <span key={g.genre} className="rounded-full bg-charcoal px-2 py-0.5 text-caption text-cream-light">
+                  {g.genre} {yen(g.royalty_jpy)}（{g.book_count}冊）
+                </span>
+              ))}
+            </div>
+          )}
+          {patterns.insights && patterns.insights.length > 0 && (
+            <ul className="list-disc pl-5 text-caption text-charcoal-82">
+              {patterns.insights.map((s, i) => <li key={i}>{s}</li>)}
+            </ul>
+          )}
+        </section>
+      )}
 
       {!objective ? (
         <div className="rounded-card border border-border-warm bg-cream-light p-space-loose text-center">

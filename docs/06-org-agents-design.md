@@ -6,7 +6,10 @@
 > 開発時の Claude Code サブエージェント（`.claude/agents`）とは別物。本ドキュメントでは
 > これらを **Org エージェント** と呼ぶ。
 >
-> ステータス: **P4 進行中（増分1・2・3 実装済み 2026-07-13）**。増分3 で **KDP 公開の事前スクリーニング
+> ステータス: **P4 進行中（増分1〜4 実装済み 2026-07-13）**。増分4 で **勝ちパターン学習** を追加：
+> `org.plan` が実績（ジャンル×売上）から「効いている型」を決定的に抽出し、台帳 `org_playbook`(singleton) に蓄積、
+> **CEO のスナップショットに供給**して次サイクルの企画/予算配分の質を上げる（`/org` に「勝ちパターン」カード）。
+> 以下は増分3: **KDP 公開の事前スクリーニング
 > `org.kdp.screen`（ゲート付き・既定OFF）** を追加。品質/価格/メタデータ完備を決定的に審査し、ゲート ON かつ
 > 合格のときだけ publish_kdp を needs_human→approved（公開クリア）へ前進させる。**実際の外部入稿(kdp.submit,
 > Playwright)は Phase 3 まで人手のまま**で、本タスクは一切公開処理をしない（誤公開防止）。以下は P4増分1・2:
@@ -146,9 +149,20 @@ P1 で確定した運用: 本部長が起票したタスクは、人手前提 ki
 実際の外部入稿は行わない（`kdp.submit` = Phase 3 の Playwright 実装が前提）。誤公開の実害が大きいため判定は保守的
 （不確実なら不可）。1 回の審査は最大 20 件。
 
+### P4 増分4 — 勝ちパターン学習（方針の自動学習）
+
+| 領域 | 実体 |
+| --- | --- |
+| DB | `org_playbook`(singleton, patterns_json)。migration `20260713200000_org_p4_playbook` |
+| 共有型 | `@a2p/contracts/org`: `computeWinningPatterns(books)`（ジャンル×売上から top_genres / underexposed_genres / insights を決定的抽出）|
+| worker | `org.plan`(buildCompanySnapshot) が勝ちパターンを算出→`org_playbook` を upsert（蓄積）＋`CompanySnapshot.winning_patterns` として CEO に供給。CEO の user message に【勝ちパターン(学習)】節を追加 |
+| web | `/org` に「勝ちパターン（学習）」カード（稼ぐジャンルのバッジ＋学習知見）|
+
+ループ: 実績（SalesRecord×Book.genre）→ 勝ちパターン抽出（決定的）→ 台帳蓄積＋CEOへ供給 → CEO が次サイクルの
+企画/予算配分を「効いている型」に寄せる。docs §13「意思決定の質」への対策。モデル設定や外部公開には触れない安全な学習。
+
 **P4 の残り（後続増分）:** 実 KDP 自動入稿（Phase 3 `kdp.submit` Playwright + 2FA push-and-wait）、
-SNSエンゲージメント読取（read-port → promo_analyst 接続）、bakeoff による各 org ロールのモデル最適化、
-方針の自動学習（勝ちパターン蓄積）。
+SNSエンゲージメント読取（read-port → promo_analyst 接続）、bakeoff による各 org ロールのモデル最適化。
 
 ---
 

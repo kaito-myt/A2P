@@ -413,6 +413,69 @@ export function priorityRank(priority: string): number {
 }
 
 // ---------------------------------------------------------------------------
+// 勝ちパターン学習 (P4 増分4) — 売上実績から「効いている型」を決定的に抽出し CEO へ供給
+// ---------------------------------------------------------------------------
+
+export interface BookPerf {
+  genre: string | null;
+  royalty_jpy: number;
+  published: boolean;
+}
+
+export interface WinningPatterns {
+  /** 稼ぐジャンル順（royalty 降順、売上>0 のみ）。 */
+  top_genres: Array<{ genre: string; royalty_jpy: number; book_count: number }>;
+  /** 在庫はあるが売上0のジャンル（露出/販促の余地）。 */
+  underexposed_genres: Array<{ genre: string; book_count: number }>;
+  /** 人が読む短い学習知見（CEO/本部長のプロンプトに供給）。 */
+  insights: string[];
+}
+
+/**
+ * 書籍別の実績から「勝ちパターン」を抽出する（決定的・LLM 非依存）。
+ * どのジャンルが稼ぎ、どのジャンルが在庫過多で売れていないかを可視化し、
+ * CEO の次サイクルの企画/予算配分の判断材料にする（docs §13 意思決定の質）。
+ */
+export function computeWinningPatterns(books: readonly BookPerf[]): WinningPatterns {
+  const royaltyByGenre = new Map<string, number>();
+  const countByGenre = new Map<string, number>();
+  for (const b of books) {
+    const g = b.genre ?? '未分類';
+    countByGenre.set(g, (countByGenre.get(g) ?? 0) + 1);
+    royaltyByGenre.set(g, (royaltyByGenre.get(g) ?? 0) + (Number.isFinite(b.royalty_jpy) ? b.royalty_jpy : 0));
+  }
+
+  const top_genres = [...royaltyByGenre.entries()]
+    .filter(([, r]) => r > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([genre, royalty_jpy]) => ({ genre, royalty_jpy, book_count: countByGenre.get(genre) ?? 0 }));
+
+  const underexposed_genres = [...countByGenre.entries()]
+    .filter(([g, c]) => (royaltyByGenre.get(g) ?? 0) === 0 && c > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([genre, book_count]) => ({ genre, book_count }));
+
+  const insights: string[] = [];
+  const totalRoyalty = [...royaltyByGenre.values()].reduce((a, b) => a + b, 0);
+  if (top_genres.length > 0) {
+    const t = top_genres[0]!;
+    insights.push(`「${t.genre}」が最も稼ぐジャンル（¥${t.royalty_jpy.toLocaleString('ja-JP')} / ${t.book_count}冊）。次サイクルはこの型を厚くする。`);
+    if (top_genres.length > 1) {
+      const w = top_genres[top_genres.length - 1]!;
+      insights.push(`稼ぎの薄いジャンル「${w.genre}」は制作を絞るか切り口を変える。`);
+    }
+  }
+  for (const u of underexposed_genres.slice(0, 2)) {
+    insights.push(`「${u.genre}」は${u.book_count}冊あるが売上0 — 制作より露出/販促を優先。`);
+  }
+  if (totalRoyalty === 0) {
+    insights.push('売上実績がまだ乏しい — まず在庫と初期露出（販促）を増やし、勝ち筋のデータを貯める。');
+  }
+
+  return { top_genres, underexposed_genres, insights };
+}
+
+// ---------------------------------------------------------------------------
 // KDP 公開可否ガードレール (P4 増分3) — 誤公開防止の決定的スクリーニング
 // ---------------------------------------------------------------------------
 
