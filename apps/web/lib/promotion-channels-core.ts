@@ -54,6 +54,24 @@ export interface PromotionChannelsDeps {
   enqueue: (task: string, payload: unknown) => Promise<void>;
   encrypt: (plain: string) => string;
   mask: (plain: string) => string;
+  /** 接続テスト用: token_enc の復号 (action で注入)。 */
+  decrypt?: (enc: string) => string;
+  /** 接続テスト用: 非破壊の外部認証プローブ (action で注入)。 */
+  probe?: (input: {
+    channel: string;
+    token: string | null;
+    webhookUrl: string | null;
+  }) => Promise<ChannelProbeResult>;
+}
+
+/** 接続テスト結果 (probe が返す判別結果を薄く再エクスポート)。 */
+export interface ChannelProbeResult {
+  ok: boolean;
+  method: 'x_api' | 'webhook' | 'owned' | 'none';
+  message: string;
+  http_status?: number;
+  latency_ms?: number;
+  identity?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +164,57 @@ export async function setChannelConnectionCore(
   const hasToken = Boolean(update.token_enc) || Boolean(existing?.token_enc);
   const hasWebhook = Boolean(config.webhook_url);
   return ok({ channel, connected: hasToken || hasWebhook });
+}
+
+// ---------------------------------------------------------------------------
+// 接続テスト (非破壊) — 外部サービスの認証が通るかだけを確認する
+// ---------------------------------------------------------------------------
+
+const TestConnectionSchema = z.object({ channel: PromotionChannelSchema });
+
+function readWebhookUrl(configJson: unknown): string | null {
+  if (configJson && typeof configJson === 'object') {
+    const v = (configJson as Record<string, unknown>).webhook_url;
+    if (typeof v === 'string' && v.trim().length > 0) return v.trim();
+  }
+  return null;
+}
+
+export async function testChannelConnectionCore(
+  input: unknown,
+  deps: PromotionChannelsDeps,
+): Promise<ActionResult<ChannelProbeResult>> {
+  const parsed = TestConnectionSchema.safeParse(input);
+  if (!parsed.success) return fail('validation', m.error);
+  if (!deps.probe) return fail('unknown', m.error);
+  const { channel } = parsed.data;
+
+  const existing = await deps.channelSettingRepo.findUnique({ where: { channel } });
+
+  let token: string | null = null;
+  if (existing?.token_enc && deps.decrypt) {
+    try {
+      token = deps.decrypt(existing.token_enc);
+    } catch {
+      token = null;
+    }
+  }
+  const webhookUrl = readWebhookUrl(existing?.config_json);
+
+  const result = await deps.probe({ channel, token, webhookUrl });
+
+  await deps.auditLogRepo.create({
+    data: {
+      actor_id: deps.session.user.id,
+      action: 'promotion.channel.connection.test',
+      target_kind: 'promotion_channel',
+      target_id: channel,
+      // token/handle は残さない。認証可否と手段のみ記録。
+      after_json: { ok: result.ok, method: result.method, http_status: result.http_status ?? null },
+    },
+  });
+
+  return ok(result);
 }
 
 // ---------------------------------------------------------------------------

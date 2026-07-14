@@ -2885,7 +2885,13 @@ Noto Sans JP で実フォント合成** (`packages/output/image/compose-cover.ts
 - `/promotion` + `/promotion/[bookId]` (販促施策プランの生成・閲覧、施策ごとタブ切替、告知文コピペ)。
   サイドバー「販促施策」を独立大項目に昇格。
 - `/promotion/channel/[channel]` (F-052 SNS/note/ブログの自動運用ボード — チャンネル切替タブ・
-  自動運用トグル・接続設定(handle/webhook/token)・投稿キュー(手動投稿/取消))。
+  自動運用トグル・接続設定(handle/webhook/token)・**接続テスト**・投稿キュー(手動投稿/取消))。
+  **接続テスト (非破壊)**: `testChannelConnection` SA → `testChannelConnectionCore` → `probeChannelAuth`
+  (`apps/web/lib/promotion-channel-probe.ts`)。実投稿と同じ資格情報/認証方式で read-only プローブし、
+  トークンを貼った瞬間に認証可否を確認できる。x=`GET /2/users/me` (Bearer)、webhook=`{test:true}` を POST、
+  blog=所有(常にOK)、その他=接続手段なし。結果は UI に即時表示 (DB 非永続)、audit_log に可否/手段のみ記録。
+  KDP は sales.fetch (Playwright 実ログイン) が実質の認証テストを兼ねる (売上取得のみで非破壊、入稿は Phase 3)。
+  LLM キーは `/settings` の testApiCredential (models.list 相当) で疎通確認。
 - **章タイトル正規化 (F-055)**: `@a2p/contracts/book/chapter-title` の `normalizeChapters` で
   埋め込み「第N章」の除去・はじめに/おわりに を前書き/後書き扱い・本文のみ連番振り直しを決定的に行う。
   Web 表示 (章本文/アウトライン/章セレクタ) と DOCX/PDF 出力 (export タスクで正規化しビルダは前置しない)

@@ -8,6 +8,7 @@ import {
   publishPostNowCore,
   setChannelAutoCore,
   setChannelConnectionCore,
+  testChannelConnectionCore,
   type PromotionChannelsDeps,
 } from '../../lib/promotion-channels-core';
 
@@ -99,6 +100,57 @@ describe('setChannelConnectionCore', () => {
     // already connected via existing token
     if (res.ok) expect(res.data.connected).toBe(true);
     expect(upsert).not.toBe(overriddenUpsert);
+  });
+});
+
+describe('testChannelConnectionCore', () => {
+  it('decrypts stored token, passes it + webhook to probe, records audit', async () => {
+    const probe = vi.fn(async () => ({ ok: true, method: 'x_api' as const, message: 'OK ✓', identity: '@me' }));
+    const { deps, audit } = makeDeps({
+      channelSettingRepo: {
+        findUnique: vi.fn(async () => ({
+          channel: 'x',
+          auto_enabled: true,
+          handle: '@me',
+          token_enc: 'ENC-TOKEN',
+          token_mask: 'mask',
+          config_json: { webhook_url: 'https://hook.test/relay' },
+        })),
+        upsert: vi.fn(async () => ({})),
+      },
+      decrypt: (enc) => `plain(${enc})`,
+      probe,
+    });
+    const res = await testChannelConnectionCore({ channel: 'x' }, deps);
+    expect(res.ok).toBe(true);
+    expect(probe).toHaveBeenCalledWith({
+      channel: 'x',
+      token: 'plain(ENC-TOKEN)',
+      webhookUrl: 'https://hook.test/relay',
+    });
+    if (res.ok) expect(res.data.identity).toBe('@me');
+    // audit は認証可否と手段のみ (token は残さない)。
+    const auditArg = audit.mock.calls[0]![0] as { data: { after_json: Record<string, unknown> } };
+    expect(auditArg.data.after_json).toMatchObject({ ok: true, method: 'x_api' });
+    expect(JSON.stringify(auditArg)).not.toContain('plain(ENC-TOKEN)');
+  });
+
+  it('passes token=null when no token stored', async () => {
+    const probe = vi.fn(async () => ({ ok: false, method: 'none' as const, message: 'no' }));
+    const { deps } = makeDeps({
+      channelSettingRepo: { findUnique: vi.fn(async () => null), upsert: vi.fn(async () => ({})) },
+      decrypt: (enc) => `plain(${enc})`,
+      probe,
+    });
+    const res = await testChannelConnectionCore({ channel: 'note' }, deps);
+    expect(res.ok).toBe(true);
+    expect(probe).toHaveBeenCalledWith({ channel: 'note', token: null, webhookUrl: null });
+  });
+
+  it('rejects invalid channel', async () => {
+    const { deps } = makeDeps({ probe: vi.fn() });
+    const res = await testChannelConnectionCore({ channel: 'facebook' }, deps);
+    expect(res.ok).toBe(false);
   });
 });
 

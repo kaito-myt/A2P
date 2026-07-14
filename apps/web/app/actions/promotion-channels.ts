@@ -7,17 +7,19 @@
 import { revalidatePath } from 'next/cache';
 
 import { isA2PError, fail, type ActionResult } from '@a2p/contracts';
-import { encryptApiKey, maskApiKey } from '@a2p/crypto';
+import { decryptApiKey, encryptApiKey, maskApiKey } from '@a2p/crypto';
 import { prisma } from '@a2p/db';
 
 import { getSessionOrThrow } from '@/lib/auth-helpers';
 import { enqueueJob } from '@/lib/graphile-client';
 import { messages } from '@/lib/messages';
+import { probeChannelAuth } from '@/lib/promotion-channel-probe';
 import {
   cancelPostCore,
   publishPostNowCore,
   setChannelAutoCore,
   setChannelConnectionCore,
+  testChannelConnectionCore,
   type PromotionChannelsDeps,
 } from '@/lib/promotion-channels-core';
 
@@ -33,6 +35,8 @@ async function buildDeps(): Promise<PromotionChannelsDeps> {
     },
     encrypt: (plain) => encryptApiKey(plain),
     mask: (plain) => maskApiKey(plain),
+    decrypt: (enc) => decryptApiKey(enc),
+    probe: (probeInput) => probeChannelAuth(probeInput),
   };
 }
 
@@ -69,6 +73,17 @@ export async function setChannelConnection(input: unknown) {
   const res = await setChannelConnectionCore(input, deps);
   if (res.ok) revalidateChannels();
   return res;
+}
+
+export async function testChannelConnection(input: unknown) {
+  let deps: PromotionChannelsDeps;
+  try {
+    deps = await buildDeps();
+  } catch (err) {
+    return authFail(err);
+  }
+  // 接続テストは副作用が無い (audit 記録のみ)。revalidate は不要。
+  return testChannelConnectionCore(input, deps);
 }
 
 export async function publishPostNow(input: unknown) {

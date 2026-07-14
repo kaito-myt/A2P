@@ -16,6 +16,7 @@ import {
   publishPostNow,
   setChannelAuto,
   setChannelConnection,
+  testChannelConnection,
 } from '@/app/actions/promotion-channels';
 import { messages } from '@/lib/messages';
 import { cn } from '@/lib/cn';
@@ -179,9 +180,12 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
   const [webhook, setWebhook] = useState(setting.webhookUrl ?? '');
   const [token, setToken] = useState('');
   const [saved, setSaved] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   function save() {
     setSaved(false);
+    setTestResult(null);
     start(async () => {
       const res = await setChannelConnection({
         channel: setting.channel,
@@ -194,6 +198,21 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
         setToken('');
         router.refresh();
       }
+    });
+  }
+
+  function runTest() {
+    setSaved(false);
+    setTestResult(null);
+    setTesting(true);
+    start(async () => {
+      const res = await testChannelConnection({ channel: setting.channel });
+      if (res.ok) {
+        setTestResult({ ok: res.data.ok, message: res.data.message });
+      } else {
+        setTestResult({ ok: false, message: res.error?.message ?? m.actionMsg.error });
+      }
+      setTesting(false);
     });
   }
 
@@ -243,7 +262,7 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
         />
         {setting.tokenMask && <span className="text-caption text-muted">{setting.tokenMask}</span>}
       </label>
-      <div className="flex items-center gap-space-snug">
+      <div className="flex flex-wrap items-center gap-space-snug">
         <button
           type="button"
           onClick={save}
@@ -252,8 +271,32 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
         >
           {m.connSection.save}
         </button>
+        <button
+          type="button"
+          onClick={runTest}
+          disabled={pending}
+          data-testid={`channel-test-${setting.channel}`}
+          className="inline-flex items-center rounded-card border border-border-warm bg-cream px-3 py-1.5 text-button-sm text-charcoal hover:bg-charcoal-04 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          {testing ? m.connSection.testing : m.connSection.test}
+        </button>
         {saved && <span className="text-caption text-success">{m.connSection.saved}</span>}
       </div>
+      {testResult && (
+        <p
+          role="status"
+          data-testid={`channel-test-result-${setting.channel}`}
+          className={cn(
+            'rounded-default border px-3 py-2 text-caption',
+            testResult.ok
+              ? 'border-success/40 bg-success-bg text-success'
+              : 'border-destructive/40 bg-destructive-bg text-destructive',
+          )}
+        >
+          {testResult.message}
+        </p>
+      )}
+      <p className="text-caption text-muted">{m.connSection.testHint}</p>
     </Card>
   );
 }
