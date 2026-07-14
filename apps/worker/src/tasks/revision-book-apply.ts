@@ -22,6 +22,7 @@ import {
   type AddJobLike,
   PIPELINE_BOOK_JUDGE_TASK_NAME,
 } from './pipeline-book-judge.js';
+import { PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME } from './pipeline-book-cover-regenerate.js';
 
 /**
  * `revision.book.apply` タスク (docs/05 §5.3.10, F-050)
@@ -398,6 +399,46 @@ export async function runRevisionBookApply(
       });
     }
 
+    // 4b. 表紙(cover)コメント: 全コメントのフィードバックを1本にまとめ、採用カバーを
+    //     フィードバック反映で再生成する(pipeline.book.cover.regenerate)。実際に新カバーが
+    //     生成される(= 真に「適用」)。採用カバーが無ければ再生成側で no-op として扱う。
+    let coverRegenJobId: string | null = null;
+    const coverComments = grouped.get('cover') ?? [];
+    if (coverComments.length > 0 && addJobFn) {
+      try {
+        const coverFeedback = coverComments
+          .map((c) => c.body?.trim())
+          .filter((b): b is string => Boolean(b))
+          .join('\n')
+          .slice(0, 3900);
+        const regenJob = await prisma.job.create({
+          data: {
+            kind: PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME,
+            book_id: bookId,
+            parent_job_id: jobId,
+            status: 'queued',
+            payload_json: { book_id: bookId, feedback: coverFeedback },
+          },
+        });
+        await addJobFn(
+          PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME,
+          { book_id: bookId, job_id: regenJob.id, feedback: coverFeedback },
+          { maxAttempts: 2 },
+        );
+        coverRegenJobId = regenJob.id;
+      } catch (regenErr) {
+        log.warn(
+          {
+            task: REVISION_BOOK_APPLY_TASK_NAME,
+            runId,
+            bookId,
+            err: regenErr instanceof Error ? `${regenErr.name}: ${regenErr.message}` : String(regenErr),
+          },
+          'failed to enqueue cover regenerate — cover comments will be marked not_applicable',
+        );
+      }
+    }
+
     // 5. Process each target_kind group
     for (const [targetKind, kindComments] of grouped) {
       for (const comment of kindComments) {
@@ -420,6 +461,34 @@ export async function runRevisionBookApply(
               break;
 
             case 'cover':
+              // 表紙コメント: 再生成をトリガできたら applied、無理なら not_applicable（嘘をつかない）。
+              if (coverRegenJobId) {
+                await prisma.revisionComment.update({
+                  where: { id: comment.id },
+                  data: {
+                    status: 'applied',
+                    applied_at: now(),
+                    run_id: runId,
+                    application_result_json: {
+                      action: 'cover_regenerate_enqueued',
+                      regenerate_job_id: coverRegenJobId,
+                      note: 'フィードバックを反映して採用カバーを再生成中',
+                    },
+                  },
+                });
+                summary.applied += 1;
+              } else {
+                await markNotApplicable(
+                  prisma,
+                  comment.id,
+                  runId,
+                  '表紙の再生成を起動できませんでした（採用カバー未確定 or キュー不可）',
+                  now,
+                );
+                summary.not_applicable += 1;
+              }
+              break;
+
             case 'cover_text':
             case 'metadata':
             case 'theme':

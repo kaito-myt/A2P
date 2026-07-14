@@ -635,15 +635,15 @@ describe('runRevisionBookApply', () => {
     expect(captures.txCalls).toBe(1);
     expect(captures.revisionCreates).toHaveLength(1);
 
-    // Cover comment went through placeholder path
+    // Cover comment triggers a real cover regeneration with feedback (not a no-op placeholder).
     const coverUpdate = captures.commentUpdates.find(
       (u) => u.where.id === COMMENT_COVER_ID,
     );
     expect(coverUpdate).toBeDefined();
     expect(coverUpdate!.data.status).toBe('applied');
-    expect(
-      (coverUpdate!.data.application_result_json as Record<string, unknown>).reason,
-    ).toBe('Phase 1: placeholder implementation');
+    const coverResult = coverUpdate!.data.application_result_json as Record<string, unknown>;
+    expect(coverResult.action).toBe('cover_regenerate_enqueued');
+    expect(coverResult.regenerate_job_id).toBeTruthy();
 
     // Run summary
     const finalRunUpdate = captures.runUpdates.find(

@@ -40,6 +40,8 @@ export const PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME = 'pipeline.book.cover.reg
 export const PipelineBookCoverRegeneratePayloadSchema = z.object({
   book_id: z.string().min(1),
   job_id: z.string().min(1),
+  /** 修正コメント等のフィードバック。アート方向性の style guide に追記して反映する。 */
+  feedback: z.string().max(4000).optional(),
 });
 export type PipelineBookCoverRegeneratePayload = z.infer<
   typeof PipelineBookCoverRegeneratePayloadSchema
@@ -141,7 +143,7 @@ export async function runPipelineBookCoverRegenerate(
       details: { issues: parsed.error.issues },
     });
   }
-  const { book_id: bookId, job_id: jobId } = parsed.data;
+  const { book_id: bookId, job_id: jobId, feedback } = parsed.data;
 
   const log = deps.logger ?? createLogger(`worker.${PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME}`);
   const prisma = deps.prisma ?? (defaultPrisma as unknown as PipelineBookCoverRegeneratePrisma);
@@ -233,6 +235,11 @@ export async function runPipelineBookCoverRegenerate(
           'art direction generation failed — using generic fallback',
         );
       }
+    }
+
+    // 修正コメント等のフィードバックを style guide に反映（アート方向性より優先度の高い明示指示）。
+    if (feedback && feedback.trim().length > 0) {
+      styleGuide = `${styleGuide}\n\n【修正指示（最優先で反映）】\n${feedback.trim().slice(0, 2000)}`.trim();
     }
 
     // 新方式で作り直し (文字なしイラスト + 実フォント合成)。

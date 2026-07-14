@@ -25,6 +25,7 @@ import {
 } from '@a2p/contracts/agents/thumbnail';
 
 import { createAgentClient as defaultCreateAgentClient } from '../lib/llm-client-factory.js';
+import { sanitizeLlmJson } from '../lib/sanitize-llm-json.js';
 import {
   fillPlaceholders,
   loadActivePrompt as defaultLoadActivePrompt,
@@ -271,11 +272,18 @@ function tryParse(s: string): unknown {
   try {
     return JSON.parse(s);
   } catch {
-    try {
-      return JSON.parse(sanitizeJsonStringNewlines(s));
-    } catch {
-      return undefined;
-    }
+    /* fall through */
+  }
+  try {
+    return JSON.parse(sanitizeJsonStringNewlines(s));
+  } catch {
+    /* fall through */
+  }
+  // 未エスケープの内側二重引用符（例: "平安の"陽キャ"がSNS..."）まで修復してリトライ。
+  try {
+    return JSON.parse(sanitizeLlmJson(s));
+  } catch {
+    return undefined;
   }
 }
 

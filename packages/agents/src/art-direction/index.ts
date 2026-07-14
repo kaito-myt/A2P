@@ -20,6 +20,7 @@ import {
 } from '@a2p/contracts/agents/thumbnail';
 
 import { createAgentClient as defaultCreateAgentClient } from '../lib/llm-client-factory.js';
+import { sanitizeLlmJson } from '../lib/sanitize-llm-json.js';
 import {
   fillPlaceholders,
   loadActivePrompt as defaultLoadActivePrompt,
@@ -112,11 +113,18 @@ function extractJson(text: string): unknown {
     try {
       return JSON.parse(c);
     } catch {
-      try {
-        return JSON.parse(sanitizeJsonStringNewlines(c));
-      } catch {
-        /* try next candidate */
-      }
+      /* try repairs */
+    }
+    try {
+      return JSON.parse(sanitizeJsonStringNewlines(c));
+    } catch {
+      /* try next repair */
+    }
+    // 未エスケープの内側二重引用符（例: "陽キャ"）まで修復してリトライ。
+    try {
+      return JSON.parse(sanitizeLlmJson(c));
+    } catch {
+      /* try next candidate */
     }
   }
   throw new AgentError('cover_art_direction: 応答から JSON を抽出できませんでした', {

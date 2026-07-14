@@ -12,6 +12,10 @@
  *  - cover-book-checkbox-{book.id}
  *  - cover-image-{cover.id}
  */
+import { useRouter } from 'next/navigation';
+import { useState, useTransition } from 'react';
+
+import { bulkAdoptCovers } from '@/app/actions/covers';
 import { CommentBadge } from '@/components/comments/comment-badge';
 import { messages } from '@/lib/messages';
 import {
@@ -172,42 +176,74 @@ interface CoverThumbnailProps {
 }
 
 function CoverThumbnail({ cover }: CoverThumbnailProps) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
   const cost = extractCoverCost(cover.generation_meta_json);
-  const statusLabel =
-    cover.status === 'generated'
+  const isAdopted = cover.status === 'adopted';
+  const canAdopt = cover.status === 'generated';
+  const statusLabel = isAdopted
+    ? m.card.adoptedStatus
+    : cover.status === 'generated'
       ? m.card.generatedStatus
-      : cover.status === 'adopted'
-        ? m.card.adoptedStatus
-        : m.card.rejectedStatus;
+      : m.card.rejectedStatus;
+
+  function handleAdopt() {
+    if (!canAdopt || pending) return;
+    setError(null);
+    start(async () => {
+      const res = await bulkAdoptCovers({ cover_ids: [cover.id] });
+      if (!res.ok) {
+        setError(res.error?.message ?? m.card.adoptError);
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   return (
     <div
       data-testid={`cover-image-${cover.id}`}
       className={`relative flex w-[140px] flex-col gap-1 rounded-default border p-2 ${
-        cover.status === 'adopted'
-          ? 'border-charcoal bg-cream'
-          : 'border-border-warm bg-cream-light'
+        isAdopted ? 'border-charcoal bg-cream' : 'border-border-warm bg-cream-light'
+      } ${canAdopt ? 'cursor-pointer transition hover:ring-2 hover:ring-charcoal-40' : ''} ${
+        pending ? 'opacity-60' : ''
       }`}
+      role={canAdopt ? 'button' : undefined}
+      tabIndex={canAdopt ? 0 : undefined}
+      aria-label={canAdopt ? m.card.adoptThisCover : statusLabel}
+      onClick={canAdopt ? handleAdopt : undefined}
+      onKeyDown={
+        canAdopt
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleAdopt();
+              }
+            }
+          : undefined
+      }
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- R2 署名 URL への 302 リダイレクトを Cookie 付きで取得するため素の img を使う (next/image 最適化は Cookie 非送出で middleware に弾かれる) */}
       <img
         src={`/api/covers/${cover.id}/image`}
         alt={statusLabel}
         loading="lazy"
-        className="h-[180px] w-full rounded-default border border-border-warm bg-cream object-cover"
+        className="pointer-events-none h-[180px] w-full rounded-default border border-border-warm bg-cream object-cover"
       />
       <span
         className={`text-center text-button-sm ${
-          cover.status === 'adopted'
-            ? 'font-medium text-charcoal'
-            : 'text-muted'
+          isAdopted ? 'font-medium text-charcoal' : 'text-muted'
         }`}
       >
-        {statusLabel}
+        {pending ? m.card.adopting : canAdopt ? m.card.adoptThisCover : statusLabel}
       </span>
       {cost !== null && (
-        <span className="text-center text-button-sm text-muted">
-          {`¥${Math.round(cost)}`}
+        <span className="text-center text-button-sm text-muted">{`¥${Math.round(cost)}`}</span>
+      )}
+      {error && (
+        <span className="text-center text-button-sm text-destructive" role="alert">
+          {error}
         </span>
       )}
     </div>
