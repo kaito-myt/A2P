@@ -2895,6 +2895,12 @@ Noto Sans JP で実フォント合成** (`packages/output/image/compose-cover.ts
   を HMAC-SHA1 署名で投稿する (OAuth2 Bearer は2hで失効するため不採用・レガシー互換のみ残す)。4値は
   `promotion_channel_settings.token_enc` に `{kind:'oauth1',...}` の JSON として暗号化保存 (mask はアクセストークン)。
   KDP は sales.fetch (Playwright 実ログイン) が実質の認証テストを兼ねる (売上取得のみで非破壊、入稿は Phase 3)。
+  **売上導線 + X 文字数**: `promotion.posts.generate` は本の `asin` があれば `appendPurchaseLink` で
+  Amazon購入リンク(`https://www.amazon.co.jp/dp/{ASIN}`)を投稿本文に付与する。X は重み付き文字数
+  (`weightedTweetLength`, 日本語=2/ラテン=1, 上限280, URL=23)で計算し、短文チャンネル(x/ig/tiktok)は
+  `truncateToWeight` で上限に収める(日本語ツイートが上限超過で API に弾かれるのを防ぐ)。http-publisher-port も
+  投稿直前に重み超過分を丸めるガードを持つ。ASIN は書籍詳細の `BookAsinControl` で運営者が記録でき、
+  `updateBookPublishStatus(asin)` が変更時に `promotion.posts.generate` を再起動してリンクを反映する。
   LLM キーは `/settings` の testApiCredential (models.list 相当) で疎通確認。
 - **章タイトル正規化 (F-055)**: `@a2p/contracts/book/chapter-title` の `normalizeChapters` で
   埋め込み「第N章」の除去・はじめに/おわりに を前書き/後書き扱い・本文のみ連番振り直しを決定的に行う。

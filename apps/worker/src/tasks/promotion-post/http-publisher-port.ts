@@ -12,6 +12,7 @@
  * どちらも失敗は例外にせず PublishResult の判別ユニオンで返す (dispatcher が記録)。
  */
 import { buildXAuthHeader, parseXCredentials } from '@a2p/crypto';
+import { weightedTweetLength, truncateToWeight, X_MAX_WEIGHT } from '@a2p/contracts/promotion/channels';
 import { createLogger } from '@a2p/contracts/logger';
 
 import type {
@@ -41,7 +42,6 @@ export interface HttpPublisherDeps {
 }
 
 const X_API_TWEETS_URL = 'https://api.twitter.com/2/tweets';
-const X_MAX_LEN = 280;
 
 export function createHttpPublisherPort(deps: HttpPublisherDeps = {}): PublisherPort {
   const doFetch: FetchLike = deps.fetchImpl ?? (globalThis.fetch as unknown as FetchLike);
@@ -108,13 +108,14 @@ async function publishViaWebhook(
 }
 
 async function publishViaXApi(doFetch: FetchLike, input: PublishInput): Promise<PublishResult> {
-  const text = input.body.trim();
-  if (text.length === 0) {
+  const trimmed = input.body.trim();
+  if (trimmed.length === 0) {
     return { ok: false, reason: 'invalid', message: 'empty tweet body' };
   }
-  if (text.length > X_MAX_LEN) {
-    return { ok: false, reason: 'invalid', message: `tweet exceeds ${X_MAX_LEN} chars` };
-  }
+  // X は重み付き文字数(日本語=2)で 280。超過は弾かず末尾を丸めて確実に投稿する
+  // (弾くと売上機会を失うため)。生成側でも収めているので通常は無加工。
+  const text =
+    weightedTweetLength(trimmed) > X_MAX_WEIGHT ? truncateToWeight(trimmed, X_MAX_WEIGHT) : trimmed;
   // 資格情報を解釈: OAuth1(4値, 無期限) を優先、レガシー Bearer もサポート。
   const creds = parseXCredentials(input.config.token);
   if (!creds) {

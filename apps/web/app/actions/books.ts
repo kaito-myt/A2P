@@ -21,10 +21,18 @@ import { createRevisionRun } from '@/app/actions/revision-runs';
 const THUMBNAIL_TEXT_TASK = 'pipeline.book.thumbnail.text';
 const READINGS_GENERATE_TASK = 'pipeline.book.readings.generate';
 const PROMOTION_GENERATE_TASK = 'pipeline.book.promotion.generate';
+const PROMOTION_POSTS_GENERATE_TASK = 'promotion.posts.generate';
 
 const UpdatePublishStatusSchema = z.object({
   book_id: z.string().min(1),
   publish_status: z.enum(['unlisted', 'submitted', 'published']),
+  /** Amazon の ASIN (10桁英数)。出版済みの本に購入リンクを付けるために記録する。 */
+  asin: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9]{10}$/u, 'ASIN は 10 桁の英数字です')
+    .optional()
+    .or(z.literal('')),
 });
 
 export async function updateBookPublishStatus(
@@ -44,19 +52,24 @@ export async function updateBookPublishStatus(
     return fail('validation', messages.books.publish.updateError);
   }
   const { book_id, publish_status } = parsed.data;
+  const asin =
+    parsed.data.asin && parsed.data.asin.trim().length > 0
+      ? parsed.data.asin.trim().toUpperCase()
+      : undefined;
 
   try {
     const existing = await prisma.book.findUnique({
       where: { id: book_id },
-      select: { id: true, publish_status: true },
+      select: { id: true, publish_status: true, asin: true },
     });
     if (!existing) {
       return fail('not_found', messages.books.publish.updateError);
     }
 
+    const asinChanged = asin !== undefined && asin !== existing.asin;
     await prisma.book.update({
       where: { id: book_id },
-      data: { publish_status },
+      data: { publish_status, ...(asinChanged ? { asin } : {}) },
     });
 
     await prisma.auditLog.create({
@@ -65,10 +78,25 @@ export async function updateBookPublishStatus(
         action: 'book.publish_status.update',
         target_kind: 'book',
         target_id: book_id,
-        before_json: { publish_status: existing.publish_status },
-        after_json: { publish_status },
+        before_json: { publish_status: existing.publish_status, asin: existing.asin },
+        after_json: { publish_status, asin: asinChanged ? asin : existing.asin },
       },
     });
+
+    // ASIN が変わったら、既存の販促プランがある本は投稿を作り直して購入リンクを反映する。
+    if (asinChanged) {
+      try {
+        const plan = await prisma.promotionPlan.findUnique({
+          where: { book_id },
+          select: { book_id: true },
+        });
+        if (plan) {
+          await enqueueJob(PROMOTION_POSTS_GENERATE_TASK, { book_id });
+        }
+      } catch {
+        // ベストエフォート: 投稿再生成の失敗は publish_status 更新に影響させない。
+      }
+    }
 
     // F-052: 「未出版 → published」への遷移で、設定が ON なら販促プランを自動立案。
     // プラン生成タスクが成功すると promotion.posts.generate を連鎖起動し、投稿キューが自動生成される。

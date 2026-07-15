@@ -33,6 +33,7 @@ import type { CostBreakdownSummary } from '@/lib/cost-view';
 import { OutlineTab } from './outline-tab';
 import { ChaptersTab } from './chapters-tab';
 import { ContentApprovalBanner } from './content-approval-banner';
+import { BookAsinControl } from './book-asin-control';
 import { CoverTab } from './cover-tab';
 import { CostTab } from './cost-tab';
 import { JobHistoryTab } from './job-history-tab';
@@ -118,9 +119,11 @@ function BookHeader({ book }: { book: BookDetailSerialized }) {
         <span>
           {m.header.qualityLabel}: {m.header.qualityPlaceholder}
         </span>
-        <span>
-          {m.header.asinLabel}: {book.asin ?? m.header.asinPlaceholder}
-        </span>
+        <BookAsinControl
+          bookId={book.id}
+          publishStatus={book.publish_status}
+          value={book.asin}
+        />
       </div>
 
       <div

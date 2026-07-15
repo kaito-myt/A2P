@@ -242,6 +242,7 @@ export interface BookDetailSerialized {
   title: string;
   subtitle: string | null;
   asin: string | null;
+  publish_status: PublishStatus;
   status: BookStatus;
   cost_status: CostStatus;
   cost_jpy_total: number;
@@ -282,6 +283,7 @@ type RawBookForDetail = Pick<
   | 'title'
   | 'subtitle'
   | 'asin'
+  | 'publish_status'
   | 'status'
   | 'cost_status'
   | 'cost_jpy_total'
@@ -342,6 +344,12 @@ export function serializeBookDetail(raw: RawBookForDetail): BookDetailSerialized
     title: raw.title,
     subtitle: raw.subtitle ?? null,
     asin: raw.asin ?? null,
+    publish_status:
+      raw.publish_status === 'published'
+        ? 'published'
+        : raw.publish_status === 'submitted'
+          ? 'submitted'
+          : 'unlisted',
     status: normalizeBookStatus(raw.status),
     cost_status: normalizeCostStatus(raw.cost_status),
     cost_jpy_total: Number(raw.cost_jpy_total),

@@ -9,6 +9,11 @@ import {
   pickAccountForChannel,
   PROMOTION_CHANNELS,
   PromotionChannelSchema,
+  weightedTweetLength,
+  truncateToWeight,
+  amazonUrlForAsin,
+  appendPurchaseLink,
+  X_MAX_WEIGHT,
 } from '../src/promotion/channels.js';
 
 function planWith(copy: {
@@ -117,5 +122,70 @@ describe('pickAccountForChannel (P4 多アカウント routing)', () => {
   it('一致が無ければ同一チャンネルの先頭候補', () => {
     expect(pickAccountForChannel('x', 'self_help', accounts)).toBe('x1');
     expect(pickAccountForChannel('note', null, accounts)).toBe('n1');
+  });
+});
+
+describe('weightedTweetLength — 日本語=2, ラテン=1', () => {
+  it('ASCII は 1 文字 1', () => {
+    expect(weightedTweetLength('hello')).toBe(5);
+    expect(weightedTweetLength('abc 123')).toBe(7);
+  });
+  it('日本語(かな/カナ/漢字)は 1 文字 2', () => {
+    expect(weightedTweetLength('あ')).toBe(2);
+    expect(weightedTweetLength('競馬')).toBe(4);
+    expect(weightedTweetLength('こんにちは')).toBe(10);
+  });
+  it('混在も正しく合算', () => {
+    // "本A" = 2 + 1 = 3
+    expect(weightedTweetLength('本A')).toBe(3);
+  });
+});
+
+describe('truncateToWeight', () => {
+  it('上限内はそのまま', () => {
+    expect(truncateToWeight('競馬予想', 280)).toBe('競馬予想');
+  });
+  it('超過は末尾を落として … を付ける (重み上限を超えない)', () => {
+    const long = 'あ'.repeat(200); // weighted 400
+    const out = truncateToWeight(long, 280);
+    expect(weightedTweetLength(out)).toBeLessThanOrEqual(280);
+    expect(out.endsWith('…')).toBe(true);
+  });
+});
+
+describe('amazonUrlForAsin', () => {
+  it('10桁英数の ASIN から .co.jp URL', () => {
+    expect(amazonUrlForAsin('B0FVFCKJNF')).toBe('https://www.amazon.co.jp/dp/B0FVFCKJNF');
+    expect(amazonUrlForAsin(' b0fvl9hdbb ')).toBe('https://www.amazon.co.jp/dp/B0FVL9HDBB');
+  });
+  it('無効な ASIN は null', () => {
+    expect(amazonUrlForAsin(null)).toBeNull();
+    expect(amazonUrlForAsin('')).toBeNull();
+    expect(amazonUrlForAsin('short')).toBeNull();
+    expect(amazonUrlForAsin('B0FVFCKJN!')).toBeNull();
+  });
+});
+
+describe('appendPurchaseLink', () => {
+  it('ASIN が無ければ本文そのまま', () => {
+    expect(appendPurchaseLink('x', '新刊出ました', null)).toBe('新刊出ました');
+  });
+  it('X: 購入リンクを付け、重み付き文字数が 280 を超えない', () => {
+    const body = 'あ'.repeat(200); // weighted 400 (超過)
+    const out = appendPurchaseLink('x', body, 'B0FVFCKJNF');
+    expect(out).toContain('https://www.amazon.co.jp/dp/B0FVFCKJNF');
+    // URL を 23 として概算しても収まる: 本文の重み + ラベル + 23 <= 280
+    const urlIdx = out.indexOf('https://');
+    const bodyPart = out.slice(0, urlIdx);
+    expect(weightedTweetLength(bodyPart) + 23).toBeLessThanOrEqual(X_MAX_WEIGHT);
+  });
+  it('既に URL / Amazon 表記を含むなら二重付与しない', () => {
+    expect(appendPurchaseLink('x', 'https://example.com あり', 'B0FVFCKJNF')).toBe('https://example.com あり');
+    expect(appendPurchaseLink('x', 'amazon.co.jp で発売', 'B0FVFCKJNF')).toBe('amazon.co.jp で発売');
+  });
+  it('note は長文可でそのまま付与', () => {
+    const out = appendPurchaseLink('note', '記事本文', 'B0FVFCKJNF');
+    expect(out).toContain('記事本文');
+    expect(out).toContain('https://www.amazon.co.jp/dp/B0FVFCKJNF');
   });
 });

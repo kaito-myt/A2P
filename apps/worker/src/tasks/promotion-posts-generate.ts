@@ -1,7 +1,14 @@
 import type { JobHelpers, Task } from 'graphile-worker';
 import { z } from 'zod';
 
-import { buildPromotionPosts, pickAccountForChannel } from '@a2p/contracts/promotion/channels';
+import {
+  buildPromotionPosts,
+  pickAccountForChannel,
+  appendPurchaseLink,
+  amazonUrlForAsin,
+  truncateToWeight,
+  X_MAX_WEIGHT,
+} from '@a2p/contracts/promotion/channels';
 import type { PromotionPlanOutput } from '@a2p/contracts/agents/promoter';
 import { ValidationError } from '@a2p/contracts/errors';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
@@ -36,8 +43,8 @@ export interface PromotionPostsGeneratePrisma {
   book: {
     findUnique: (args: {
       where: { id: string };
-      select: { theme: { select: { genre: true } } };
-    }) => Promise<{ theme: { genre: string } | null } | null>;
+      select: { asin: true; theme: { select: { genre: true } } };
+    }) => Promise<{ asin: string | null; theme: { genre: string } | null } | null>;
   };
   promotionAccount: {
     findMany: (args: {
@@ -118,13 +125,22 @@ export async function runPromotionPostsGenerate(
   // P4 増分2: 接続済み台帳アカウントへ投稿をルーティング（無ければ channel 既定設定を使う）。
   const bookRow = await prisma.book.findUnique({
     where: { id: bookId },
-    select: { theme: { select: { genre: true } } },
+    select: { asin: true, theme: { select: { genre: true } } },
   });
   const genre = bookRow?.theme?.genre ?? null;
+  const asin = bookRow?.asin ?? null;
   const connectedAccounts = await prisma.promotionAccount.findMany({
     where: { status: 'connected' },
     select: { id: true, channel: true, niche: true },
   });
+
+  // 売上導線: ASIN があれば購入リンクを付与。短文チャンネルは X の重み(280,日本語=2,URL=23)に
+  // 収まるよう本文を切り詰める。ASIN が無い場合も短文は重み上限を超えないよう安全に丸める。
+  const SHORT = new Set(['x', 'instagram', 'tiktok']);
+  const finalizeBody = (channel: string, body: string): string => {
+    if (amazonUrlForAsin(asin)) return appendPurchaseLink(channel, body, asin);
+    return SHORT.has(channel) ? truncateToWeight(body.trim(), X_MAX_WEIGHT) : body;
+  };
 
   const created = await prisma.promotionPost.createMany({
     data: drafts.map((d) => ({
@@ -132,7 +148,7 @@ export async function runPromotionPostsGenerate(
       channel: d.channel,
       account_id: pickAccountForChannel(d.channel, genre, connectedAccounts),
       title: d.title,
-      body: d.body,
+      body: finalizeBody(d.channel, d.body),
       scheduled_for: new Date(baseMs + d.offsetMinutes * 60_000),
       status: 'scheduled',
     })),

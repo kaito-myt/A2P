@@ -149,6 +149,90 @@ export function pickAccountForChannel(
   return candidates[0]!.id;
 }
 
+// ===========================================================================
+// X (Twitter) テキスト計量 + Amazon 購入リンク注入
+//   X は「重み付き文字数」で 280 まで。ラテン等は 1、日本語(かな/カナ/漢字)は 2。
+//   URL は t.co ラップで常に 23。これを踏まえないと日本語ツイートが上限超過で
+//   API に弾かれる (例: 日本語 151 字 = 302 > 280)。
+// ===========================================================================
+
+export const X_MAX_WEIGHT = 280;
+/** X は URL を t.co ラップで一律 23 文字として数える。 */
+export const X_URL_WEIGHT = 23;
+
+/** 1 コードポイントの重み (twitter-text の既定レンジに準拠。ラテン/記号=1、他=2)。 */
+function charWeight(cp: number): number {
+  if (
+    (cp >= 0x0000 && cp <= 0x10ff) ||
+    (cp >= 0x2000 && cp <= 0x200d) ||
+    (cp >= 0x2010 && cp <= 0x201f) ||
+    (cp >= 0x2032 && cp <= 0x2037)
+  ) {
+    return 1;
+  }
+  return 2;
+}
+
+/** X の重み付き文字数 (日本語=2, ラテン=1)。URL は素の文字数で計算するので注意。 */
+export function weightedTweetLength(text: string): number {
+  let w = 0;
+  for (const ch of text) w += charWeight(ch.codePointAt(0)!);
+  return w;
+}
+
+/** 重み付き文字数が maxWeight を超えないよう末尾を切り詰める (超過時は末尾に「…」)。 */
+export function truncateToWeight(text: string, maxWeight: number): string {
+  if (weightedTweetLength(text) <= maxWeight) return text;
+  const ellipsisWeight = 2; // 「…」
+  const budget = Math.max(0, maxWeight - ellipsisWeight);
+  let w = 0;
+  let out = '';
+  for (const ch of text) {
+    const cw = charWeight(ch.codePointAt(0)!);
+    if (w + cw > budget) break;
+    out += ch;
+    w += cw;
+  }
+  return out.trimEnd() + '…';
+}
+
+/** ASIN (10 桁英数) から Amazon.co.jp 商品 URL を作る。無効なら null。 */
+export function amazonUrlForAsin(asin: string | null | undefined): string | null {
+  if (!asin || typeof asin !== 'string') return null;
+  const a = asin.trim().toUpperCase();
+  if (!/^[A-Z0-9]{10}$/.test(a)) return null;
+  return `https://www.amazon.co.jp/dp/${a}`;
+}
+
+const PURCHASE_LABEL = '\n\n▼詳細・購入はこちら\n';
+
+/**
+ * 投稿本文に Amazon 購入リンクを付与する (売上導線)。
+ *   - asin が無効なら本文そのまま。
+ *   - 既に URL / Amazon 表記を含むなら二重付与しない。
+ *   - x/instagram/tiktok は X の重み(280, URL=23)に収まるよう本文を切り詰めてから付与。
+ *   - note/blog は長文可なのでそのまま付与。
+ */
+export function appendPurchaseLink(
+  channel: string,
+  body: string,
+  asin: string | null | undefined,
+): string {
+  const url = amazonUrlForAsin(asin);
+  if (!url) return body;
+  const trimmedBody = body.trim();
+  if (/https?:\/\//i.test(trimmedBody) || /amazon\.|amzn/i.test(trimmedBody)) return trimmedBody;
+
+  // 短文チャンネルは X の重み制約に合わせる (IG/TikTok は余裕があるが X 基準で安全側に)。
+  if (channel === 'x' || channel === 'instagram' || channel === 'tiktok') {
+    const labelWeight = weightedTweetLength(PURCHASE_LABEL);
+    const maxBody = X_MAX_WEIGHT - X_URL_WEIGHT - labelWeight;
+    const fitted = truncateToWeight(trimmedBody, maxBody);
+    return `${fitted}${PURCHASE_LABEL}${url}`;
+  }
+  return `${trimmedBody}${PURCHASE_LABEL}${url}`;
+}
+
 /** 記事見出しを summary / 本文の先頭行から決める (最大 60 字)。 */
 function deriveTitle(summary: string | undefined, body: string): string {
   const firstLine = (s: string): string => {
