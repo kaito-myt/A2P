@@ -12,6 +12,8 @@
  *
  * すべて失敗は throw せず判別結果で返す。fetch は DI 可能 (テスト・msw)。
  */
+import { buildXAuthHeader, parseXCredentials } from '@a2p/crypto';
+
 import { messages } from '@/lib/messages';
 
 export interface ChannelProbeInput {
@@ -82,11 +84,16 @@ async function probeXApi(
   now: () => number,
   token: string,
 ): Promise<ChannelProbeResult> {
+  const creds = parseXCredentials(token);
+  if (!creds) {
+    return { ok: false, method: 'x_api', message: pm.xBadFormat };
+  }
   const started = now();
   try {
+    const authHeader = buildXAuthHeader('GET', X_USERS_ME_URL, creds);
     const res = await doFetch(X_USERS_ME_URL, {
       method: 'GET',
-      headers: { authorization: `Bearer ${token}` },
+      headers: { authorization: authHeader },
     });
     const latency = now() - started;
     const raw = await res.text();
@@ -107,10 +114,22 @@ async function probeXApi(
         identity: handle,
       };
     }
+    // 401 = 署名/キーが不正 (認証失敗)。
+    if (res.status === 401) {
+      return { ok: false, method: 'x_api', message: pm.xAuthFailed, http_status: 401, latency_ms: latency };
+    }
+    // 403 = 署名は受理された (＝資格情報は有効) が、この読取エンドポイントが
+    // 現在のアクセスレベル(Free等)に含まれない。投稿(write)は可能なので「認証OK」と扱う。
+    if (res.status === 403) {
+      return { ok: true, method: 'x_api', message: pm.xOkFreeTier, http_status: 403, latency_ms: latency };
+    }
+    if (res.status === 429) {
+      return { ok: false, method: 'x_api', message: pm.xRateLimited, http_status: 429, latency_ms: latency };
+    }
     return {
       ok: false,
       method: 'x_api',
-      message: res.status === 401 || res.status === 403 ? pm.xAuthFailed : `HTTP ${res.status}: ${raw.slice(0, 200)}`,
+      message: `HTTP ${res.status}: ${raw.slice(0, 200)}`,
       http_status: res.status,
       latency_ms: latency,
     };

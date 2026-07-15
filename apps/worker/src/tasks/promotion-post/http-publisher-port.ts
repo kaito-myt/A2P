@@ -11,6 +11,7 @@
  *
  * どちらも失敗は例外にせず PublishResult の判別ユニオンで返す (dispatcher が記録)。
  */
+import { buildXAuthHeader, parseXCredentials } from '@a2p/crypto';
 import { createLogger } from '@a2p/contracts/logger';
 
 import type {
@@ -114,12 +115,19 @@ async function publishViaXApi(doFetch: FetchLike, input: PublishInput): Promise<
   if (text.length > X_MAX_LEN) {
     return { ok: false, reason: 'invalid', message: `tweet exceeds ${X_MAX_LEN} chars` };
   }
+  // 資格情報を解釈: OAuth1(4値, 無期限) を優先、レガシー Bearer もサポート。
+  const creds = parseXCredentials(input.config.token);
+  if (!creds) {
+    return { ok: false, reason: 'not_connected', message: 'X credentials not configured' };
+  }
+  // POST /2/tweets は JSON ボディ。OAuth1 では JSON ボディを署名に含めない。
+  const authHeader = buildXAuthHeader('POST', X_API_TWEETS_URL, creds);
   try {
     const res = await doFetch(X_API_TWEETS_URL, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${input.config.token}`,
+        authorization: authHeader,
       },
       body: JSON.stringify({ text }),
     });

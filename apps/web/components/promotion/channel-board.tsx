@@ -176,12 +176,24 @@ function AutomationCard({ setting }: { setting: ChannelSettingView }) {
 function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const isX = setting.channel === 'x';
   const [handle, setHandle] = useState(setting.handle ?? '');
   const [webhook, setWebhook] = useState(setting.webhookUrl ?? '');
   const [token, setToken] = useState('');
+  // X 用 OAuth 1.0a の4値。
+  const [xApiKey, setXApiKey] = useState('');
+  const [xApiSecret, setXApiSecret] = useState('');
+  const [xAccessToken, setXAccessToken] = useState('');
+  const [xAccessTokenSecret, setXAccessTokenSecret] = useState('');
   const [saved, setSaved] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const xAllFilled =
+    xApiKey.trim() !== '' &&
+    xApiSecret.trim() !== '' &&
+    xAccessToken.trim() !== '' &&
+    xAccessTokenSecret.trim() !== '';
 
   function save() {
     setSaved(false);
@@ -191,11 +203,23 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
         channel: setting.channel,
         handle,
         webhook_url: webhook,
-        ...(token.trim().length > 0 ? { token } : {}),
+        ...(isX && xAllFilled
+          ? {
+              x_api_key: xApiKey,
+              x_api_secret: xApiSecret,
+              x_access_token: xAccessToken,
+              x_access_token_secret: xAccessTokenSecret,
+            }
+          : {}),
+        ...(!isX && token.trim().length > 0 ? { token } : {}),
       });
       if (res.ok) {
         setSaved(true);
         setToken('');
+        setXApiKey('');
+        setXApiSecret('');
+        setXAccessToken('');
+        setXAccessTokenSecret('');
         router.refresh();
       }
     });
@@ -250,18 +274,51 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
         />
         <span className="text-caption text-muted">{m.connSection.webhookHelp}</span>
       </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-button-sm text-charcoal-82">{m.connSection.tokenLabel}</span>
-        <input
-          type="password"
-          className={inputCls}
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          placeholder={setting.tokenMask ? m.connSection.tokenPlaceholderSet : m.connSection.tokenPlaceholder}
-          autoComplete="off"
-        />
-        {setting.tokenMask && <span className="text-caption text-muted">{setting.tokenMask}</span>}
-      </label>
+      {isX ? (
+        <div className="flex flex-col gap-space-snug rounded-default border border-border-warm/70 bg-cream p-space-snug">
+          <span className="text-button-sm font-medium text-charcoal-82">{m.connSection.xCredsTitle}</span>
+          <p className="text-caption text-muted">{m.connSection.xCredsHelp}</p>
+          {(
+            [
+              ['apiKey', m.connSection.xApiKey, xApiKey, setXApiKey],
+              ['apiSecret', m.connSection.xApiSecret, xApiSecret, setXApiSecret],
+              ['accessToken', m.connSection.xAccessToken, xAccessToken, setXAccessToken],
+              ['accessTokenSecret', m.connSection.xAccessTokenSecret, xAccessTokenSecret, setXAccessTokenSecret],
+            ] as const
+          ).map(([key, label, value, setter]) => (
+            <label key={key} className="flex flex-col gap-1">
+              <span className="text-caption text-charcoal-82">{label}</span>
+              <input
+                type="password"
+                className={inputCls}
+                value={value}
+                onChange={(e) => setter(e.target.value)}
+                placeholder={setting.tokenMask ? m.connSection.tokenPlaceholderSet : m.connSection.tokenPlaceholder}
+                autoComplete="off"
+                data-testid={`x-cred-${key}`}
+              />
+            </label>
+          ))}
+          {setting.tokenMask && (
+            <span className="text-caption text-muted">
+              {m.connSection.xAccessToken}: {setting.tokenMask}
+            </span>
+          )}
+        </div>
+      ) : (
+        <label className="flex flex-col gap-1">
+          <span className="text-button-sm text-charcoal-82">{m.connSection.tokenLabel}</span>
+          <input
+            type="password"
+            className={inputCls}
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder={setting.tokenMask ? m.connSection.tokenPlaceholderSet : m.connSection.tokenPlaceholder}
+            autoComplete="off"
+          />
+          {setting.tokenMask && <span className="text-caption text-muted">{setting.tokenMask}</span>}
+        </label>
+      )}
       <div className="flex flex-wrap items-center gap-space-snug">
         <button
           type="button"

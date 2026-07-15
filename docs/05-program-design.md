@@ -2888,8 +2888,12 @@ Noto Sans JP で実フォント合成** (`packages/output/image/compose-cover.ts
   自動運用トグル・接続設定(handle/webhook/token)・**接続テスト**・投稿キュー(手動投稿/取消))。
   **接続テスト (非破壊)**: `testChannelConnection` SA → `testChannelConnectionCore` → `probeChannelAuth`
   (`apps/web/lib/promotion-channel-probe.ts`)。実投稿と同じ資格情報/認証方式で read-only プローブし、
-  トークンを貼った瞬間に認証可否を確認できる。x=`GET /2/users/me` (Bearer)、webhook=`{test:true}` を POST、
-  blog=所有(常にOK)、その他=接続手段なし。結果は UI に即時表示 (DB 非永続)、audit_log に可否/手段のみ記録。
+  トークンを貼った瞬間に認証可否を確認できる。x=`GET /2/users/me` (OAuth1署名)、webhook=`{test:true}` を POST、
+  blog=所有(常にOK)、その他=接続手段なし。x は 403=署名有効(認証OK)・Freeプランで読取制限、401=認証NG と解釈。結果は UI に即時表示 (DB 非永続)、audit_log に可否/手段のみ記録。
+  **X 認証は OAuth 1.0a (4値: API Key/Secret + Access Token/Secret)** を採用 (`@a2p/crypto` の
+  `buildXOAuth1Header`/`parseXCredentials`)。単一運営者ツールなので失効しない 1.0a を用い、`POST /2/tweets`
+  を HMAC-SHA1 署名で投稿する (OAuth2 Bearer は2hで失効するため不採用・レガシー互換のみ残す)。4値は
+  `promotion_channel_settings.token_enc` に `{kind:'oauth1',...}` の JSON として暗号化保存 (mask はアクセストークン)。
   KDP は sales.fetch (Playwright 実ログイン) が実質の認証テストを兼ねる (売上取得のみで非破壊、入稿は Phase 3)。
   LLM キーは `/settings` の testApiCredential (models.list 相当) で疎通確認。
 - **章タイトル正規化 (F-055)**: `@a2p/contracts/book/chapter-title` の `normalizeChapters` で

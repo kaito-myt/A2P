@@ -118,6 +118,11 @@ const SetConnectionSchema = z.object({
   webhook_url: z.string().url().max(500).optional().or(z.literal('')),
   /** 空文字は「変更なし」。新規トークンのときだけ暗号化して保存する。 */
   token: z.string().max(4000).optional(),
+  /** X 用 OAuth 1.0a の4値 (全て揃ったときだけ JSON 化して token として保存)。 */
+  x_api_key: z.string().max(400).optional(),
+  x_api_secret: z.string().max(400).optional(),
+  x_access_token: z.string().max(400).optional(),
+  x_access_token_secret: z.string().max(400).optional(),
 });
 
 export async function setChannelConnectionCore(
@@ -126,7 +131,16 @@ export async function setChannelConnectionCore(
 ): Promise<ActionResult<{ channel: string; connected: boolean }>> {
   const parsed = SetConnectionSchema.safeParse(input);
   if (!parsed.success) return fail('validation', m.error);
-  const { channel, handle, webhook_url, token } = parsed.data;
+  const {
+    channel,
+    handle,
+    webhook_url,
+    token,
+    x_api_key,
+    x_api_secret,
+    x_access_token,
+    x_access_token_secret,
+  } = parsed.data;
 
   const existing = await deps.channelSettingRepo.findUnique({ where: { channel } });
 
@@ -139,10 +153,31 @@ export async function setChannelConnectionCore(
     handle: handle && handle.trim().length > 0 ? handle.trim() : null,
     config_json: config,
   };
+
+  // X: OAuth 1.0a の4値が全て揃っていれば JSON 化して保存 (無期限・投稿用)。
+  // マスクはアクセストークンを表示 (JSON 全体をマスクしても意味が無いため)。
+  let effectiveToken = token && token.trim().length > 0 ? token.trim() : null;
+  let maskSource = effectiveToken;
+  if (
+    channel === 'x' &&
+    x_api_key?.trim() &&
+    x_api_secret?.trim() &&
+    x_access_token?.trim() &&
+    x_access_token_secret?.trim()
+  ) {
+    effectiveToken = JSON.stringify({
+      kind: 'oauth1',
+      apiKey: x_api_key.trim(),
+      apiSecret: x_api_secret.trim(),
+      accessToken: x_access_token.trim(),
+      accessTokenSecret: x_access_token_secret.trim(),
+    });
+    maskSource = x_access_token.trim();
+  }
   // 新規トークンが入力された場合のみ暗号化して更新する。
-  if (token && token.trim().length > 0) {
-    update.token_enc = deps.encrypt(token.trim());
-    update.token_mask = deps.mask(token.trim());
+  if (effectiveToken && maskSource) {
+    update.token_enc = deps.encrypt(effectiveToken);
+    update.token_mask = deps.mask(maskSource);
   }
 
   await deps.channelSettingRepo.upsert({

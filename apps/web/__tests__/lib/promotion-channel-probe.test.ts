@@ -30,25 +30,48 @@ describe('probeChannelAuth', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('x: /2/users/me が 200 なら @handle を返して OK', async () => {
+  const X_OAUTH1 = JSON.stringify({
+    kind: 'oauth1',
+    apiKey: 'k',
+    apiSecret: 's',
+    accessToken: 'at',
+    accessTokenSecret: 'ats',
+  });
+
+  it('x: /2/users/me が 200 なら @handle を返し、OAuth1 署名で GET する', async () => {
     const fetchImpl = fetchReturning(200, JSON.stringify({ data: { username: 'festal_kdp', id: '1' } }));
-    const res = await probeChannelAuth({ channel: 'x', token: 'tok', webhookUrl: null }, { fetchImpl, now: () => 0 });
+    const res = await probeChannelAuth({ channel: 'x', token: X_OAUTH1, webhookUrl: null }, { fetchImpl, now: () => 0 });
     expect(res.ok).toBe(true);
     expect(res.method).toBe('x_api');
     expect(res.identity).toBe('@festal_kdp');
-    // read-only エンドポイントを Bearer で GET している (投稿はしない)。
-    expect(fetchImpl).toHaveBeenCalledWith(
-      'https://api.twitter.com/2/users/me',
-      expect.objectContaining({ method: 'GET', headers: { authorization: 'Bearer tok' } }),
-    );
+    // read-only エンドポイントを OAuth1 署名で GET している (投稿はしない)。
+    const [url, init] = fetchImpl.mock.calls[0]! as unknown as [string, { method: string; headers: { authorization: string } }];
+    expect(url).toBe('https://api.twitter.com/2/users/me');
+    expect(init.method).toBe('GET');
+    expect(init.headers.authorization.startsWith('OAuth ')).toBe(true);
   });
 
   it('x: 401 は認証NG', async () => {
     const fetchImpl = fetchReturning(401, 'Unauthorized');
-    const res = await probeChannelAuth({ channel: 'x', token: 'bad', webhookUrl: null }, { fetchImpl });
+    const res = await probeChannelAuth({ channel: 'x', token: X_OAUTH1, webhookUrl: null }, { fetchImpl });
     expect(res.ok).toBe(false);
     expect(res.method).toBe('x_api');
     expect(res.http_status).toBe(401);
+  });
+
+  it('x: 403 は署名有効(認証OK)・Freeプラン扱い', async () => {
+    const fetchImpl = fetchReturning(403, 'not in your access level');
+    const res = await probeChannelAuth({ channel: 'x', token: X_OAUTH1, webhookUrl: null }, { fetchImpl });
+    expect(res.ok).toBe(true);
+    expect(res.method).toBe('x_api');
+    expect(res.http_status).toBe(403);
+  });
+
+  it('x: 資格情報が壊れている(4値でない)と bad format', async () => {
+    const fetchImpl = vi.fn();
+    const res = await probeChannelAuth({ channel: 'x', token: '{"kind":"oauth1","apiKey":"k"}', webhookUrl: null }, { fetchImpl });
+    expect(res.ok).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('webhook があれば test:true を POST し 2xx で OK', async () => {
