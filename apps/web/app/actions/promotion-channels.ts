@@ -10,6 +10,7 @@ import { isA2PError, fail, type ActionResult } from '@a2p/contracts';
 import { decryptApiKey, encryptApiKey, maskApiKey } from '@a2p/crypto';
 import { prisma } from '@a2p/db';
 
+import { isPromotionChannel } from '@/lib/promotion-channels-view';
 import { getSessionOrThrow } from '@/lib/auth-helpers';
 import { enqueueJob } from '@/lib/graphile-client';
 import { messages } from '@/lib/messages';
@@ -84,6 +85,41 @@ export async function testChannelConnection(input: unknown) {
   }
   // 接続テストは副作用が無い (audit 記録のみ)。revalidate は不要。
   return testChannelConnectionCore(input, deps);
+}
+
+const PROMOTION_STRATEGY_GENERATE_TASK = 'promotion.strategy.generate';
+
+/**
+ * F-057 — SNS アカウント運用戦略の生成をキュー投入する。
+ * worker(sns_strategist)が数分でプロファイル + アイコン/カバー画像を作り DB に保存する。
+ */
+export async function generateChannelStrategy(
+  input: unknown,
+): Promise<ActionResult<{ queued: true }>> {
+  try {
+    await getSessionOrThrow();
+  } catch (err) {
+    return authFail(err);
+  }
+  const parsed = input as { channel?: unknown; instruction?: unknown };
+  const channel = typeof parsed?.channel === 'string' ? parsed.channel : '';
+  if (!isPromotionChannel(channel)) {
+    return fail('validation', messages.promotionChannels.actionMsg.error);
+  }
+  const instruction =
+    typeof parsed?.instruction === 'string' && parsed.instruction.trim().length > 0
+      ? parsed.instruction.trim().slice(0, 2000)
+      : undefined;
+  try {
+    await enqueueJob(PROMOTION_STRATEGY_GENERATE_TASK, {
+      channel,
+      ...(instruction ? { instruction } : {}),
+    });
+  } catch (err) {
+    return authFail(err);
+  }
+  revalidatePath(`/promotion/channel/${channel}`);
+  return { ok: true, data: { queued: true } };
 }
 
 export async function publishPostNow(input: unknown) {

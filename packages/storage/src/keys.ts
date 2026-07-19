@@ -173,6 +173,31 @@ export function accountAvatar(accountId: string): string {
   return `accounts/${accountId}/meta/avatar.png`;
 }
 
+/** 販促チャンネル種別 (F-057 の画像キー用)。 */
+const CHANNEL_PATTERN = /^[a-z][a-z0-9_-]{0,32}$/;
+function assertChannel(value: string): void {
+  if (typeof value !== 'string' || !CHANNEL_PATTERN.test(value)) {
+    throw new ValidationError('channel が不正です (小文字英字始まりの 1-33 文字)', {
+      details: { value },
+    });
+  }
+}
+
+/**
+ * `promotion/{channel}/meta/avatar.png` — SNS アカウントのアイコン (F-057)。
+ * sns_strategist が生成し R2 に保存、UI が `<img>` で参照する。
+ */
+export function channelAvatar(channel: string): string {
+  assertChannel(channel);
+  return `promotion/${channel}/meta/avatar.png`;
+}
+
+/** `promotion/{channel}/meta/banner.png` — SNS アカウントのカバー/ヘッダー (F-057)。 */
+export function channelBanner(channel: string): string {
+  assertChannel(channel);
+  return `promotion/${channel}/meta/banner.png`;
+}
+
 /**
  * 論理削除用のキー変換 (docs/05 §8.1: `r2_key` を `_deleted/...` にリネーム)。
  * 既に `_deleted/` 配下にある場合はそのまま返す。

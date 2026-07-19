@@ -10,10 +10,13 @@ import {
   PROMOTION_CHANNELS,
   PromotionChannelSchema,
   weightedTweetLength,
+  weightedTweetLengthWithUrls,
   truncateToWeight,
   amazonUrlForAsin,
   appendPurchaseLink,
+  appendHashtags,
   X_MAX_WEIGHT,
+  X_URL_WEIGHT,
 } from '../src/promotion/channels.js';
 
 function planWith(copy: {
@@ -187,5 +190,44 @@ describe('appendPurchaseLink', () => {
     const out = appendPurchaseLink('note', '記事本文', 'B0FVFCKJNF');
     expect(out).toContain('記事本文');
     expect(out).toContain('https://www.amazon.co.jp/dp/B0FVFCKJNF');
+  });
+});
+
+describe('weightedTweetLengthWithUrls', () => {
+  it('URL を 23 として数える', () => {
+    const text = 'あ https://www.amazon.co.jp/dp/B0FVFCKJNF';
+    // 'あ '(2+1) + URL(23) = 26
+    expect(weightedTweetLengthWithUrls(text)).toBe(2 + 1 + X_URL_WEIGHT);
+  });
+  it('URL が無ければ通常の重みと一致', () => {
+    expect(weightedTweetLengthWithUrls('abcあ')).toBe(weightedTweetLength('abcあ'));
+  });
+});
+
+describe('appendHashtags', () => {
+  it('note は全タグを付与', () => {
+    const out = appendHashtags('note', '記事本文', ['#仕事術', 'タスク管理']);
+    expect(out).toContain('#仕事術');
+    expect(out).toContain('#タスク管理'); // # 補完
+  });
+  it('本文に既出のタグは重複付与しない', () => {
+    const out = appendHashtags('x', '朝の習慣 #仕事術', ['#仕事術', '#朝活']);
+    expect(out.match(/#仕事術/g)?.length).toBe(1);
+    expect(out).toContain('#朝活');
+  });
+  it('短文Xは280重みに収まるタグだけ足す', () => {
+    const body = 'あ'.repeat(135); // weighted 270
+    const out = appendHashtags('x', body, ['#仕事術', '#タスク管理', '#朝活']);
+    expect(weightedTweetLengthWithUrls(out)).toBeLessThanOrEqual(X_MAX_WEIGHT);
+  });
+  it('入れる余地が無ければ本文のまま', () => {
+    const body = 'あ'.repeat(140); // weighted 280
+    const out = appendHashtags('x', body, ['#仕事術']);
+    expect(out).toBe(body);
+  });
+  it('URL を含む本文でも 280 を超えない', () => {
+    const withLink = appendPurchaseLink('x', 'あ'.repeat(100), 'B0FVFCKJNF');
+    const out = appendHashtags('x', withLink, ['#仕事術', '#タスク管理']);
+    expect(weightedTweetLengthWithUrls(out)).toBeLessThanOrEqual(X_MAX_WEIGHT);
   });
 });

@@ -233,6 +233,67 @@ export function appendPurchaseLink(
   return `${trimmedBody}${PURCHASE_LABEL}${url}`;
 }
 
+const URL_RE = /https?:\/\/\S+/g;
+
+/** URL を t.co 相当(23)として数える重み付き文字数 (ハッシュタグ余白計算用)。 */
+export function weightedTweetLengthWithUrls(text: string): number {
+  let total = 0;
+  let last = 0;
+  for (const m of text.matchAll(URL_RE)) {
+    const idx = m.index ?? 0;
+    total += weightedTweetLength(text.slice(last, idx));
+    total += X_URL_WEIGHT;
+    last = idx + m[0].length;
+  }
+  total += weightedTweetLength(text.slice(last));
+  return total;
+}
+
+/**
+ * F-057 — 投稿本文の末尾に、アカウント戦略の定番ハッシュタグを付与する。
+ *   - 既に本文に含まれるタグは重複付与しない。
+ *   - 短文チャンネル(x/instagram/tiktok)は X の重み(280, URL=23)に収まる範囲だけ付与。
+ *   - note/blog は全タグを付与。
+ * tags は `#` 付き想定 (無ければ補完する)。
+ */
+export function appendHashtags(
+  channel: string,
+  body: string,
+  tags: readonly string[],
+): string {
+  const trimmed = body.trimEnd();
+  const seen = new Set<string>();
+  const candidates = tags
+    .map((t) => (typeof t === 'string' ? t.trim() : ''))
+    .filter((t) => t.length > 0)
+    .map((t) => (t.startsWith('#') ? t : `#${t}`))
+    .filter((t) => {
+      if (seen.has(t) || trimmed.includes(t)) return false;
+      seen.add(t);
+      return true;
+    });
+  if (candidates.length === 0) return trimmed;
+
+  const short = channel === 'x' || channel === 'instagram' || channel === 'tiktok';
+  if (!short) {
+    return `${trimmed}\n\n${candidates.join(' ')}`;
+  }
+
+  // 短文: 上限(280 重み)に収まるタグだけ足す。先頭は改行2つ(重み2)、以降はスペース(重み1)。
+  const baseWeight = weightedTweetLengthWithUrls(trimmed);
+  const accepted: string[] = [];
+  let extra = 0;
+  for (const t of candidates) {
+    const sepWeight = accepted.length === 0 ? 2 : 1;
+    const tagWeight = weightedTweetLength(t);
+    if (baseWeight + extra + sepWeight + tagWeight > X_MAX_WEIGHT) break;
+    accepted.push(t);
+    extra += sepWeight + tagWeight;
+  }
+  if (accepted.length === 0) return trimmed;
+  return `${trimmed}\n\n${accepted.join(' ')}`;
+}
+
 /** 記事見出しを summary / 本文の先頭行から決める (最大 60 字)。 */
 function deriveTitle(summary: string | undefined, body: string): string {
   const firstLine = (s: string): string => {

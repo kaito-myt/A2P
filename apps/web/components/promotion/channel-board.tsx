@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 
 import {
   cancelPromotionPost,
+  generateChannelStrategy,
   publishPostNow,
   setChannelAuto,
   setChannelConnection,
@@ -24,6 +25,7 @@ import {
   PROMOTION_CHANNELS,
   type ChannelPostRow,
   type ChannelSettingView,
+  type ChannelStrategyView,
   type PromotionChannel,
 } from '@/lib/promotion-channels-view';
 
@@ -52,15 +54,18 @@ function statusClass(status: string): string {
 export function ChannelBoard({
   channel,
   setting,
+  strategy,
   posts,
 }: {
   channel: PromotionChannel;
   setting: ChannelSettingView;
+  strategy: ChannelStrategyView;
   posts: ChannelPostRow[];
 }) {
   return (
     <div className="flex flex-col gap-space-loose">
       <ChannelTabs active={channel} />
+      <StrategyCard channel={channel} strategy={strategy} />
       <AutomationCard setting={setting} />
       {channel === 'blog' ? <OwnedBlogNote /> : <ConnectionCard setting={setting} />}
       <QueueTable posts={posts} />
@@ -120,6 +125,180 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
       <h2 className="text-card-title font-medium text-charcoal">{title}</h2>
       {children}
     </section>
+  );
+}
+
+function StrategyCard({
+  channel,
+  strategy,
+}: {
+  channel: PromotionChannel;
+  strategy: ChannelStrategyView;
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [instruction, setInstruction] = useState('');
+  const [queued, setQueued] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const s = m.strategy;
+  const p = strategy.profile;
+
+  function generate() {
+    setQueued(false);
+    setErr(null);
+    start(async () => {
+      const res = await generateChannelStrategy({ channel, instruction: instruction.trim() });
+      if (res.ok) {
+        setQueued(true);
+        setInstruction('');
+        router.refresh();
+      } else {
+        setErr(res.error?.message ?? m.actionMsg.error);
+      }
+    });
+  }
+
+  return (
+    <Card title={s.title}>
+      <p className="text-body text-muted">{s.description}</p>
+
+      {p ? (
+        <div className="flex flex-col gap-space-relaxed" data-testid={`strategy-profile-${channel}`}>
+          {/* 画像プレビュー: カバー + アイコン */}
+          <div className="relative">
+            {strategy.hasBanner ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={`/api/promotion/${channel}/banner`}
+                alt={s.bannerAlt}
+                className="h-32 w-full rounded-card border border-border-warm object-cover"
+              />
+            ) : (
+              <div className="flex h-32 w-full items-center justify-center rounded-card border border-dashed border-border-warm bg-charcoal-04 text-caption text-muted">
+                {s.noImage}
+              </div>
+            )}
+            {strategy.hasAvatar && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={`/api/promotion/${channel}/avatar`}
+                alt={s.avatarAlt}
+                className="absolute -bottom-5 left-4 h-16 w-16 rounded-full border-2 border-cream-light object-cover shadow-l2-inset"
+              />
+            )}
+          </div>
+
+          <div className="mt-3 flex flex-col gap-1">
+            <div className="text-card-title font-medium text-charcoal">{p.display_name}</div>
+            <div className="text-caption text-muted">@{p.handle_suggestion}</div>
+          </div>
+
+          <Field label={s.concept}>{p.concept}</Field>
+          <Field label={s.bio}>
+            <span className="whitespace-pre-wrap">{p.bio}</span>
+          </Field>
+
+          <div className="flex flex-col gap-space-snug">
+            <span className="text-button-sm font-medium text-charcoal-82">{s.pillars}</span>
+            <div className="grid gap-space-snug sm:grid-cols-2">
+              {p.content_pillars.map((pillar, i) => (
+                <div key={i} className="rounded-default border border-border-warm bg-cream p-space-snug">
+                  <div className="text-button-sm font-medium text-charcoal">{pillar.name}</div>
+                  <div className="mt-0.5 text-caption text-muted">{pillar.description}</div>
+                  <div className="mt-1 whitespace-pre-wrap rounded bg-charcoal-04 px-2 py-1 text-caption text-charcoal-82">
+                    {pillar.example_post}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-space-snug sm:grid-cols-2">
+            <Field label={s.tone}>{p.tone_of_voice}</Field>
+            <Field label={s.cadence}>
+              {p.posting_cadence.frequency}
+              {p.posting_cadence.best_times.length > 0 && (
+                <span className="text-muted"> ・ {p.posting_cadence.best_times.join(' / ')}</span>
+              )}
+            </Field>
+          </div>
+
+          {(p.hashtag_strategy.core.length > 0 || p.hashtag_strategy.rotating.length > 0) && (
+            <div className="flex flex-col gap-1">
+              <span className="text-button-sm font-medium text-charcoal-82">{s.hashtags}</span>
+              <div className="flex flex-wrap gap-1">
+                {p.hashtag_strategy.core.map((t, i) => (
+                  <span key={`c${i}`} className="rounded-pill bg-accent-bg px-2 py-0.5 text-caption text-accent">
+                    {t}
+                  </span>
+                ))}
+                {p.hashtag_strategy.rotating.map((t, i) => (
+                  <span key={`r${i}`} className="rounded-pill bg-charcoal-04 px-2 py-0.5 text-caption text-charcoal-82">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-1">
+            <span className="text-button-sm font-medium text-charcoal-82">{s.growth}</span>
+            <ul className="ml-4 list-disc text-caption text-charcoal-82">
+              {p.growth_tactics.map((g, i) => (
+                <li key={i}>{g}</li>
+              ))}
+            </ul>
+          </div>
+
+          {strategy.updatedAt && (
+            <p className="text-caption text-muted">
+              {s.updatedAt}: {new Date(strategy.updatedAt).toLocaleString('ja-JP')}
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="text-body text-charcoal-82" data-testid={`strategy-empty-${channel}`}>
+          {s.empty}
+        </p>
+      )}
+
+      {/* 生成/再生成コントロール */}
+      <div className="mt-2 flex flex-col gap-space-snug rounded-default border border-border-warm/70 bg-cream p-space-snug">
+        <label className="flex flex-col gap-1">
+          <span className="text-caption text-charcoal-82">{s.instructionLabel}</span>
+          <textarea
+            value={instruction}
+            onChange={(e) => setInstruction(e.target.value)}
+            placeholder={s.instructionPlaceholder}
+            rows={2}
+            className="w-full rounded-default border border-border-warm bg-cream-light px-3 py-2 text-button-sm text-foreground placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </label>
+        <div className="flex flex-wrap items-center gap-space-snug">
+          <button
+            type="button"
+            onClick={generate}
+            disabled={pending}
+            data-testid={`strategy-generate-${channel}`}
+            className="inline-flex items-center rounded-card bg-charcoal px-3 py-1.5 text-button-sm text-cream-light shadow-l2-inset hover:opacity-80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {pending ? s.generating : p ? s.regenerate : s.generate}
+          </button>
+          {queued && <span className="text-caption text-success">{s.queued}</span>}
+          {err && <span className="text-caption text-destructive">{err}</span>}
+        </div>
+        <p className="text-caption text-muted">{s.applyHint}</p>
+      </div>
+    </Card>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-caption font-medium text-charcoal-82">{label}</span>
+      <div className="text-body text-charcoal">{children}</div>
+    </div>
   );
 }
 

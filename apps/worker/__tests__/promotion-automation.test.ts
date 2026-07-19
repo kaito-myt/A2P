@@ -87,6 +87,26 @@ describe('runPromotionPostsGenerate', () => {
     expect(prisma.promotionPost.deleteMany).not.toHaveBeenCalled();
   });
 
+  it('F-057: チャンネル戦略の定番ハッシュタグを投稿に付与する', async () => {
+    const createMany = vi.fn(async (args: { data: unknown[] }) => ({ count: args.data.length }));
+    const prisma = {
+      promotionPlan: { findUnique: vi.fn(async () => ({ plan_json: PLAN })) },
+      book: { findUnique: vi.fn(async () => ({ asin: null, theme: { genre: 'practical' } })) },
+      promotionAccount: { findMany: vi.fn(async () => []) },
+      promotionChannelSetting: {
+        findMany: vi.fn(async () => [
+          { channel: 'x', strategy_json: { hashtag_strategy: { core: ['#仕事術'], rotating: [] } } },
+        ]),
+      },
+      promotionPost: { deleteMany: vi.fn(async () => ({ count: 0 })), createMany },
+    };
+    await runPromotionPostsGenerate({ book_id: 'b1' }, { prisma });
+    const rows = createMany.mock.calls[0]![0].data as Array<{ channel: string; body: string }>;
+    // X 投稿には #仕事術 が付く。note にはこのチャンネルの戦略が無いので付かない。
+    expect(rows.filter((r) => r.channel === 'x').every((r) => r.body.includes('#仕事術'))).toBe(true);
+    expect(rows.find((r) => r.channel === 'note')!.body.includes('#仕事術')).toBe(false);
+  });
+
   it('P4: 接続済み台帳アカウントがあれば account_id を振り分ける', async () => {
     const createMany = vi.fn(async (args: { data: unknown[] }) => ({ count: args.data.length }));
     const prisma = {

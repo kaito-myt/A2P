@@ -11,8 +11,10 @@ import { messages } from '@/lib/messages';
 import { ChannelBoard } from '@/components/promotion/channel-board';
 import {
   isPromotionChannel,
+  parseStrategyProfile,
   type ChannelPostRow,
   type ChannelSettingView,
+  type ChannelStrategyView,
   type PromotionChannel,
 } from '@/lib/promotion-channels-view';
 
@@ -73,6 +75,14 @@ export default async function PromotionChannelPage({ params }: PageProps) {
     connected: Boolean(settingRow?.token_enc) || Boolean(webhookUrl),
   };
 
+  const strategy: ChannelStrategyView = {
+    displayName: settingRow?.display_name ?? null,
+    updatedAt: toIso(settingRow?.strategy_updated_at ?? null),
+    hasAvatar: Boolean(settingRow?.avatar_key),
+    hasBanner: Boolean(settingRow?.banner_key),
+    profile: parseStrategyProfile(settingRow?.strategy_json ?? null),
+  };
+
   const posts: ChannelPostRow[] = postRows.map((p) => ({
     id: p.id,
     bookId: p.book.id,
@@ -108,7 +118,7 @@ export default async function PromotionChannelPage({ params }: PageProps) {
         </div>
       </header>
 
-      <ChannelBoard channel={ch} setting={setting} posts={posts} />
+      <ChannelBoard channel={ch} setting={setting} strategy={strategy} posts={posts} />
     </div>
   );
 }

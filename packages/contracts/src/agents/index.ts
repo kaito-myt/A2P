@@ -89,3 +89,18 @@ export {
   type OptimizerInput,
   type OptimizerOutput,
 } from './optimizer.js';
+
+export {
+  SnsCatalogSnapshotSchema,
+  SnsStrategistInputSchema,
+  ContentPillarSchema,
+  PostingCadenceSchema,
+  HashtagStrategySchema,
+  AccountStrategyProfileSchema,
+  type SnsCatalogSnapshot,
+  type SnsStrategistInput,
+  type ContentPillar,
+  type PostingCadence,
+  type HashtagStrategy,
+  type AccountStrategyProfile,
+} from './sns-strategist.js';

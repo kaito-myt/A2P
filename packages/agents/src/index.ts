@@ -198,6 +198,15 @@ export {
   type AccountSnapshot,
 } from './org/account-strategist.js';
 
+export {
+  planSnsStrategy,
+  buildSnsStrategistUserMessage,
+  generateStrategyImages,
+  type SnsStrategistDeps,
+  type StrategyImages,
+  type GenerateStrategyImagesDeps,
+} from './sns-strategist/index.js';
+
 export { kanaToRomaji } from './lib/kana-to-romaji.js';
 
 export {

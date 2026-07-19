@@ -5,6 +5,7 @@ import {
   buildPromotionPosts,
   pickAccountForChannel,
   appendPurchaseLink,
+  appendHashtags,
   amazonUrlForAsin,
   truncateToWeight,
   X_MAX_WEIGHT,
@@ -51,6 +52,11 @@ export interface PromotionPostsGeneratePrisma {
       where: { status: string };
       select: { id: true; channel: true; niche: true };
     }) => Promise<Array<{ id: string; channel: string; niche: string }>>;
+  };
+  promotionChannelSetting?: {
+    findMany: (args: {
+      select: { channel: true; strategy_json: true };
+    }) => Promise<Array<{ channel: string; strategy_json: unknown }>>;
   };
   promotionPost: {
     deleteMany: (args: {
@@ -134,12 +140,30 @@ export async function runPromotionPostsGenerate(
     select: { id: true, channel: true, niche: true },
   });
 
+  // F-057: チャンネル別のアカウント戦略（定番ハッシュタグ）を投稿に反映する。
+  const channelSettings = prisma.promotionChannelSetting
+    ? await prisma.promotionChannelSetting.findMany({
+        select: { channel: true, strategy_json: true },
+      })
+    : [];
+  const coreHashtagsByChannel = new Map<string, string[]>();
+  for (const cs of channelSettings) {
+    const tags = extractCoreHashtags(cs.strategy_json);
+    if (tags.length > 0) coreHashtagsByChannel.set(cs.channel, tags);
+  }
+
   // 売上導線: ASIN があれば購入リンクを付与。短文チャンネルは X の重み(280,日本語=2,URL=23)に
   // 収まるよう本文を切り詰める。ASIN が無い場合も短文は重み上限を超えないよう安全に丸める。
+  // 最後にチャンネル戦略の定番ハッシュタグを（収まる範囲で）付与する。
   const SHORT = new Set(['x', 'instagram', 'tiktok']);
   const finalizeBody = (channel: string, body: string): string => {
-    if (amazonUrlForAsin(asin)) return appendPurchaseLink(channel, body, asin);
-    return SHORT.has(channel) ? truncateToWeight(body.trim(), X_MAX_WEIGHT) : body;
+    const withLink = amazonUrlForAsin(asin)
+      ? appendPurchaseLink(channel, body, asin)
+      : SHORT.has(channel)
+        ? truncateToWeight(body.trim(), X_MAX_WEIGHT)
+        : body;
+    const tags = coreHashtagsByChannel.get(channel);
+    return tags && tags.length > 0 ? appendHashtags(channel, withLink, tags) : withLink;
   };
 
   const created = await prisma.promotionPost.createMany({
@@ -159,6 +183,16 @@ export async function runPromotionPostsGenerate(
     'promotion posts generated',
   );
   return { created: created.count, removed: removed.count };
+}
+
+/** strategy_json (AccountStrategyProfile) から定番ハッシュタグ core[] を安全に取り出す。 */
+function extractCoreHashtags(strategyJson: unknown): string[] {
+  if (!strategyJson || typeof strategyJson !== 'object') return [];
+  const hs = (strategyJson as { hashtag_strategy?: unknown }).hashtag_strategy;
+  if (!hs || typeof hs !== 'object') return [];
+  const core = (hs as { core?: unknown }).core;
+  if (!Array.isArray(core)) return [];
+  return core.filter((t): t is string => typeof t === 'string' && t.trim().length > 0);
 }
 
 export const promotionPostsGenerateTask: Task = async (payload: unknown, _helpers: JobHelpers) => {

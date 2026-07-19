@@ -30,6 +30,8 @@ export interface ImageLoggingContext {
   themeSessionId?: string;
   /** graphile-worker の Job.id。 */
   jobId?: string;
+  /** token_usage.role の上書き (既定 'thumbnail_image')。SNS アイコン/カバー生成等で使用。 */
+  role?: string;
 }
 
 interface TokenUsageCreateData {
@@ -167,6 +169,7 @@ export function withImageLogging(
     deps.fetchPriceSnapshot ??
     ((provider: string, model: string, imageCount: number) =>
       defaultFetchPriceSnapshot(provider, model, imageCount, catalogRepo));
+  const role = ctx.role ?? ROLE;
 
   return async function wrappedGenerateImage(
     args: GenerateImageArgs,
@@ -192,7 +195,7 @@ export function withImageLogging(
           job_id: ctx.jobId ?? null,
           provider: PROVIDER,
           model: MODEL,
-          role: ROLE,
+          role,
           input_tokens: 0,
           output_tokens: 0,
           cached_input_tokens: 0,

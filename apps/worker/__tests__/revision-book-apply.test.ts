@@ -108,6 +108,8 @@ interface PrismaCaptures {
   chapterUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
   outlineUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
   jobCreates: Array<{ data: Record<string, unknown> }>;
+  bookUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
+  commentCounts: Array<{ where: { book_id: string; status: string; priority?: string } }>;
   txCalls: number;
   executeRawCalls: Array<{ sql: string; values: unknown[] }>;
 }
@@ -149,6 +151,8 @@ function buildPrisma(args: BuildPrismaArgs): {
     chapterUpdates: [],
     outlineUpdates: [],
     jobCreates: [],
+    bookUpdates: [],
+    commentCounts: [],
     txCalls: 0,
     executeRawCalls: [],
   };
@@ -248,6 +252,15 @@ function buildPrisma(args: BuildPrismaArgs): {
         }
         return { id: where.id };
       },
+      count: async ({ where }) => {
+        captures.commentCounts.push({ where });
+        return comments.filter(
+          (c) =>
+            c.book_id === where.book_id &&
+            c.status === where.status &&
+            (where.priority === undefined || c.priority === where.priority),
+        ).length;
+      },
     },
     revisionRun: {
       update: async ({ where, data }) => {
@@ -278,6 +291,13 @@ function buildPrisma(args: BuildPrismaArgs): {
               subtitle: b.subtitle,
             }
           : null;
+      },
+      update: async ({ where, data }) => {
+        captures.bookUpdates.push({
+          where,
+          data: data as unknown as Record<string, unknown>,
+        });
+        return { id: where.id };
       },
     },
     themeCandidate: {
@@ -1102,5 +1122,74 @@ describe('runRevisionBookApply', () => {
     const resultSummary = (finalRunUpdate!.data as Record<string, unknown>)
       .result_summary_json as Record<string, unknown>;
     expect(resultSummary.rescore_job_id).toBeUndefined();
+  });
+
+  // ----------------------------------------------------------
+  // 16. Book comment flags are recomputed after applying the last must comment
+  //     (regression: library "must ブロック中" badge went stale)
+  // ----------------------------------------------------------
+  it('recomputes has_blocking/has_pending to false when the last pending must comment is applied', async () => {
+    const { logger } = makeLogger();
+    // Single pending must chapter comment — book started with has_blocking_comments=true.
+    const { prisma, captures } = buildPrisma({
+      comments: [makeChapterComment({ priority: 'must', status: 'pending' })],
+      chapters: [{ ...defaultChapter }],
+      books: [defaultBook],
+      themes: [defaultTheme],
+      runs: [{ ...defaultRun }],
+    });
+
+    await runRevisionBookApply(makePayload(), {
+      ...baseDeps({ logger, prisma }),
+      prisma,
+    });
+
+    // book.update was called to recompute the denormalized flags.
+    expect(captures.bookUpdates).toHaveLength(1);
+    expect(captures.bookUpdates[0]!.where.id).toBe(BOOK_ID);
+    // After the only must comment transitioned pending -> applied, both flags fall to false.
+    expect(captures.bookUpdates[0]!.data.has_blocking_comments).toBe(false);
+    expect(captures.bookUpdates[0]!.data.has_pending_comments).toBe(false);
+
+    // Recompute predicate: counted pending, and pending+must, for this book.
+    expect(captures.commentCounts).toEqual(
+      expect.arrayContaining([
+        { where: { book_id: BOOK_ID, status: 'pending' } },
+        { where: { book_id: BOOK_ID, status: 'pending', priority: 'must' } },
+      ]),
+    );
+  });
+
+  // ----------------------------------------------------------
+  // 17. Blocking clears but pending remains when a non-must comment is still pending
+  // ----------------------------------------------------------
+  it('clears has_blocking but keeps has_pending when a non-must comment stays pending', async () => {
+    const { logger } = makeLogger();
+    // must comment (chapter) gets applied; a should comment (cover_text) is NOT in this run and stays pending.
+    const mustComment = makeChapterComment({ priority: 'must', status: 'pending' });
+    const pendingShould = makeCoverComment({
+      id: 'cmt_pending_should',
+      target_kind: 'cover_text',
+      priority: 'should',
+      status: 'pending',
+    });
+    const { prisma, captures } = buildPrisma({
+      comments: [mustComment, pendingShould],
+      chapters: [{ ...defaultChapter }],
+      books: [defaultBook],
+      themes: [defaultTheme],
+      runs: [{ ...defaultRun }],
+    });
+
+    // Only the must comment is targeted by this run.
+    await runRevisionBookApply(
+      makePayload({ comment_ids: [COMMENT_CHAPTER_ID] }),
+      { ...baseDeps({ logger, prisma }), prisma },
+    );
+
+    expect(captures.bookUpdates).toHaveLength(1);
+    // No pending must left -> blocking false; but the should comment is still pending.
+    expect(captures.bookUpdates[0]!.data.has_blocking_comments).toBe(false);
+    expect(captures.bookUpdates[0]!.data.has_pending_comments).toBe(true);
   });
 });

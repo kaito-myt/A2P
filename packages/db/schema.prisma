@@ -215,7 +215,7 @@ model PromotionPlan {
 }
 
 // =====================================================================
-// モデル・バエオフ [F-053] — 同一役割×同一入力を複数モデルで走らせ品質/コスト比較
+// モデル・バエオフ [F-057] — 同一役割×同一入力を複数モデルで走らせ品質/コスト比較
 // =====================================================================
 model BakeoffRun {
   id          String   @id @default(cuid())
@@ -270,6 +270,17 @@ model PromotionChannelSetting {
   token_mask   String? // 表示用マスク
   // チャンネル固有設定 (例: { webhook_url, api_base, default_hashtags[] })。
   config_json  Json?
+  // [F-057] SNS アカウント運用設計。sns_strategist が生成し運営者が確認・適用する。
+  // 表示名 (プロフィールに出す名前)。
+  display_name         String?
+  // AccountStrategyProfile (concept/bio/pillars/tone/cadence/hashtags/growth/画像プロンプト)。
+  strategy_json        Json?
+  // 生成済みアイコン (正方形) の R2 キー。未生成なら null。
+  avatar_key           String?
+  // 生成済みカバー/ヘッダー (横長) の R2 キー。未生成なら null。
+  banner_key           String?
+  // 戦略を最後に生成/更新した時刻。
+  strategy_updated_at  DateTime?
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
 

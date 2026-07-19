@@ -113,6 +113,10 @@ import {
   promotionPostsGenerateTask,
 } from './tasks/promotion-posts-generate.js';
 import {
+  PROMOTION_STRATEGY_GENERATE_TASK_NAME,
+  promotionStrategyGenerateTask,
+} from './tasks/promotion-strategy-generate.js';
+import {
   PROMOTION_POST_PUBLISH_TASK_NAME,
   promotionPostPublishTask,
 } from './tasks/promotion-post-publish.js';
@@ -195,6 +199,7 @@ export function buildTaskList(): TaskList {
     [SALES_FETCH_TASK_NAME]: salesFetchTask,
     [SALES_FETCH_DISPATCHER_TASK_NAME]: salesFetchDispatcherTask,
     [PROMOTION_POSTS_GENERATE_TASK_NAME]: promotionPostsGenerateTask,
+    [PROMOTION_STRATEGY_GENERATE_TASK_NAME]: promotionStrategyGenerateTask,
     [PROMOTION_POST_PUBLISH_TASK_NAME]: promotionPostPublishTask,
     [PROMOTION_DISPATCH_TASK_NAME]: promotionDispatchTask,
     [BAKEOFF_RUN_TASK_NAME]: bakeoffRunTask,

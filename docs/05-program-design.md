@@ -1686,9 +1686,16 @@ export const RevisionBookApplyPayload = z.object({
 | timeout | 30 分 |
 | max_attempts | 2 |
 | priority | **5（通常パイプライン 10 より高い）** |
-| 実行内容 | `BookLock` 取得 → コメント種別ごとにグルーピング → Writer/Editor/Thumbnail (§6.3.6) を順次起動 → 各コメントを `applied` or `not_applicable` に遷移 → `Chapter` 等を新 version 上書き、旧版 `ChapterRevision` 退避 → Judge 再採点（Phase 2）→ `RevisionRun.result_summary_json` 更新 → 完了で `revision-run-completed` メール送信。 |
+| 実行内容 | `BookLock` 取得 → コメント種別ごとにグルーピング → Writer/Editor/Thumbnail (§6.3.6) を順次起動 → 各コメントを `applied` or `not_applicable` に遷移 → `Chapter` 等を新 version 上書き、旧版 `ChapterRevision` 退避 → **`Book.has_pending_comments`/`has_blocking_comments` を実データから再計算** → Judge 再採点（Phase 2）→ `RevisionRun.result_summary_json` 更新 → 完了で `revision-run-completed` メール送信。 |
 
 書籍単位排他 [§14 #4]：`BookLock` の holder = `revision_run:<run_id>`。同一書籍に既存ロックがあれば失敗扱いで `blocked_books` に積み、その書籍だけ後送り。
+
+Book コメントフラグの不変条件（comments-core / revision-runs-core と共通）：コメント状態を変更する **すべての** 経路（作成/削除/優先度変更/apply/rollback）で、処理後に必ず以下を再計算する。`revision.book.apply` はコメントを `pending → applied/not_applicable` に遷移させるため、遷移後（および部分失敗時のベストエフォート）に本再計算を行い、ライブラリ一覧の「must ブロック中」バッジが stale にならないようにする。
+
+```
+has_pending_comments  = COUNT(RevisionComment WHERE book_id=X AND status='pending') > 0
+has_blocking_comments = COUNT(RevisionComment WHERE book_id=X AND status='pending' AND priority='must') > 0
+```
 
 #### 5.3.11 `optimizer.prompt.generate` [F-009] (Phase 2)
 
@@ -2821,6 +2828,16 @@ export const logger = pino({
   author_kana/author_romaji` (F-020b フリガナ/ローマ字)。
 - **`promotion_channel_settings`** (F-052 販促チャンネル設定)。`channel @unique` (sns/note/blog),
   `auto_enabled`, `handle`, `token_enc`/`token_mask` (AES-256-GCM), `config_json` (webhook_url等)。
+  **F-057 SNS アカウント運用設計**: `display_name`, `strategy_json` (AccountStrategyProfile),
+  `avatar_key`/`banner_key` (R2), `strategy_updated_at`。`sns_strategist` エージェント
+  (`packages/agents/src/sns-strategist/`, Opus, prompt=`apply-sns-strategist.ts`) が在庫本の
+  ジャンル/読者を材料に concept/表示名/bio/発信の柱/トーン/投稿頻度/ハッシュタグ/グロース戦術＋
+  アイコン・カバー画像プロンプトを設計 → `promotion.strategy.generate` タスクが gpt-image-1 で
+  アイコン(1024²)/カバー(1536×1024)を生成し R2 保存 (`promotion/{channel}/meta/{avatar,banner}.png`,
+  token_usage role=`sns_strategist`)。UI は `/promotion/channel/[channel]` の「アカウント戦略」カード
+  (生成/再生成ボタン＋画像プレビュー`/api/promotion/[channel]/[avatar|banner]`)。生成された定番
+  ハッシュタグ(`strategy_json.hashtag_strategy.core`)は `promotion.posts.generate` の投稿本文に
+  `appendHashtags`(X重み280内)で自動付与される。実投稿はせず、表示名/bio/画像は運営者が各SNSに適用。
 - **`promotion_posts`** (F-052 販促投稿キュー)。`book_id`, `channel`, `title?`, `body`, `scheduled_for`,
   `status` (draft/scheduled/posting/posted/failed/skipped/canceled), `external_url?`, `error?`, `posted_at?`。
   channel は **x / instagram / tiktok / note / blog** (旧 sns を X/IG/TikTok に分割)。

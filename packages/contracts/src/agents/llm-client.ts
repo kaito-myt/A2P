@@ -43,7 +43,9 @@ export type AgentRole =
   | 'promo_analyst'
   | 'cost_accountant'
   // docs/06 P4 — アカウント戦略担当。
-  | 'account_strategist';
+  | 'account_strategist'
+  // F-057 — SNS アカウント運用設計担当（表示名/bio/アイコン/カバー/発信軸）。
+  | 'sns_strategist';
 
 /**
  * マルチモーダル入力用の画像添付。`content` (テキスト) と併せてユーザーメッセージに付与する。

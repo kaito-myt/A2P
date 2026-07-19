@@ -134,6 +134,9 @@ export interface RevisionBookApplyPrisma {
         application_result_json?: unknown;
       };
     }) => Promise<{ id: string }>;
+    count: (args: {
+      where: { book_id: string; status: string; priority?: string };
+    }) => Promise<number>;
   };
   revisionRun: {
     update: (args: {
@@ -164,6 +167,10 @@ export interface RevisionBookApplyPrisma {
       title: string;
       subtitle: string | null;
     } | null>;
+    update: (args: {
+      where: { id: string };
+      data: { has_pending_comments: boolean; has_blocking_comments: boolean };
+    }) => Promise<{ id: string }>;
   };
   themeCandidate: {
     findUnique: (args: {
@@ -558,6 +565,13 @@ export async function runRevisionBookApply(
       }
     }
 
+    // 5b. Recompute Book の denormalized コメントフラグ。
+    //     コメントを pending → applied/not_applicable に遷移させたので、
+    //     book.has_pending_comments / has_blocking_comments を実データから
+    //     再計算しないとライブラリ一覧の「must ブロック中」バッジが stale に残る
+    //     (comments-core / revision-runs-core のロールバックと同じ不変条件)。
+    await recomputeBookFlags(prisma, bookId);
+
     // 6. Judge 再採点 enqueue (Phase 2 フック, docs/05 §5.3.10)
     if (addJobFn) {
       try {
@@ -651,6 +665,16 @@ export async function runRevisionBookApply(
       'revision.book.apply done',
     );
   } catch (err) {
+    // Best-effort: 一部のコメントが applied に遷移してから失敗した場合でも
+    // Book フラグを実データと同期させる (stale な「must ブロック中」を残さない)。
+    try {
+      await recomputeBookFlags(prisma, bookId);
+    } catch (flagErr) {
+      log.warn(
+        { task: REVISION_BOOK_APPLY_TASK_NAME, runId, bookId, err: flagErr },
+        'failed to recompute book comment flags after error (non-fatal)',
+      );
+    }
     try {
       await prisma.revisionRun.update({
         where: { id: runId },
@@ -982,6 +1006,35 @@ async function handlePlaceholderComment(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Book の denormalized コメントフラグを実データから再計算する。
+ *
+ * 不変条件 (comments-core / revision-runs-core と共通):
+ *   has_pending_comments  = COUNT(RevisionComment WHERE book_id=X AND status='pending') > 0
+ *   has_blocking_comments = COUNT(RevisionComment WHERE book_id=X AND status='pending' AND priority='must') > 0
+ *
+ * applied / not_applicable / superseded / dismissed 等の非 pending は除外されるため、
+ * 最後の must コメントが applied になった瞬間に has_blocking_comments = false に落ちる。
+ */
+async function recomputeBookFlags(
+  prisma: RevisionBookApplyPrisma,
+  bookId: string,
+): Promise<void> {
+  const pendingCount = await prisma.revisionComment.count({
+    where: { book_id: bookId, status: 'pending' },
+  });
+  const mustPendingCount = await prisma.revisionComment.count({
+    where: { book_id: bookId, status: 'pending', priority: 'must' },
+  });
+  await prisma.book.update({
+    where: { id: bookId },
+    data: {
+      has_pending_comments: pendingCount > 0,
+      has_blocking_comments: mustPendingCount > 0,
+    },
+  });
+}
 
 async function markNotApplicable(
   prisma: RevisionBookApplyPrisma,

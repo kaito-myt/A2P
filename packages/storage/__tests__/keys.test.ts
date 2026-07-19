@@ -4,6 +4,8 @@ import { ValidationError } from '@a2p/contracts/errors';
 
 import {
   accountAvatar,
+  channelAvatar,
+  channelBanner,
   bookArtifact,
   catalogSnapshot,
   chapterDraft,
@@ -125,6 +127,17 @@ describe('補助キー (jobsArchive / catalogSnapshot / accountAvatar)', () => {
 
   it('accountAvatar', () => {
     expect(accountAvatar(ACCOUNT_ID)).toBe(`accounts/${ACCOUNT_ID}/meta/avatar.png`);
+  });
+
+  it('channelAvatar / channelBanner (F-057)', () => {
+    expect(channelAvatar('x')).toBe('promotion/x/meta/avatar.png');
+    expect(channelBanner('tiktok')).toBe('promotion/tiktok/meta/banner.png');
+  });
+
+  it('channelAvatar は不正 channel で ValidationError', () => {
+    expect(() => channelAvatar('X')).toThrow(ValidationError); // 大文字不可
+    expect(() => channelAvatar('')).toThrow(ValidationError);
+    expect(() => channelBanner('a/b')).toThrow(ValidationError);
   });
 
   it('dbBackup は archive/db/<ymd>.sql.gz を返す', () => {

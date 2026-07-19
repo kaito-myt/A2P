@@ -11,6 +11,8 @@ export {
 
 export {
   accountAvatar,
+  channelAvatar,
+  channelBanner,
   bookArtifact,
   catalogSnapshot,
   chapterDraft,
