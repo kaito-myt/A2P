@@ -152,14 +152,13 @@ export async function runPromotionPostsGenerate(
     if (tags.length > 0) coreHashtagsByChannel.set(cs.channel, tags);
   }
 
-  // 売上導線: ASIN があれば購入リンクを付与。短文チャンネルは X の重み(280,日本語=2,URL=23)に
-  // 収まるよう本文を切り詰める。ASIN が無い場合も短文は重み上限を超えないよう安全に丸める。
-  // 最後にチャンネル戦略の定番ハッシュタグを（収まる範囲で）付与する。
-  const SHORT = new Set(['x', 'instagram', 'tiktok']);
+  // 売上導線: ASIN があれば購入リンクを付与。**X のみ** 重み(280,日本語=2,URL=23)に収める。
+  // IG/TikTok/note/blog は長文キャプション可なのでそのまま(フルキャプション)。
+  // 最後にチャンネル戦略の定番ハッシュタグを付与する。
   const finalizeBody = (channel: string, body: string): string => {
     const withLink = amazonUrlForAsin(asin)
       ? appendPurchaseLink(channel, body, asin)
-      : SHORT.has(channel)
+      : channel === 'x'
         ? truncateToWeight(body.trim(), X_MAX_WEIGHT)
         : body;
     const tags = coreHashtagsByChannel.get(channel);

@@ -6,6 +6,7 @@ import {
   accountAvatar,
   channelAvatar,
   channelBanner,
+  bookPromoImage,
   bookArtifact,
   catalogSnapshot,
   chapterDraft,
@@ -138,6 +139,11 @@ describe('補助キー (jobsArchive / catalogSnapshot / accountAvatar)', () => {
     expect(() => channelAvatar('X')).toThrow(ValidationError); // 大文字不可
     expect(() => channelAvatar('')).toThrow(ValidationError);
     expect(() => channelBanner('a/b')).toThrow(ValidationError);
+  });
+
+  it('bookPromoImage (F-058)', () => {
+    expect(bookPromoImage(BOOK_ID)).toBe(`books/${BOOK_ID}/promo/social.png`);
+    expect(() => bookPromoImage('bad id')).toThrow(ValidationError);
   });
 
   it('dbBackup は archive/db/<ymd>.sql.gz を返す', () => {

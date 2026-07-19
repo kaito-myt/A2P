@@ -13,6 +13,7 @@ export {
   accountAvatar,
   channelAvatar,
   channelBanner,
+  bookPromoImage,
   bookArtifact,
   catalogSnapshot,
   chapterDraft,

@@ -198,6 +198,12 @@ export function channelBanner(channel: string): string {
   return `promotion/${channel}/meta/banner.png`;
 }
 
+/** `books/{book_id}/promo/social.png` — IG/TikTok 販促投稿用 AI 生成画像 (F-058)。 */
+export function bookPromoImage(bookId: string): string {
+  assertId('bookId', bookId);
+  return `books/${bookId}/promo/social.png`;
+}
+
 /**
  * 論理削除用のキー変換 (docs/05 §8.1: `r2_key` を `_deleted/...` にリネーム)。
  * 既に `_deleted/` 配下にある場合はそのまま返す。

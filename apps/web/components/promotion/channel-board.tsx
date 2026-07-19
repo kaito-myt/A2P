@@ -356,6 +356,7 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const isX = setting.channel === 'x';
+  const isAyrshare = setting.channel === 'instagram' || setting.channel === 'tiktok';
   const [handle, setHandle] = useState(setting.handle ?? '');
   const [webhook, setWebhook] = useState(setting.webhookUrl ?? '');
   const [token, setToken] = useState('');
@@ -434,6 +435,12 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
           {setting.connected ? m.connSection.connected : m.connSection.notConnected}
         </span>
       </div>
+      {isAyrshare && (
+        <div className="flex flex-col gap-1 rounded-default border border-accent/30 bg-accent-bg/40 p-space-snug">
+          <span className="text-button-sm font-medium text-charcoal">{m.connSection.ayrshareTitle}</span>
+          <p className="text-caption text-charcoal-82">{m.connSection.ayrshareNote}</p>
+        </div>
+      )}
       <label className="flex flex-col gap-1">
         <span className="text-button-sm text-charcoal-82">{m.connSection.handleLabel}</span>
         <input

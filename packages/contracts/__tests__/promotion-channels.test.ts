@@ -231,3 +231,25 @@ describe('appendHashtags', () => {
     expect(weightedTweetLengthWithUrls(out)).toBeLessThanOrEqual(X_MAX_WEIGHT);
   });
 });
+
+describe('appendPurchaseLink / appendHashtags — IG/TikTok フルキャプション (F-058)', () => {
+  it('Instagram は本文を切り詰めずリンク導線文言を付ける', () => {
+    const body = 'あ'.repeat(200); // weighted 400
+    const out = appendPurchaseLink('instagram', body, 'B0FVFCKJNF');
+    expect(out.startsWith('あ'.repeat(200))).toBe(true); // 切り詰めない
+    expect(out).toContain('https://www.amazon.co.jp/dp/B0FVFCKJNF');
+    expect(out).toContain('プロフィール');
+  });
+  it('TikTok も280制約を受けずそのまま付与', () => {
+    const body = 'あ'.repeat(200);
+    const out = appendPurchaseLink('tiktok', body, 'B0FVFCKJNF');
+    expect(out.startsWith('あ'.repeat(200))).toBe(true);
+  });
+  it('Instagram はハッシュタグを全て付与(280制約なし)', () => {
+    const body = 'あ'.repeat(135); // weighted 270 (Xなら1つも入らない)
+    const out = appendHashtags('instagram', body, ['#仕事術', '#タスク管理', '#朝活']);
+    expect(out).toContain('#仕事術');
+    expect(out).toContain('#タスク管理');
+    expect(out).toContain('#朝活');
+  });
+});

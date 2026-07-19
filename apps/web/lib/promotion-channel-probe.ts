@@ -26,8 +26,8 @@ export interface ChannelProbeInput {
 
 export type ChannelProbeResult = {
   ok: boolean;
-  /** 認証手段の識別: x_api | webhook | owned | none */
-  method: 'x_api' | 'webhook' | 'owned' | 'none';
+  /** 認証手段の識別: x_api | ayrshare | webhook | owned | none */
+  method: 'x_api' | 'ayrshare' | 'webhook' | 'owned' | 'none';
   message: string;
   http_status?: number;
   latency_ms?: number;
@@ -43,9 +43,13 @@ type FetchLike = (
 export interface ChannelProbeDeps {
   fetchImpl?: FetchLike;
   now?: () => number;
+  /** Ayrshare API キー (テスト差し替え)。既定は env AYRSHARE_API_KEY。 */
+  ayrshareApiKey?: string;
 }
 
 const X_USERS_ME_URL = 'https://api.twitter.com/2/users/me';
+const AYRSHARE_USER_URL = 'https://api.ayrshare.com/api/user';
+const AYRSHARE_CHANNELS = new Set(['instagram', 'tiktok']);
 const OWNED_CHANNELS = new Set(['blog']);
 
 const pm = messages.promotionChannels.probe;
@@ -62,9 +66,15 @@ export async function probeChannelAuth(
     return { ok: true, method: 'owned', message: pm.ownedOk };
   }
 
-  // webhook 経由を最優先で確認 (note/IG/TikTok の現実的な接続手段)。
+  // webhook 経由を最優先で確認 (note の現実的な接続手段)。
   if (input.webhookUrl && input.webhookUrl.trim().length > 0) {
     return probeWebhook(doFetch, now, input);
+  }
+
+  // IG/TikTok は Ayrshare 経由 (投稿と同じ資格情報)。
+  if (AYRSHARE_CHANNELS.has(input.channel)) {
+    const apiKey = deps.ayrshareApiKey ?? process.env.AYRSHARE_API_KEY ?? '';
+    return probeAyrshare(doFetch, now, apiKey, input.channel);
   }
 
   // X は公式 API を直接叩く (投稿と同じ Bearer 認証)。
@@ -77,6 +87,50 @@ export async function probeChannelAuth(
 
   // それ以外は接続手段なし。
   return { ok: false, method: 'none', message: pm.noneConfigured };
+}
+
+async function probeAyrshare(
+  doFetch: FetchLike,
+  now: () => number,
+  apiKey: string,
+  channel: string,
+): Promise<ChannelProbeResult> {
+  if (!apiKey) {
+    return { ok: false, method: 'none', message: pm.ayrshareNoKey };
+  }
+  const started = now();
+  try {
+    const res = await doFetch(AYRSHARE_USER_URL, {
+      method: 'GET',
+      headers: { authorization: `Bearer ${apiKey}` },
+    });
+    const latency = now() - started;
+    const raw = await res.text();
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, method: 'ayrshare', message: pm.ayrshareAuthFailed, http_status: res.status, latency_ms: latency };
+    }
+    if (!res.ok) {
+      return { ok: false, method: 'ayrshare', message: `HTTP ${res.status}: ${raw.slice(0, 200)}`, http_status: res.status, latency_ms: latency };
+    }
+    // 200: キーは有効。当該プラットフォームが Ayrshare で連携済みか確認する。
+    let linked = false;
+    try {
+      const j = JSON.parse(raw) as { activeSocialAccounts?: unknown };
+      const active = Array.isArray(j.activeSocialAccounts) ? j.activeSocialAccounts.map(String) : [];
+      linked = active.includes(channel);
+    } catch {
+      /* ignore */
+    }
+    return {
+      ok: true,
+      method: 'ayrshare',
+      message: linked ? pm.ayrshareLinked(channel) : pm.ayrshareKeyOkNotLinked(channel),
+      http_status: res.status,
+      latency_ms: latency,
+    };
+  } catch (err) {
+    return { ok: false, method: 'ayrshare', message: errMessage(err), latency_ms: now() - started };
+  }
 }
 
 async function probeXApi(

@@ -105,3 +105,58 @@ describe('probeChannelAuth', () => {
     expect(res.message).toContain('ECONNREFUSED');
   });
 });
+
+describe('probeChannelAuth — Ayrshare (IG/TikTok)', () => {
+  it('APIキー未設定なら not_connected(none)', async () => {
+    const fetchImpl = vi.fn();
+    const res = await probeChannelAuth(
+      { channel: 'instagram', token: null, webhookUrl: null },
+      { fetchImpl, ayrshareApiKey: '' },
+    );
+    expect(res.ok).toBe(false);
+    expect(res.method).toBe('none');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('200 + activeSocialAccounts に instagram があれば連携済みOK', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ activeSocialAccounts: ['instagram', 'twitter'] }),
+    }));
+    const res = await probeChannelAuth(
+      { channel: 'instagram', token: null, webhookUrl: null },
+      { fetchImpl, ayrshareApiKey: 'k' },
+    );
+    expect(res.ok).toBe(true);
+    expect(res.method).toBe('ayrshare');
+    const [url, init] = fetchImpl.mock.calls[0]! as unknown as [string, { headers: { authorization: string } }];
+    expect(url).toBe('https://api.ayrshare.com/api/user');
+    expect(init.headers.authorization).toBe('Bearer k');
+  });
+
+  it('200 だが tiktok 未連携なら ok だが未連携メッセージ', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ activeSocialAccounts: ['instagram'] }),
+    }));
+    const res = await probeChannelAuth(
+      { channel: 'tiktok', token: null, webhookUrl: null },
+      { fetchImpl, ayrshareApiKey: 'k' },
+    );
+    expect(res.ok).toBe(true);
+    expect(res.method).toBe('ayrshare');
+    expect(res.message).toContain('未連携');
+  });
+
+  it('401 は auth 失敗', async () => {
+    const fetchImpl = vi.fn(async () => ({ ok: false, status: 401, text: async () => 'unauth' }));
+    const res = await probeChannelAuth(
+      { channel: 'tiktok', token: null, webhookUrl: null },
+      { fetchImpl, ayrshareApiKey: 'bad' },
+    );
+    expect(res.ok).toBe(false);
+    expect(res.method).toBe('ayrshare');
+  });
+});

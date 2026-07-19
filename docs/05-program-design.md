@@ -2838,6 +2838,15 @@ export const logger = pino({
   (生成/再生成ボタン＋画像プレビュー`/api/promotion/[channel]/[avatar|banner]`)。生成された定番
   ハッシュタグ(`strategy_json.hashtag_strategy.core`)は `promotion.posts.generate` の投稿本文に
   `appendHashtags`(X重み280内)で自動付与される。実投稿はせず、表示名/bio/画像は運営者が各SNSに適用。
+- **F-058 IG/TikTok 実投稿 (Ayrshare 中継)**: X 以外の SNS は公式投稿 API の要件が重い/動画必須のため、
+  多SNS投稿サービス **Ayrshare** (`AYRSHARE_API_KEY` env) を中継に使う。`ayrshare-publisher-port.ts` が
+  `POST api.ayrshare.com/api/post {post, platforms:[instagram|tiktok], mediaUrls}`。IG/TikTok はメディア必須のため、
+  `promotion.post.publish` が `ensureBookPromoImage`(gpt-image-1 で本ごとに1枚・文字なし・`books.promo_image_key` にキャッシュ,
+  token_usage role=`promo_image`)を生成し、署名URL(1h)を `mediaUrls` に渡す。`defaultResolvePort` は ig/tiktok かつ
+  AYRSHARE_API_KEY 有りで Ayrshare ポートを選ぶ(無ければ webhook フォールバック)。**note は Ayrshare 非対応のため
+  webhook 中継のまま**。接続テストは `probeChannelAuth` の ayrshare 分岐(`GET api.ayrshare.com/api/user`)で
+  連携状況を確認。キャプションは X のみ 280 重み制約、IG/TikTok/note/blog はフルキャプション＋全ハッシュタグ
+  (`appendPurchaseLink`/`appendHashtags` を X 限定制約に変更)。TikTok は写真モード(画像)投稿。
 - **`promotion_posts`** (F-052 販促投稿キュー)。`book_id`, `channel`, `title?`, `body`, `scheduled_for`,
   `status` (draft/scheduled/posting/posted/failed/skipped/canceled), `external_url?`, `error?`, `posted_at?`。
   channel は **x / instagram / tiktok / note / blog** (旧 sns を X/IG/TikTok に分割)。

@@ -67,7 +67,7 @@ export interface PromotionChannelsDeps {
 /** 接続テスト結果 (probe が返す判別結果を薄く再エクスポート)。 */
 export interface ChannelProbeResult {
   ok: boolean;
-  method: 'x_api' | 'webhook' | 'owned' | 'none';
+  method: 'x_api' | 'ayrshare' | 'webhook' | 'owned' | 'none';
   message: string;
   http_status?: number;
   latency_ms?: number;

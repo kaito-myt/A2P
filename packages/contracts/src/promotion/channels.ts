@@ -206,12 +206,15 @@ export function amazonUrlForAsin(asin: string | null | undefined): string | null
 
 const PURCHASE_LABEL = '\n\n▼詳細・購入はこちら\n';
 
+const PURCHASE_LABEL_IG = '\n\n📚詳細・購入はプロフィールのリンクから\n';
+
 /**
  * 投稿本文に Amazon 購入リンクを付与する (売上導線)。
  *   - asin が無効なら本文そのまま。
  *   - 既に URL / Amazon 表記を含むなら二重付与しない。
- *   - x/instagram/tiktok は X の重み(280, URL=23)に収まるよう本文を切り詰めてから付与。
- *   - note/blog は長文可なのでそのまま付与。
+ *   - **X のみ** 重み(280, URL=23)に収まるよう本文を切り詰める。
+ *   - instagram/tiktok/note/blog は長文キャプション可なのでそのまま付与
+ *     (IG は本文中リンクが不活性なため導線文言を添える)。
  */
 export function appendPurchaseLink(
   channel: string,
@@ -223,13 +226,18 @@ export function appendPurchaseLink(
   const trimmedBody = body.trim();
   if (/https?:\/\//i.test(trimmedBody) || /amazon\.|amzn/i.test(trimmedBody)) return trimmedBody;
 
-  // 短文チャンネルは X の重み制約に合わせる (IG/TikTok は余裕があるが X 基準で安全側に)。
-  if (channel === 'x' || channel === 'instagram' || channel === 'tiktok') {
+  // X のみ 280 重み制約。本文を切り詰めてからリンクを付ける。
+  if (channel === 'x') {
     const labelWeight = weightedTweetLength(PURCHASE_LABEL);
     const maxBody = X_MAX_WEIGHT - X_URL_WEIGHT - labelWeight;
     const fitted = truncateToWeight(trimmedBody, maxBody);
     return `${fitted}${PURCHASE_LABEL}${url}`;
   }
+  // Instagram はキャプション内 URL が非活性なので、リンク文言＋URL(コピー用)を添える。
+  if (channel === 'instagram') {
+    return `${trimmedBody}${PURCHASE_LABEL_IG}${url}`;
+  }
+  // TikTok / note / blog は長文可でそのまま付与。
   return `${trimmedBody}${PURCHASE_LABEL}${url}`;
 }
 
@@ -274,12 +282,13 @@ export function appendHashtags(
     });
   if (candidates.length === 0) return trimmed;
 
-  const short = channel === 'x' || channel === 'instagram' || channel === 'tiktok';
-  if (!short) {
+  // X のみ 280 重み制約。IG/TikTok/note/blog は長文キャプション可なので全タグ付与
+  // (IG はハッシュタグ多めが有効)。
+  if (channel !== 'x') {
     return `${trimmed}\n\n${candidates.join(' ')}`;
   }
 
-  // 短文: 上限(280 重み)に収まるタグだけ足す。先頭は改行2つ(重み2)、以降はスペース(重み1)。
+  // X: 上限(280 重み)に収まるタグだけ足す。先頭は改行2つ(重み2)、以降はスペース(重み1)。
   const baseWeight = weightedTweetLengthWithUrls(trimmed);
   const accepted: string[] = [];
   let extra = 0;

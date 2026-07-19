@@ -66,13 +66,17 @@ export default async function PromotionChannelPage({ params }: PageProps) {
       ? ((settingRow.config_json as Record<string, unknown>).webhook_url as string | null) ?? null
       : null;
 
+  // F-058: IG/TikTok は Ayrshare 経由。API キーがあれば接続済み扱い。
+  const ayrshareManaged = (ch === 'instagram' || ch === 'tiktok') && Boolean(process.env.AYRSHARE_API_KEY);
+
   const setting: ChannelSettingView = {
     channel: ch,
     autoEnabled: settingRow?.auto_enabled ?? false,
     handle: settingRow?.handle ?? null,
     webhookUrl,
     tokenMask: settingRow?.token_mask ?? null,
-    connected: Boolean(settingRow?.token_enc) || Boolean(webhookUrl),
+    connected: Boolean(settingRow?.token_enc) || Boolean(webhookUrl) || ayrshareManaged,
+    ayrshareManaged,
   };
 
   const strategy: ChannelStrategyView = {

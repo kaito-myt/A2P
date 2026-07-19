@@ -601,6 +601,9 @@ export const messages = {
       tokenLabel: 'アクセストークン',
       tokenPlaceholderSet: '設定済み（変更する場合のみ入力）',
       tokenPlaceholder: 'トークンを貼り付け',
+      ayrshareTitle: 'Instagram / TikTok は Ayrshare 経由で投稿します',
+      ayrshareNote:
+        'IG/TikTok は公式の簡単な投稿 API が無いため、多SNS投稿サービス Ayrshare を中継に使います。①Ayrshare に登録 → ②ダッシュボードで Instagram / TikTok アカウントを連携 → ③API キーを Railway の環境変数 AYRSHARE_API_KEY に設定。設定後は「接続テスト」で確認できます。投稿画像は本ごとに AI 生成されます（TikTok は写真モード）。',
       xCredsTitle: 'X 認証情報（OAuth 1.0a・無期限）',
       xCredsHelp: 'X Developer Portal の「Keys and tokens」の4値を貼り付けてください（自分のアカウントに自動投稿します。失効しません）。',
       xApiKey: 'API キー',
@@ -626,6 +629,11 @@ export const messages = {
       xRateLimited: 'レート制限中です。しばらく待って再度お試しください（認証自体は失敗していません）。',
       webhookOk: '到達OK ✓ Webhook 中継に接続できました。',
       webhookAuthFailed: '認証NG ✗ Webhook が認証を拒否しました（401/403）。',
+      ayrshareNoKey: 'Ayrshare の API キーが未設定です。AYRSHARE_API_KEY を設定してください（Railway 環境変数）。',
+      ayrshareAuthFailed: '認証NG ✗ Ayrshare の API キーが不正です。',
+      ayrshareLinked: (ch: string) => `認証OK ✓ Ayrshare 経由で ${ch === 'tiktok' ? 'TikTok' : 'Instagram'} に投稿できます（アカウント連携済み）。`,
+      ayrshareKeyOkNotLinked: (ch: string) =>
+        `API キーは有効ですが、Ayrshare 側で ${ch === 'tiktok' ? 'TikTok' : 'Instagram'} アカウントが未連携です。Ayrshare ダッシュボードで連携してください。`,
       noneConfigured: '接続手段がありません。Webhook URL かアクセストークンを設定してください。',
       networkError: 'ネットワークエラーで到達できませんでした。',
       testPassedPrefix: '認証OK',

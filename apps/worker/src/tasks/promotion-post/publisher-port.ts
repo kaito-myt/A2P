@@ -16,6 +16,11 @@ export interface PublishInput {
   body: string;
   /** チャンネル設定 (認証トークン・webhook 等)。未接続なら token=null。 */
   config: PublishChannelConfig;
+  /**
+   * 添付メディアの公開 URL (F-058)。Instagram/TikTok は画像/動画が必須のため、
+   * publish タスクが生成済み販促画像の署名付き URL を入れて渡す。
+   */
+  mediaUrls?: string[];
 }
 
 /** 復号済みチャンネル設定 (worker タスクが settings + token_enc を復号して渡す)。 */

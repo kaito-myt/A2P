@@ -17,6 +17,8 @@ import {
   type PublisherPort,
 } from './promotion-post/publisher-port.js';
 import { createBlogPublisherPort } from './promotion-post/blog-publisher-port.js';
+import { createAyrsharePublisherPort } from './promotion-post/ayrshare-publisher-port.js';
+import { ensureBookPromoImage } from './promotion-post/promo-image.js';
 
 /**
  * `promotion.post.publish` タスク (F-052)
@@ -44,6 +46,7 @@ export interface PromotionPostPublishPrisma {
       where: { id: string };
       select: {
         id: true;
+        book_id: true;
         channel: true;
         account_id: true;
         title: true;
@@ -52,6 +55,7 @@ export interface PromotionPostPublishPrisma {
       };
     }) => Promise<{
       id: string;
+      book_id: string;
       channel: string;
       account_id: string | null;
       title: string | null;
@@ -95,10 +99,12 @@ export interface PromotionPostPublishPrisma {
 export interface PromotionPostPublishDeps {
   prisma?: PromotionPostPublishPrisma;
   logger?: Logger;
-  /** チャンネル→ポート解決 (テスト差し替え)。既定は env で stub/http を選ぶ。 */
+  /** チャンネル→ポート解決 (テスト差し替え)。既定は env で stub/http/ayrshare を選ぶ。 */
   resolvePort?: (channel: string) => PublisherPort;
   /** token_enc 復号関数 (テスト差し替え)。 */
   decryptToken?: (enc: string) => string;
+  /** F-058: IG/TikTok の添付メディア(公開URL)を用意する。既定は販促画像を生成し署名URLを返す。 */
+  buildMediaUrls?: (channel: string, bookId: string) => Promise<string[]>;
   now?: () => Date;
 }
 
@@ -115,8 +121,22 @@ function defaultResolvePort(channel: string): PublisherPort {
   if (channel === 'blog') {
     return createBlogPublisherPort();
   }
+  // F-058: IG/TikTok は Ayrshare 経由 (API キーがある場合)。無ければ http(webhook)にフォールバック。
+  if ((channel === 'instagram' || channel === 'tiktok') && process.env.AYRSHARE_API_KEY) {
+    return createAyrsharePublisherPort();
+  }
   const httpDeps: HttpPublisherDeps = {};
   return createHttpPublisherPort(httpDeps);
+}
+
+/** IG/TikTok の添付メディア既定実装: 本の販促画像を生成し 1 時間有効の署名 URL を返す。 */
+async function defaultBuildMediaUrls(channel: string, bookId: string): Promise<string[]> {
+  if (channel !== 'instagram' && channel !== 'tiktok') return [];
+  const key = await ensureBookPromoImage(bookId);
+  if (!key) return [];
+  const storage = await import('@a2p/storage');
+  const url = await storage.getSignedDownloadUrl(key, 3600);
+  return [url];
 }
 
 export async function runPromotionPostPublish(
@@ -135,11 +155,12 @@ export async function runPromotionPostPublish(
   const prisma = deps.prisma ?? (defaultPrisma as unknown as PromotionPostPublishPrisma);
   const resolvePort = deps.resolvePort ?? defaultResolvePort;
   const decrypt = deps.decryptToken ?? ((enc: string) => decryptApiKey(enc));
+  const buildMediaUrls = deps.buildMediaUrls ?? defaultBuildMediaUrls;
   const now = deps.now ?? (() => new Date());
 
   const post = await prisma.promotionPost.findUnique({
     where: { id: postId },
-    select: { id: true, channel: true, account_id: true, title: true, body: true, status: true },
+    select: { id: true, book_id: true, channel: true, account_id: true, title: true, body: true, status: true },
   });
   if (!post) {
     log.warn({ task: PROMOTION_POST_PUBLISH_TASK_NAME, postId }, 'post not found — skip');
@@ -212,12 +233,21 @@ export async function runPromotionPostPublish(
   };
 
   try {
+    // F-058: IG/TikTok は画像/動画が必須。販促画像の署名 URL を用意する。
+    let mediaUrls: string[] = [];
+    try {
+      mediaUrls = await buildMediaUrls(post.channel, post.book_id);
+    } catch (err) {
+      log.warn({ task: PROMOTION_POST_PUBLISH_TASK_NAME, postId, err }, 'media build failed — publishing without media');
+    }
+
     const port = resolvePort(post.channel);
     const result = await port.publish({
       channel: post.channel as PromotionChannel,
       title: post.title,
       body: post.body,
       config,
+      ...(mediaUrls.length > 0 ? { mediaUrls } : {}),
     });
 
     if (result.ok) {
