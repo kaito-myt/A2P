@@ -104,6 +104,34 @@ export function targetKindLabel(kind: TargetKind): string {
 }
 
 // ---------------------------------------------------------------------------
+// Status label / variant mapping
+// ---------------------------------------------------------------------------
+
+/**
+ * 修正コメントのステータス日本語ラベル。
+ * (schema の status enum: pending | applied | not_applicable | superseded。
+ *  「対応中(in-progress)」の DB 値は存在しないため用意しない。)
+ * 既存の S-013 コメント一覧 (messages.commentsPage.table) と同じ表記に揃える。
+ */
+const COMMENT_STATUS_LABELS: Record<CommentStatus, string> = {
+  pending: '未消化',
+  applied: '適用済み',
+  not_applicable: '適用不可',
+  superseded: '削除済み',
+};
+
+export function commentStatusLabel(status: CommentStatus | string): string {
+  return COMMENT_STATUS_LABELS[status as CommentStatus] ?? status;
+}
+
+/** Badge の variant にマップ。適用済み=success、その他は neutral。 */
+export function commentStatusVariant(
+  status: CommentStatus | string,
+): 'success' | 'neutral' {
+  return status === 'applied' ? 'success' : 'neutral';
+}
+
+// ---------------------------------------------------------------------------
 // Count aggregation
 // ---------------------------------------------------------------------------
 

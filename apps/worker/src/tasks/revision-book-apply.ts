@@ -418,18 +418,32 @@ export async function runRevisionBookApply(
           .filter((b): b is string => Boolean(b))
           .join('\n')
           .slice(0, 3900);
+        // 修正コメントが対象とした Cover(target_id) を再生成タスクに渡す。
+        // コメントは採用前の候補に付くことが多く、これを渡さないと再生成が no-op になる。
+        const commentedCoverId = coverComments
+          .map((c) => c.target_id)
+          .find((id): id is string => Boolean(id));
         const regenJob = await prisma.job.create({
           data: {
             kind: PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME,
             book_id: bookId,
             parent_job_id: jobId,
             status: 'queued',
-            payload_json: { book_id: bookId, feedback: coverFeedback },
+            payload_json: {
+              book_id: bookId,
+              feedback: coverFeedback,
+              ...(commentedCoverId ? { cover_id: commentedCoverId } : {}),
+            },
           },
         });
         await addJobFn(
           PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME,
-          { book_id: bookId, job_id: regenJob.id, feedback: coverFeedback },
+          {
+            book_id: bookId,
+            job_id: regenJob.id,
+            feedback: coverFeedback,
+            ...(commentedCoverId ? { cover_id: commentedCoverId } : {}),
+          },
           { maxAttempts: 2 },
         );
         coverRegenJobId = regenJob.id;

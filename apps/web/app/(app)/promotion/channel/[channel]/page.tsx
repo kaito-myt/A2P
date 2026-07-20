@@ -49,6 +49,7 @@ export default async function PromotionChannelPage({ params }: PageProps) {
       take: 60,
       select: {
         id: true,
+        kind: true,
         title: true,
         body: true,
         status: true,
@@ -89,8 +90,9 @@ export default async function PromotionChannelPage({ params }: PageProps) {
 
   const posts: ChannelPostRow[] = postRows.map((p) => ({
     id: p.id,
-    bookId: p.book.id,
-    bookTitle: p.book.title,
+    bookId: p.book?.id ?? null,
+    bookTitle: p.book?.title ?? m.queue.growthPost,
+    kind: p.kind,
     title: p.title,
     body: p.body,
     status: p.status,

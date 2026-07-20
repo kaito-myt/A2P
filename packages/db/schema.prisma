@@ -342,8 +342,11 @@ model BlogPost {
 // =====================================================================
 model PromotionPost {
   id            String    @id @default(cuid())
-  book_id       String
+  // [F-059] 育成(価値提供)投稿はどの本にも紐づかないため null 可。宣伝(promo)投稿は本に紐づく。
+  book_id       String?
   channel       String // x | instagram | tiktok | note | blog
+  // [F-059] 投稿種別: promo=宣伝(本の告知) | value=育成(価値提供・フォロワー獲得)。
+  kind          String    @default("promo")
   // P4 増分2: 投稿先の台帳アカウント (多アカウント routing)。null なら channel 既定設定を使う。
   account_id    String?
   title         String? // note/blog の見出し (SNS は null)
@@ -357,7 +360,7 @@ model PromotionPost {
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
 
-  book    Book              @relation(fields: [book_id], references: [id], onDelete: Cascade)
+  book    Book?             @relation(fields: [book_id], references: [id], onDelete: Cascade)
   account PromotionAccount? @relation(fields: [account_id], references: [id], onDelete: SetNull)
 
   @@index([status, scheduled_for])

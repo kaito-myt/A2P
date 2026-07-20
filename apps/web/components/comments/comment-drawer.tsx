@@ -14,7 +14,15 @@ import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { messages } from '@/lib/messages';
-import { sortComments, targetKindLabel, type CommentPriority, type CommentStatus, type TargetKind } from '@/lib/comment-helpers';
+import {
+  sortComments,
+  targetKindLabel,
+  commentStatusLabel,
+  commentStatusVariant,
+  type CommentPriority,
+  type CommentStatus,
+  type TargetKind,
+} from '@/lib/comment-helpers';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -144,9 +152,17 @@ function CommentRow({
       data-testid="comment-row"
     >
       <div className="flex items-center justify-between gap-2">
-        <Badge variant={comment.priority} data-testid="comment-priority-badge">
-          {comment.priority}
-        </Badge>
+        <div className="flex items-center gap-1.5">
+          <Badge variant={comment.priority} data-testid="comment-priority-badge">
+            {comment.priority}
+          </Badge>
+          <Badge
+            variant={commentStatusVariant(comment.status)}
+            data-testid="comment-status-badge"
+          >
+            {commentStatusLabel(comment.status)}
+          </Badge>
+        </div>
         <span className="text-caption text-muted">
           {new Date(comment.created_at).toLocaleString('ja-JP')}
         </span>

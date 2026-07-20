@@ -17,8 +17,10 @@ export function isPromotionChannel(v: string): v is PromotionChannel {
 /** 画面に渡す 1 投稿の serialized 形。 */
 export interface ChannelPostRow {
   id: string;
-  bookId: string;
+  bookId: string | null;
   bookTitle: string;
+  /** F-059: promo=宣伝 | value=育成(価値提供)。 */
+  kind: string;
   title: string | null;
   body: string;
   status: string;

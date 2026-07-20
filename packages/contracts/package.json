@@ -22,6 +22,7 @@
     "./agents/judge": "./src/agents/judge.ts",
     "./agents/optimizer": "./src/agents/optimizer.ts",
     "./agents/sns-strategist": "./src/agents/sns-strategist.ts",
+    "./agents/content-creator": "./src/agents/content-creator.ts",
     "./org": "./src/org/index.ts",
     "./promotion/channels": "./src/promotion/channels.ts",
     "./book/chapter-title": "./src/book/chapter-title.ts",

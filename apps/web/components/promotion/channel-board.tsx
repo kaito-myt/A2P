@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import {
   cancelPromotionPost,
   generateChannelStrategy,
+  generateChannelContent,
   publishPostNow,
   setChannelAuto,
   setChannelConnection,
@@ -139,18 +140,35 @@ function StrategyCard({
   const [pending, start] = useTransition();
   const [instruction, setInstruction] = useState('');
   const [queued, setQueued] = useState(false);
+  const [contentQueued, setContentQueued] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const s = m.strategy;
   const p = strategy.profile;
 
   function generate() {
     setQueued(false);
+    setContentQueued(false);
     setErr(null);
     start(async () => {
       const res = await generateChannelStrategy({ channel, instruction: instruction.trim() });
       if (res.ok) {
         setQueued(true);
         setInstruction('');
+        router.refresh();
+      } else {
+        setErr(res.error?.message ?? m.actionMsg.error);
+      }
+    });
+  }
+
+  function generateContent() {
+    setQueued(false);
+    setContentQueued(false);
+    setErr(null);
+    start(async () => {
+      const res = await generateChannelContent({ channel });
+      if (res.ok) {
+        setContentQueued(true);
         router.refresh();
       } else {
         setErr(res.error?.message ?? m.actionMsg.error);
@@ -284,10 +302,23 @@ function StrategyCard({
           >
             {pending ? s.generating : p ? s.regenerate : s.generate}
           </button>
+          {p && (
+            <button
+              type="button"
+              onClick={generateContent}
+              disabled={pending}
+              data-testid={`content-generate-${channel}`}
+              className="inline-flex items-center rounded-card border border-border-warm bg-cream px-3 py-1.5 text-button-sm text-charcoal hover:bg-charcoal-04 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              {s.generateContent}
+            </button>
+          )}
           {queued && <span className="text-caption text-success">{s.queued}</span>}
+          {contentQueued && <span className="text-caption text-success">{s.contentQueued}</span>}
           {err && <span className="text-caption text-destructive">{err}</span>}
         </div>
         <p className="text-caption text-muted">{s.applyHint}</p>
+        <p className="text-caption text-muted">{s.contentHint}</p>
       </div>
     </Card>
   );
@@ -600,6 +631,14 @@ function PostRow({ post }: { post: ChannelPostRow }) {
   return (
     <tr className="border-b border-border-warm/70 align-top">
       <td className="py-2 pr-3">
+        <span
+          className={cn(
+            'mb-0.5 inline-block rounded-pill px-1.5 py-0.5 text-caption',
+            post.kind === 'value' ? 'bg-accent-bg text-accent' : 'bg-charcoal-04 text-charcoal-82',
+          )}
+        >
+          {post.kind === 'value' ? m.queue.kindValue : m.queue.kindPromo}
+        </span>
         <span className="line-clamp-2 text-charcoal">{post.bookTitle}</span>
       </td>
       <td className="py-2 pr-3 whitespace-nowrap text-charcoal-82">

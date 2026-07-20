@@ -55,7 +55,7 @@ export interface PromotionPostPublishPrisma {
       };
     }) => Promise<{
       id: string;
-      book_id: string;
+      book_id: string | null;
       channel: string;
       account_id: string | null;
       title: string | null;
@@ -104,7 +104,7 @@ export interface PromotionPostPublishDeps {
   /** token_enc 復号関数 (テスト差し替え)。 */
   decryptToken?: (enc: string) => string;
   /** F-058: IG/TikTok の添付メディア(公開URL)を用意する。既定は販促画像を生成し署名URLを返す。 */
-  buildMediaUrls?: (channel: string, bookId: string) => Promise<string[]>;
+  buildMediaUrls?: (channel: string, bookId: string | null) => Promise<string[]>;
   now?: () => Date;
 }
 
@@ -129,14 +129,27 @@ function defaultResolvePort(channel: string): PublisherPort {
   return createHttpPublisherPort(httpDeps);
 }
 
-/** IG/TikTok の添付メディア既定実装: 本の販促画像を生成し 1 時間有効の署名 URL を返す。 */
-async function defaultBuildMediaUrls(channel: string, bookId: string): Promise<string[]> {
+/**
+ * IG/TikTok の添付メディア既定実装。
+ *  - 宣伝(本あり): その本の販促画像を生成し署名 URL を返す。
+ *  - 育成(book_id=null): アカウントのカバー画像(banner)を流用する。
+ */
+async function defaultBuildMediaUrls(channel: string, bookId: string | null): Promise<string[]> {
   if (channel !== 'instagram' && channel !== 'tiktok') return [];
-  const key = await ensureBookPromoImage(bookId);
-  if (!key) return [];
   const storage = await import('@a2p/storage');
-  const url = await storage.getSignedDownloadUrl(key, 3600);
-  return [url];
+  if (bookId) {
+    const key = await ensureBookPromoImage(bookId);
+    if (!key) return [];
+    return [await storage.getSignedDownloadUrl(key, 3600)];
+  }
+  // 育成投稿: チャンネルのカバー画像(strategy の banner)を使う。
+  const { prisma } = await import('@a2p/db');
+  const setting = await prisma.promotionChannelSetting.findUnique({
+    where: { channel },
+    select: { banner_key: true },
+  });
+  if (!setting?.banner_key) return [];
+  return [await storage.getSignedDownloadUrl(setting.banner_key, 3600)];
 }
 
 export async function runPromotionPostPublish(

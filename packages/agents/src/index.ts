@@ -207,6 +207,12 @@ export {
   type GenerateStrategyImagesDeps,
 } from './sns-strategist/index.js';
 
+export {
+  createAccountContent,
+  buildContentCreatorUserMessage,
+  type ContentCreatorDeps,
+} from './content-creator/index.js';
+
 export { kanaToRomaji } from './lib/kana-to-romaji.js';
 
 export {

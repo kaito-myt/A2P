@@ -676,6 +676,40 @@ describe('runRevisionBookApply', () => {
   });
 
   // ----------------------------------------------------------
+  // 2b. cover comment -> cover regenerate enqueued with feedback + commented cover_id
+  // ----------------------------------------------------------
+  it('enqueues cover regenerate with combined feedback and the commented cover_id', async () => {
+    const { logger } = makeLogger();
+    const addJobMock = vi.fn().mockResolvedValue(undefined);
+    const coverComment = makeCoverComment(); // target_id = 'cover_1', body = 'カバーの色を変更してください'
+    const { prisma } = buildPrisma({
+      comments: [coverComment],
+      chapters: [],
+      books: [defaultBook],
+      themes: [defaultTheme],
+      runs: [{ ...defaultRun }],
+    });
+
+    await runRevisionBookApply(
+      makePayload({ comment_ids: [COMMENT_COVER_ID] }),
+      { ...baseDeps({ logger, prisma, addJob: addJobMock }), prisma },
+    );
+
+    // A cover regenerate job was enqueued (in addition to the judge rescore).
+    const regenCall = addJobMock.mock.calls.find(
+      (c) => c[0] === 'pipeline.book.cover.regenerate',
+    );
+    expect(regenCall).toBeDefined();
+    const regenPayload = regenCall![1] as Record<string, unknown>;
+    expect(regenPayload.book_id).toBe(BOOK_ID);
+    expect(regenPayload.feedback).toContain('カバーの色を変更してください');
+    // The commented cover's target_id must be threaded so the regen targets the
+    // actual candidate (not just a possibly-absent adopted cover).
+    expect(regenPayload.cover_id).toBe('cover_1');
+    expect(regenPayload.job_id).toBeTruthy();
+  });
+
+  // ----------------------------------------------------------
   // 3. BookLock conflict -> blocked_books
   // ----------------------------------------------------------
   it('BookLock conflict: adds to blocked_books and returns normally', async () => {

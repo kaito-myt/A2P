@@ -2847,6 +2847,17 @@ export const logger = pino({
   webhook 中継のまま**。接続テストは `probeChannelAuth` の ayrshare 分岐(`GET api.ayrshare.com/api/user`)で
   連携状況を確認。キャプションは X のみ 280 重み制約、IG/TikTok/note/blog はフルキャプション＋全ハッシュタグ
   (`appendPurchaseLink`/`appendHashtags` を X 限定制約に変更)。TikTok は写真モード(画像)投稿。
+- **F-059 育成投稿(価値提供・フォロワー獲得)**: 宣伝だけでは伸びないため、アカウント戦略の
+  「発信の柱(content_pillars)」から**価値提供型の投稿**を生成する。`content_creator` エージェント
+  (`packages/agents/src/content-creator/`, Opus, prompt=`apply-content-creator.ts`) が
+  concept/tone/pillars/読者/書名(世界観のみ・売り込み無し) を材料に N 件の value 投稿を生成
+  (本・Amazon・URL・ハッシュタグは入れない)。worker `promotion.content.generate {channel,count,days}`
+  が strategy_json から柱を読み→生成→`promotion_posts`(kind='value', book_id=null)に JST 09/13/20時
+  スロットで日程付与＋戦略の定番ハッシュタグを付与。冪等(未投稿 value を作り直す・promo は温存)。
+  `promotion_posts` に **`kind`('promo'|'value')** 列、**`book_id` を null 可**に変更(育成投稿は本に紐づかない)。
+  dispatcher は `OR:[{book.publish_status='published'},{book_id=null}]` で value も対象化。publish の
+  buildMediaUrls は book 無し IG/TikTok に**チャンネルの banner 画像**を流用。UI は戦略カードの
+  「育成投稿を生成」ボタン＋投稿キューの kind バッジ(宣伝/育成)。運用は価値8:宣伝2 を想定。
 - **`promotion_posts`** (F-052 販促投稿キュー)。`book_id`, `channel`, `title?`, `body`, `scheduled_for`,
   `status` (draft/scheduled/posting/posted/failed/skipped/canceled), `external_url?`, `error?`, `posted_at?`。
   channel は **x / instagram / tiktok / note / blog** (旧 sns を X/IG/TikTok に分割)。
@@ -2876,7 +2887,7 @@ export const logger = pino({
 
 - `pipeline.book.readings.generate` (F-020b フリガナ生成)
 - `pipeline.book.cover.recheck` (既存カバーの文字崩れ後追い検証)
-- `pipeline.book.cover.regenerate` (旧方式カバーを新方式=文字なしAI画+実フォント合成で作り直し、再エクスポート)
+- `pipeline.book.cover.regenerate` (旧方式カバーを新方式=文字なしAI画+実フォント合成で作り直し、再エクスポート)。payload: `{ book_id, job_id, feedback?, cover_id? }`。F-050 の `target_kind='cover'` 修正コメント反映では `revision.book.apply` が採用/候補カバーの `target_id` を `cover_id` に、コメント本文を `feedback` に渡す。再生成対象は `cover_id`(コメント対象カバー) を最優先し、無ければ採用カバーへフォールバック。カバーテキストは対象カバーの `cover_text_id` → 書籍の採用/最新 `CoverTextProposal` の順に解決するため、採用前候補や `cover_text_id` 欠落でも no-op にならない。
 - `pipeline.book.promotion.generate` (F-051 販促プラン生成)
 - `sales.fetch` を **実ブラウザ (Playwright + Chromium)** で実装 (Phase 3 SP-14)。KDPログイン→
   TOTP(otplib)で2FA自動突破→レポート取得。証跡(screenshot/HTML)を `debug/sales-fetch/` に保存。

@@ -40,7 +40,7 @@ export interface PromotionDispatchPrisma {
         status: string;
         scheduled_for: { lte: Date };
         channel: { in: string[] };
-        book: { publish_status: string };
+        OR: Array<{ book: { publish_status: string } } | { book_id: null }>;
       };
       select: { id: true; channel: true };
       take: number;
@@ -88,13 +88,13 @@ export async function runPromotionDispatch(
   }
   const channelKeys = channels.map((c) => c.channel);
 
-  // 2. 期限到来分を取得 (出版済みの本のみ)
+  // 2. 期限到来分を取得。宣伝(promo)は出版済みの本のみ。育成(value, book_id=null)は本に依存しない。
   const due = await prisma.promotionPost.findMany({
     where: {
       status: 'scheduled',
       scheduled_for: { lte: now },
       channel: { in: channelKeys },
-      book: { publish_status: 'published' },
+      OR: [{ book: { publish_status: 'published' } }, { book_id: null }],
     },
     select: { id: true, channel: true },
     take: limit,

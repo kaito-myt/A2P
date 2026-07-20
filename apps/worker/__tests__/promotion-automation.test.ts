@@ -279,7 +279,8 @@ describe('runPromotionDispatch', () => {
     // フィルタ条件を検証
     const where = findMany.mock.calls[0]![0].where as Record<string, unknown>;
     expect(where.status).toBe('scheduled');
-    expect(where.book).toEqual({ publish_status: 'published' });
+    // F-059: promo(出版済みの本) OR value(book_id=null) を対象にする
+    expect(where.OR).toEqual([{ book: { publish_status: 'published' } }, { book_id: null }]);
     expect(where.channel).toEqual({ in: ['sns', 'note'] });
   });
 

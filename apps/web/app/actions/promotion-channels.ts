@@ -122,6 +122,34 @@ export async function generateChannelStrategy(
   return { ok: true, data: { queued: true } };
 }
 
+const PROMOTION_CONTENT_GENERATE_TASK = 'promotion.content.generate';
+
+/**
+ * F-059 — 育成投稿(価値提供型)の生成をキュー投入する。
+ * content_creator がアカウント戦略の発信の柱から価値投稿を作り、宣伝と混ぜて予約する。
+ */
+export async function generateChannelContent(
+  input: unknown,
+): Promise<ActionResult<{ queued: true }>> {
+  try {
+    await getSessionOrThrow();
+  } catch (err) {
+    return authFail(err);
+  }
+  const parsed = input as { channel?: unknown };
+  const channel = typeof parsed?.channel === 'string' ? parsed.channel : '';
+  if (!isPromotionChannel(channel)) {
+    return fail('validation', messages.promotionChannels.actionMsg.error);
+  }
+  try {
+    await enqueueJob(PROMOTION_CONTENT_GENERATE_TASK, { channel });
+  } catch (err) {
+    return authFail(err);
+  }
+  revalidatePath(`/promotion/channel/${channel}`);
+  return { ok: true, data: { queued: true } };
+}
+
 export async function publishPostNow(input: unknown) {
   let deps: PromotionChannelsDeps;
   try {

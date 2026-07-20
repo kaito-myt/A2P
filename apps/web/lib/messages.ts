@@ -582,6 +582,9 @@ export const messages = {
       generating: '生成をキュー投入中…',
       queued: '生成をキューに入れました。数分後にページを再読込してください。',
       applyHint: '生成後、表示名・bio・画像を各 SNS のプロフィールに反映してください。ハッシュタグは以降の投稿に自動で付きます。',
+      generateContent: '育成投稿を生成',
+      contentQueued: '育成投稿の生成をキューに入れました。数分後に投稿キューへ反映されます。',
+      contentHint: '「育成投稿」は宣伝ではなく、発信の柱から作る価値提供投稿です。フォロワー獲得のため、宣伝と混ぜて自動で予約されます（戦略の生成後に押せます）。',
     },
     autoSection: {
       title: '自動運用',
@@ -651,6 +654,9 @@ export const messages = {
       cancel: '取消',
       view: '開く',
       publishing: '投稿中…',
+      growthPost: '育成投稿（アカウント育成）',
+      kindPromo: '宣伝',
+      kindValue: '育成',
     },
     status: {
       draft: '下書き',

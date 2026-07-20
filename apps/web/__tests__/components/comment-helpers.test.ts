@@ -15,12 +15,15 @@ import {
   filterComments,
   priorityToVariant,
   targetKindLabel,
+  commentStatusLabel,
+  commentStatusVariant,
   aggregateCounts,
   clickToImageRegion,
   validateImageRegion,
   getImageRegion,
   type CommentSummary,
   type CommentPriority,
+  type CommentStatus,
   type TargetKind,
 } from '@/lib/comment-helpers';
 
@@ -151,6 +154,38 @@ describe('targetKindLabel', () => {
   ] as [TargetKind, string][])('maps %s to %s', (input, expected) => {
     expect(targetKindLabel(input)).toBe(expected);
   });
+});
+
+// ---------------------------------------------------------------------------
+// commentStatusLabel / commentStatusVariant
+// ---------------------------------------------------------------------------
+
+describe('commentStatusLabel', () => {
+  it.each([
+    ['pending', '未消化'],
+    ['applied', '適用済み'],
+    ['not_applicable', '適用不可'],
+    ['superseded', '削除済み'],
+  ] as [CommentStatus, string][])('maps %s to %s', (input, expected) => {
+    expect(commentStatusLabel(input)).toBe(expected);
+  });
+
+  it('falls back to the raw value for an unknown status', () => {
+    expect(commentStatusLabel('mystery')).toBe('mystery');
+  });
+});
+
+describe('commentStatusVariant', () => {
+  it('maps applied to success', () => {
+    expect(commentStatusVariant('applied')).toBe('success');
+  });
+
+  it.each(['pending', 'not_applicable', 'superseded'] as CommentStatus[])(
+    'maps %s to neutral',
+    (status) => {
+      expect(commentStatusVariant(status)).toBe('neutral');
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------

@@ -42,6 +42,11 @@ export const PipelineBookCoverRegeneratePayloadSchema = z.object({
   job_id: z.string().min(1),
   /** 修正コメント等のフィードバック。アート方向性の style guide に追記して反映する。 */
   feedback: z.string().max(4000).optional(),
+  /**
+   * 修正コメントが対象とした Cover の id。採用前の候補に付くことが多いため、
+   * これを最優先で再生成対象に解決する（無ければ採用カバーにフォールバック）。
+   */
+  cover_id: z.string().min(1).optional(),
 });
 export type PipelineBookCoverRegeneratePayload = z.infer<
   typeof PipelineBookCoverRegeneratePayloadSchema
@@ -102,16 +107,25 @@ export interface PipelineBookCoverRegeneratePrisma {
   };
   cover: {
     findFirst: (args: {
-      where: { book_id: string; status: string };
-      select: { id: true; cover_text_id: true; width: true; height: true };
-    }) => Promise<{ id: string; cover_text_id: string | null; width: number; height: number } | null>;
+      where: { book_id: string; status?: string; id?: string };
+      select: { id: true; cover_text_id: true; width: true; height: true; status: true };
+    }) => Promise<{ id: string; cover_text_id: string | null; width: number; height: number; status: string } | null>;
     update: (args: { where: { id: string }; data: { status: string } }) => Promise<unknown>;
+    updateMany: (args: {
+      where: { book_id: string; status: string; id: { not: string } };
+      data: { status: string };
+    }) => Promise<{ count: number }>;
   };
   coverTextProposal: {
     findUnique: (args: {
       where: { id: string };
       select: { title: true; subtitle: true };
     }) => Promise<{ title: string; subtitle: string | null } | null>;
+    findFirst: (args: {
+      where: { book_id: string; status?: string };
+      select: { id: true; title: true; subtitle: true };
+      orderBy?: { created_at: 'desc' };
+    }) => Promise<{ id: string; title: string; subtitle: string | null } | null>;
   };
 }
 
@@ -143,7 +157,7 @@ export async function runPipelineBookCoverRegenerate(
       details: { issues: parsed.error.issues },
     });
   }
-  const { book_id: bookId, job_id: jobId, feedback } = parsed.data;
+  const { book_id: bookId, job_id: jobId, feedback, cover_id: commentedCoverId } = parsed.data;
 
   const log = deps.logger ?? createLogger(`worker.${PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME}`);
   const prisma = deps.prisma ?? (defaultPrisma as unknown as PipelineBookCoverRegeneratePrisma);
@@ -186,14 +200,27 @@ export async function runPipelineBookCoverRegenerate(
     });
     if (!book) throw new NotFoundError(`Book not found: ${bookId}`, { details: { bookId, jobId } });
 
-    const adopted = await prisma.cover.findFirst({
-      where: { book_id: bookId, status: 'adopted' },
-      select: { id: true, cover_text_id: true, width: true, height: true },
-    });
-    if (!adopted || !adopted.cover_text_id) {
+    // 対象カバーを解決: 修正コメントが指した cover_id を最優先し、無ければ採用カバー。
+    // (コメントは採用前の候補に付くことが多く、status='adopted' 固定だと no-op になっていた。)
+    let target:
+      | { id: string; cover_text_id: string | null; width: number; height: number; status: string }
+      | null = null;
+    if (commentedCoverId) {
+      target = await prisma.cover.findFirst({
+        where: { id: commentedCoverId, book_id: bookId },
+        select: { id: true, cover_text_id: true, width: true, height: true, status: true },
+      });
+    }
+    if (!target) {
+      target = await prisma.cover.findFirst({
+        where: { book_id: bookId, status: 'adopted' },
+        select: { id: true, cover_text_id: true, width: true, height: true, status: true },
+      });
+    }
+    if (!target) {
       log.info(
-        { task: PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME, jobId, bookId },
-        'no adopted cover with cover_text — nothing to regenerate',
+        { task: PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME, jobId, bookId, commentedCoverId },
+        'no target cover (commented / adopted cover not found) — nothing to regenerate',
       );
       await prisma.job.update({
         where: { id: jobId },
@@ -202,11 +229,44 @@ export async function runPipelineBookCoverRegenerate(
       return;
     }
 
-    const proposal = await prisma.coverTextProposal.findUnique({
-      where: { id: adopted.cover_text_id },
-      select: { title: true, subtitle: true },
-    });
-    if (!proposal) throw new NotFoundError(`CoverTextProposal not found: ${adopted.cover_text_id}`);
+    // カバーテキストを解決: 対象カバーの cover_text_id → 書籍の採用 CoverTextProposal → 最新。
+    // (採用カバーに cover_text_id が無いケースでも no-op にせず再生成できるようにする。)
+    let coverTextId: string | null = target.cover_text_id;
+    let proposal: { title: string; subtitle: string | null } | null = null;
+    if (coverTextId) {
+      proposal = await prisma.coverTextProposal.findUnique({
+        where: { id: coverTextId },
+        select: { title: true, subtitle: true },
+      });
+    }
+    if (!proposal) {
+      const fallback =
+        (await prisma.coverTextProposal.findFirst({
+          where: { book_id: bookId, status: 'adopted' },
+          select: { id: true, title: true, subtitle: true },
+          orderBy: { created_at: 'desc' },
+        })) ??
+        (await prisma.coverTextProposal.findFirst({
+          where: { book_id: bookId },
+          select: { id: true, title: true, subtitle: true },
+          orderBy: { created_at: 'desc' },
+        }));
+      if (fallback) {
+        proposal = { title: fallback.title, subtitle: fallback.subtitle };
+        coverTextId = fallback.id;
+      }
+    }
+    if (!proposal || !coverTextId) {
+      log.info(
+        { task: PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME, jobId, bookId },
+        'no cover text proposal for book — nothing to regenerate',
+      );
+      await prisma.job.update({
+        where: { id: jobId },
+        data: { status: 'done', finished_at: now(), error: null, result_json: { regenerated: false } },
+      });
+      return;
+    }
 
     const author = book.theme?.authorName?.name?.trim() || book.account.pen_name?.trim() || undefined;
     const genre = normalizeGenre(book.theme?.genre);
@@ -246,17 +306,22 @@ export async function runPipelineBookCoverRegenerate(
     const out = await generateCoverImageFn({
       jobId,
       bookId,
-      coverTextId: adopted.cover_text_id,
+      coverTextId,
       title: proposal.title,
       styleGuide,
-      width: adopted.width || 1024,
-      height: adopted.height || 1536,
+      width: target.width || 1024,
+      height: target.height || 1536,
       ...(proposal.subtitle ? { subtitle: proposal.subtitle } : {}),
       ...(author ? { author } : {}),
     });
 
-    // 採用差し替え: 旧 → rejected、新 → adopted。
-    await prisma.cover.update({ where: { id: adopted.id }, data: { status: 'rejected' } });
+    // 採用差し替え: 対象カバー → rejected、他に残る採用カバーも rejected、新カバー → adopted。
+    // (単一採用カバーの不変条件を保つ。対象が採用前候補でも新カバーを採用する。)
+    await prisma.cover.update({ where: { id: target.id }, data: { status: 'rejected' } });
+    await prisma.cover.updateMany({
+      where: { book_id: bookId, status: 'adopted', id: { not: out.coverId } },
+      data: { status: 'rejected' },
+    });
     await prisma.cover.update({ where: { id: out.coverId }, data: { status: 'adopted' } });
 
     // 再エクスポート (KDP カバーファイルを作り直す)。
@@ -282,7 +347,7 @@ export async function runPipelineBookCoverRegenerate(
         error: null,
         result_json: {
           regenerated: true,
-          old_cover_id: adopted.id,
+          old_cover_id: target.id,
           new_cover_id: out.coverId,
           export_job_id: exportJob.id,
         },
@@ -294,7 +359,7 @@ export async function runPipelineBookCoverRegenerate(
         task: PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME,
         jobId,
         bookId,
-        oldCoverId: adopted.id,
+        oldCoverId: target.id,
         newCoverId: out.coverId,
       },
       'cover regenerated (new method) and re-export enqueued',
