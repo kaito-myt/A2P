@@ -204,6 +204,12 @@ export function bookPromoImage(bookId: string): string {
   return `books/${bookId}/promo/social.jpg`;
 }
 
+/** `promotion/posts/{post_id}.jpg` — 育成(value)投稿ごとのユニーク AI 画像 (F-059/IG)。 */
+export function promotionPostImage(postId: string): string {
+  assertId('postId', postId);
+  return `promotion/posts/${postId}.jpg`;
+}
+
 /**
  * 論理削除用のキー変換 (docs/05 §8.1: `r2_key` を `_deleted/...` にリネーム)。
  * 既に `_deleted/` 配下にある場合はそのまま返す。

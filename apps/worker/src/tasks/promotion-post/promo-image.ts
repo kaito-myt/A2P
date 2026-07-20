@@ -11,7 +11,7 @@ import {
   type GenerateImageFn,
   type WithImageLoggingDeps,
 } from '@a2p/agents';
-import { bookPromoImage } from '@a2p/storage/keys';
+import { bookPromoImage, promotionPostImage } from '@a2p/storage/keys';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
 
 const NO_TEXT_GUARD =
@@ -118,5 +118,60 @@ export async function ensureBookPromoImage(
   await uploadBuffer(key, image, 'image/jpeg');
   await prisma.book.update({ where: { id: bookId }, data: { promo_image_key: key } });
   log.info({ bookId, key }, 'promo image generated');
+  return key;
+}
+
+/** 育成(value)投稿の本文から、文字なしのライフスタイル画像プロンプトを組み立てる。 */
+export function buildValueImagePrompt(bodyHint: string): string {
+  const hint = bodyHint
+    .replace(/#\S+/g, '')
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
+  return (
+    `Instagram 向けの正方形の高品質で情緒的なライフスタイル画像。前向きで上質、暖色系、` +
+    `ミニマルで洗練された雰囲気。投稿の趣旨を象徴するシーン/静物で表現する: 「${hint}」。` +
+    `厳守: 本・雑誌・表紙・紙・看板・画面など文字が入りうる物体は描かない。${NO_TEXT_GUARD}`
+  );
+}
+
+export interface GenerateValuePostImageDeps {
+  logger?: Logger;
+  generateImage?: GenerateImageFn;
+  withImageLoggingDeps?: WithImageLoggingDeps;
+  uploadBuffer?: UploadBufferFn;
+}
+
+/**
+ * 育成(value)投稿ごとに **ユニークな** AI 画像を生成して R2 に保存し、キーを返す。
+ * IG は画像必須かつ同一画像の連投は逆効果なので、投稿本文から毎回作る。生成不可なら null。
+ */
+export async function generateValuePostImage(
+  postId: string,
+  body: string,
+  deps: GenerateValuePostImageDeps = {},
+): Promise<string | null> {
+  const log = deps.logger ?? createLogger('worker.promotion.promo-image');
+  const uploadBuffer = deps.uploadBuffer ?? defaultUploadBuffer;
+  const baseFn: GenerateImageFn = deps.generateImage ?? defaultGenerateImage;
+  const genFn = withImageLogging(baseFn, { role: 'promo_image', themeSessionId: `value:${postId}` }, deps.withImageLoggingDeps);
+
+  const result = await genFn({
+    prompt: buildValueImagePrompt(body),
+    width: 1024,
+    height: 1024,
+    quality: 'medium',
+    outputFormat: 'jpeg',
+    outputCompression: 90,
+  });
+  const image = result.images[0];
+  if (!image) {
+    log.warn({ postId }, 'value post image generation returned no image');
+    return null;
+  }
+  const key = promotionPostImage(postId);
+  await uploadBuffer(key, image, 'image/jpeg');
+  log.info({ postId, key }, 'value post image generated');
   return key;
 }

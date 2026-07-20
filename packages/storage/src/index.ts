@@ -14,6 +14,7 @@ export {
   channelAvatar,
   channelBanner,
   bookPromoImage,
+  promotionPostImage,
   bookArtifact,
   catalogSnapshot,
   chapterDraft,

@@ -3,11 +3,40 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 
-import { ensureBookPromoImage, buildPromoImagePrompt } from '../src/tasks/promotion-post/promo-image.js';
+import {
+  ensureBookPromoImage,
+  buildPromoImagePrompt,
+  buildValueImagePrompt,
+  generateValuePostImage,
+} from '../src/tasks/promotion-post/promo-image.js';
 
 describe('buildPromoImagePrompt', () => {
   it('文字なしガードを含む', () => {
     expect(buildPromoImagePrompt('朝の習慣術', 'business')).toContain('文字');
+  });
+});
+
+describe('buildValueImagePrompt', () => {
+  it('文字なしガード + 本文の趣旨を含み、URL/ハッシュタグを除く', () => {
+    const p = buildValueImagePrompt('メールは1日3回に #仕事術 https://x.co/a');
+    expect(p).toContain('文字');
+    expect(p).toContain('メールは1日3回に');
+    expect(p).not.toContain('#仕事術');
+    expect(p).not.toContain('https://');
+  });
+});
+
+describe('generateValuePostImage', () => {
+  it('投稿ごとにユニークキーへ JPEG を生成する', async () => {
+    const generateImage = vi.fn(async () => ({ images: [Buffer.from('v')], costJpy: 0, usage: { imageCount: 1 } }));
+    const uploadBuffer = vi.fn(async (key: string) => ({ key }));
+    const key = await generateValuePostImage('post_9', '習慣は既存習慣の直後に置く', {
+      generateImage: generateImage as never,
+      uploadBuffer,
+      withImageLoggingDeps: { prisma: { tokenUsage: { create: vi.fn() }, book: { update: vi.fn() } } as never },
+    });
+    expect(key).toBe('promotion/posts/post_9.jpg');
+    expect(uploadBuffer).toHaveBeenCalledWith('promotion/posts/post_9.jpg', expect.any(Buffer), 'image/jpeg');
   });
 });
 
