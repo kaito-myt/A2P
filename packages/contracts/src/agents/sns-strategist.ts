@@ -38,58 +38,61 @@ export type SnsStrategistInput = z.infer<typeof SnsStrategistInputSchema>;
 /** 発信の柱（コンテンツピラー）1 本。 */
 export const ContentPillarSchema = z.object({
   /** 柱の名前（例: 「明日から使える仕事術」）。 */
-  name: z.string().min(1).max(40),
+  name: z.string().min(1).max(120),
   /** 何を・誰に・どんな価値で発信するか。 */
-  description: z.string().min(1).max(300),
+  description: z.string().min(1).max(1000),
   /** そのままの投稿例（1 本）。 */
-  example_post: z.string().min(1).max(400),
+  example_post: z.string().min(1).max(2000),
 });
 export type ContentPillar = z.infer<typeof ContentPillarSchema>;
 
 /** 投稿頻度・時間帯の方針。 */
 export const PostingCadenceSchema = z.object({
   /** 頻度（例: 「平日は 1 日 2 投稿、休日 1 投稿」）。 */
-  frequency: z.string().min(1).max(160),
+  frequency: z.string().min(1).max(600),
   /** 推奨投稿時刻（例: "07:30", "12:15", "21:00"）。 */
-  best_times: z.array(z.string().max(40)).max(6).default([]),
+  best_times: z.array(z.string().max(120)).max(12).default([]),
 });
 export type PostingCadence = z.infer<typeof PostingCadenceSchema>;
 
 /** ハッシュタグ方針。文字列は `#` 付きで返させる。 */
 export const HashtagStrategySchema = z.object({
   /** 毎回付ける定番タグ。 */
-  core: z.array(z.string().max(40)).max(8).default([]),
+  core: z.array(z.string().max(120)).max(15).default([]),
   /** 話題に応じて回すタグ。 */
-  rotating: z.array(z.string().max(40)).max(12).default([]),
+  rotating: z.array(z.string().max(120)).max(30).default([]),
 });
 export type HashtagStrategy = z.infer<typeof HashtagStrategySchema>;
 
 /**
  * アカウント運用プロファイル（1 チャンネル分）。
  * 画像プロンプトは gpt-image-1 に渡す前提で「文字を描かせない」指示込みにする。
+ *
+ * 注意: 文字数上限/最小数は LLM 出力を弾かないよう緩めに設定する（厳しすぎると
+ * generateObject が "response did not match schema" で失敗する）。整形はプロンプト側で誘導。
  */
 export const AccountStrategyProfileSchema = z.object({
   /** ポジショニング宣言（このアカウントは何屋か）。 */
-  concept: z.string().min(1).max(600),
+  concept: z.string().min(1).max(2000),
   /** 表示名（プロフィールに出る名前）。 */
-  display_name: z.string().min(1).max(50),
+  display_name: z.string().min(1).max(120),
   /** 推奨ハンドル（@ なし・英数字/アンダースコア）。 */
-  handle_suggestion: z.string().min(1).max(30),
+  handle_suggestion: z.string().min(1).max(80),
   /** プロフィール文（各媒体の文字数に収める）。 */
-  bio: z.string().min(1).max(600),
-  /** 発信の柱 3〜6 本。 */
-  content_pillars: z.array(ContentPillarSchema).min(3).max(6),
+  bio: z.string().min(1).max(2000),
+  /** 発信の柱（3〜6 本を推奨、最低 1 本）。 */
+  content_pillars: z.array(ContentPillarSchema).min(1).max(10),
   /** トーン&マナー（語り口）。 */
-  tone_of_voice: z.string().min(1).max(300),
+  tone_of_voice: z.string().min(1).max(1000),
   posting_cadence: PostingCadenceSchema,
   hashtag_strategy: HashtagStrategySchema,
   /** プラットフォーム別のグロース戦術。 */
-  growth_tactics: z.array(z.string().min(1).max(300)).min(2).max(8),
+  growth_tactics: z.array(z.string().min(1).max(1000)).min(1).max(12),
   /** アイコン（正方形）生成プロンプト。文字なし。 */
-  avatar_prompt: z.string().min(1).max(1000),
+  avatar_prompt: z.string().min(1).max(3000),
   /** カバー/ヘッダー（横長）生成プロンプト。文字なし。 */
-  banner_prompt: z.string().min(1).max(1000),
+  banner_prompt: z.string().min(1).max(3000),
   /** 戦略の根拠（任意）。 */
-  rationale: z.string().max(800).optional(),
+  rationale: z.string().max(2000).optional(),
 });
 export type AccountStrategyProfile = z.infer<typeof AccountStrategyProfileSchema>;

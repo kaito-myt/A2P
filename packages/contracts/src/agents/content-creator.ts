@@ -34,12 +34,12 @@ export const ContentCreatorInputSchema = z.object({
 });
 export type ContentCreatorInput = z.infer<typeof ContentCreatorInputSchema>;
 
-/** 生成された育成投稿 1 件。 */
+/** 生成された育成投稿 1 件。上限は LLM 出力を弾かないよう緩めに。 */
 export const ValuePostSchema = z.object({
   /** どの柱の投稿か (name)。 */
-  pillar: z.string().min(1).max(40),
+  pillar: z.string().min(1).max(120),
   /** 投稿本文 (そのまま投稿できる完成文)。 */
-  body: z.string().min(1).max(1200),
+  body: z.string().min(1).max(4000),
 });
 export type ValuePost = z.infer<typeof ValuePostSchema>;
 

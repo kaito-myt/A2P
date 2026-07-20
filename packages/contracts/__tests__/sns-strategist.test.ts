@@ -34,14 +34,19 @@ describe('AccountStrategyProfileSchema', () => {
     expect(res.success).toBe(true);
   });
 
-  it('content_pillars が3本未満なら不合格', () => {
-    const bad = { ...validProfile(), content_pillars: validProfile().content_pillars.slice(0, 2) };
+  it('content_pillars が空なら不合格（最低1本）', () => {
+    const bad = { ...validProfile(), content_pillars: [] };
     expect(AccountStrategyProfileSchema.safeParse(bad).success).toBe(false);
   });
 
-  it('growth_tactics が2個未満なら不合格', () => {
-    const bad = { ...validProfile(), growth_tactics: ['ひとつだけ'] };
+  it('growth_tactics が空なら不合格（最低1個）', () => {
+    const bad = { ...validProfile(), growth_tactics: [] };
     expect(AccountStrategyProfileSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('柱2本・戦術1個でも合格（緩和済み）', () => {
+    const ok = { ...validProfile(), content_pillars: validProfile().content_pillars.slice(0, 2), growth_tactics: ['朝に投稿'] };
+    expect(AccountStrategyProfileSchema.safeParse(ok).success).toBe(true);
   });
 
   it('rationale は任意', () => {
