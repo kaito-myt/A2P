@@ -17,6 +17,7 @@ import {
 } from '@a2p/contracts/agents/sns-strategist';
 
 import { createAgentClient as defaultCreateAgentClient } from '../lib/llm-client-factory.js';
+import { extractLlmJson } from '../lib/sanitize-llm-json.js';
 import {
   fillPlaceholders,
   loadActivePrompt as defaultLoadActivePrompt,
@@ -87,18 +88,23 @@ export async function planSnsStrategy(
 
   const client: LLMClient = await makeClient('sns_strategist', null, ctx, factoryDeps);
 
-  const completion = await client.complete<AccountStrategyProfile>({
+  // responseSchema(generateObject) は複雑な日本語スキーマで "No object generated" になりやすいため、
+  // 実績のある generateText + 堅牢な JSON 抽出(extractLlmJson) で受ける。
+  const completion = await client.complete<string>({
     role: 'sns_strategist',
     genre: null,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: buildSnsStrategistUserMessage(input, channelLabel, bioLimit) },
     ],
-    responseSchema: AccountStrategyProfileSchema,
     maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
   });
 
-  return AccountStrategyProfileSchema.parse(completion.text);
+  const parsed = extractLlmJson<unknown>(completion.text);
+  if (parsed === undefined) {
+    throw new Error('sns_strategist: 応答から JSON を抽出できませんでした');
+  }
+  return AccountStrategyProfileSchema.parse(parsed);
 }
 
 export function buildSnsStrategistUserMessage(

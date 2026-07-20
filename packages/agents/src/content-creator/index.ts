@@ -12,6 +12,7 @@ import {
 } from '@a2p/contracts/agents/content-creator';
 
 import { createAgentClient as defaultCreateAgentClient } from '../lib/llm-client-factory.js';
+import { extractLlmJson } from '../lib/sanitize-llm-json.js';
 import {
   fillPlaceholders,
   loadActivePrompt as defaultLoadActivePrompt,
@@ -76,18 +77,22 @@ export async function createAccountContent(
 
   const client: LLMClient = await makeClient('content_creator', null, ctx, factoryDeps);
 
-  const completion = await client.complete<AccountContentOutput>({
+  // generateObject は不安定なため generateText + extractLlmJson で受ける(sns_strategist と同様)。
+  const completion = await client.complete<string>({
     role: 'content_creator',
     genre: null,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: buildContentCreatorUserMessage(input, channelLabel, lenGuide) },
     ],
-    responseSchema: AccountContentOutputSchema,
     maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
   });
 
-  return AccountContentOutputSchema.parse(completion.text);
+  const parsed = extractLlmJson<unknown>(completion.text);
+  if (parsed === undefined) {
+    throw new Error('content_creator: 応答から JSON を抽出できませんでした');
+  }
+  return AccountContentOutputSchema.parse(parsed);
 }
 
 export function buildContentCreatorUserMessage(

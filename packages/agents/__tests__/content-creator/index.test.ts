@@ -29,7 +29,7 @@ function out(): AccountContentOutput {
 
 function makeClient(o: AccountContentOutput): LLMClient {
   const complete = async <T = string>(_a: LLMCompleteArgs): Promise<LLMCompleteResult<T>> => ({
-    text: o as unknown as T,
+    text: JSON.stringify(o) as unknown as T,
     usage: { inputTokens: 800, outputTokens: 400 },
     costJpy: 0,
     provider: 'anthropic',

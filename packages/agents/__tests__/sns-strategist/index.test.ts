@@ -50,7 +50,7 @@ function validProfile(): AccountStrategyProfile {
 
 function makeClient(profile: AccountStrategyProfile): LLMClient {
   const complete = async <T = string>(_args: LLMCompleteArgs): Promise<LLMCompleteResult<T>> => ({
-    text: profile as unknown as T,
+    text: JSON.stringify(profile) as unknown as T,
     usage: { inputTokens: 1000, outputTokens: 400 },
     costJpy: 0,
     provider: 'anthropic',
