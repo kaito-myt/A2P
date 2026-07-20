@@ -89,7 +89,7 @@ describe('runPromotionStrategyGenerate', () => {
     // アバター/バナー2枚を R2 に保存
     expect(uploads).toEqual([
       'promotion/x/meta/avatar.png',
-      'promotion/x/meta/banner.png',
+      'promotion/x/meta/banner.jpg',
     ]);
     // 永続化: display_name / strategy_json / 画像キー / 更新時刻
     const call = upsert.mock.calls[0]![0];

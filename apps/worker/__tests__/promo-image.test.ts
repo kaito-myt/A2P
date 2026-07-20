@@ -17,12 +17,12 @@ describe('ensureBookPromoImage', () => {
     const uploadBuffer = vi.fn();
     const prisma = {
       book: {
-        findUnique: vi.fn(async () => ({ promo_image_key: 'books/b1/promo/social.png', title: 't', theme: { genre: 'business' } })),
+        findUnique: vi.fn(async () => ({ promo_image_key: 'books/b1/promo/social.jpg', title: 't', theme: { genre: 'business' } })),
         update: vi.fn(),
       },
     };
     const key = await ensureBookPromoImage('b1', { prisma, generateImage: generateImage as never, uploadBuffer });
-    expect(key).toBe('books/b1/promo/social.png');
+    expect(key).toBe('books/b1/promo/social.jpg');
     expect(generateImage).not.toHaveBeenCalled();
     expect(uploadBuffer).not.toHaveBeenCalled();
   });
@@ -43,10 +43,10 @@ describe('ensureBookPromoImage', () => {
       uploadBuffer,
       withImageLoggingDeps: { prisma: { tokenUsage: { create: vi.fn() }, book: { update: vi.fn() } } as never },
     });
-    expect(key).toBe('books/b1/promo/social.png');
+    expect(key).toBe('books/b1/promo/social.jpg');
     expect(generateImage).toHaveBeenCalledTimes(1);
-    expect(uploadBuffer).toHaveBeenCalledWith('books/b1/promo/social.png', expect.any(Buffer), 'image/png');
-    expect(update).toHaveBeenCalledWith({ where: { id: 'b1' }, data: { promo_image_key: 'books/b1/promo/social.png' } });
+    expect(uploadBuffer).toHaveBeenCalledWith('books/b1/promo/social.jpg', expect.any(Buffer), 'image/jpeg');
+    expect(update).toHaveBeenCalledWith({ where: { id: 'b1' }, data: { promo_image_key: 'books/b1/promo/social.jpg' } });
   });
 
   it('本が無ければ null', async () => {

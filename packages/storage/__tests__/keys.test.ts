@@ -132,7 +132,7 @@ describe('補助キー (jobsArchive / catalogSnapshot / accountAvatar)', () => {
 
   it('channelAvatar / channelBanner (F-057)', () => {
     expect(channelAvatar('x')).toBe('promotion/x/meta/avatar.png');
-    expect(channelBanner('tiktok')).toBe('promotion/tiktok/meta/banner.png');
+    expect(channelBanner('tiktok')).toBe('promotion/tiktok/meta/banner.jpg');
   });
 
   it('channelAvatar は不正 channel で ValidationError', () => {
@@ -142,7 +142,7 @@ describe('補助キー (jobsArchive / catalogSnapshot / accountAvatar)', () => {
   });
 
   it('bookPromoImage (F-058)', () => {
-    expect(bookPromoImage(BOOK_ID)).toBe(`books/${BOOK_ID}/promo/social.png`);
+    expect(bookPromoImage(BOOK_ID)).toBe(`books/${BOOK_ID}/promo/social.jpg`);
     expect(() => bookPromoImage('bad id')).toThrow(ValidationError);
   });
 

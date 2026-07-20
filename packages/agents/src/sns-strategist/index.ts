@@ -191,7 +191,9 @@ export async function generateStrategyImages(
     width: 1536,
     height: 1024,
     quality: 'medium',
-    outputFormat: 'png',
+    // 育成投稿(F-059)の IG メディアに流用するため JPEG(IG は JPEG 必須)。
+    outputFormat: 'jpeg',
+    outputCompression: 90,
   });
 
   const avatar = avatarRes.images[0];

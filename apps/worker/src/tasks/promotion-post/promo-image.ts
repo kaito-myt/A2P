@@ -99,7 +99,15 @@ export async function ensureBookPromoImage(
   const baseFn: GenerateImageFn = deps.generateImage ?? defaultGenerateImage;
   const genFn = withImageLogging(baseFn, { bookId, role: 'promo_image' }, deps.withImageLoggingDeps);
 
-  const result = await genFn({ prompt, width: 1024, height: 1024, quality: 'medium', outputFormat: 'png' });
+  // Instagram Graph API は画像が JPEG 必須のため JPEG で生成する(PNG は弾かれる)。
+  const result = await genFn({
+    prompt,
+    width: 1024,
+    height: 1024,
+    quality: 'medium',
+    outputFormat: 'jpeg',
+    outputCompression: 90,
+  });
   const image = result.images[0];
   if (!image) {
     log.warn({ bookId }, 'promo image generation returned no image');
@@ -107,7 +115,7 @@ export async function ensureBookPromoImage(
   }
 
   const key = bookPromoImage(bookId);
-  await uploadBuffer(key, image, 'image/png');
+  await uploadBuffer(key, image, 'image/jpeg');
   await prisma.book.update({ where: { id: bookId }, data: { promo_image_key: key } });
   log.info({ bookId, key }, 'promo image generated');
   return key;

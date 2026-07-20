@@ -164,7 +164,7 @@ export async function runPromotionStrategyGenerate(
   const avatarKey = channelAvatar(channel);
   const bannerKey = channelBanner(channel);
   await uploadBuffer(avatarKey, images.avatar, 'image/png');
-  await uploadBuffer(bannerKey, images.banner, 'image/png');
+  await uploadBuffer(bannerKey, images.banner, 'image/jpeg');
 
   // 4. 永続化
   const strategyData = {

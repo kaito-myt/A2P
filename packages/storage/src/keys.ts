@@ -192,16 +192,16 @@ export function channelAvatar(channel: string): string {
   return `promotion/${channel}/meta/avatar.png`;
 }
 
-/** `promotion/{channel}/meta/banner.png` — SNS アカウントのカバー/ヘッダー (F-057)。 */
+/** `promotion/{channel}/meta/banner.jpg` — SNS カバー/ヘッダー (F-057)。育成投稿の IG メディアにも使うため JPEG。 */
 export function channelBanner(channel: string): string {
   assertChannel(channel);
-  return `promotion/${channel}/meta/banner.png`;
+  return `promotion/${channel}/meta/banner.jpg`;
 }
 
-/** `books/{book_id}/promo/social.png` — IG/TikTok 販促投稿用 AI 生成画像 (F-058)。 */
+/** `books/{book_id}/promo/social.jpg` — IG/TikTok 販促投稿用 AI 生成画像 (F-058, JPEG=IG必須)。 */
 export function bookPromoImage(bookId: string): string {
   assertId('bookId', bookId);
-  return `books/${bookId}/promo/social.png`;
+  return `books/${bookId}/promo/social.jpg`;
 }
 
 /**
