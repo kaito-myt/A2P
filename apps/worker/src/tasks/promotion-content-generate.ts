@@ -82,7 +82,6 @@ export interface PromotionContentGenerateResult {
 // 育成投稿の投稿枠 (JST): 09:00 / 13:00 / 20:00。promo(07:30/12:15/18:00/21:00)と別時間で自然に混ざる。
 const VALUE_SLOTS_JST_MIN = [540, 780, 1200];
 const H = 3600_000;
-const DAY = 86_400_000;
 
 export async function runPromotionContentGenerate(
   payload: unknown,
@@ -151,15 +150,18 @@ export async function runPromotionContentGenerate(
 
   // 5. 日程付与 (明日から VALUE_SLOTS を days 日に分散) + 定番ハッシュタグ付与。
   const coreTags = p.hashtag_strategy?.core ?? [];
-  const jstNow = now().getTime() + 9 * H;
-  const jstTomorrow = Math.floor(jstNow / DAY) * DAY + DAY;
   const slots = VALUE_SLOTS_JST_MIN;
+  // JST の暦日(明日)を基準にスロット時刻を割り当てる。
+  const jst = new Date(now().getTime() + 9 * H);
+  const jy = jst.getUTCFullYear();
+  const jm = jst.getUTCMonth();
+  const jd = jst.getUTCDate();
 
   const data = posts.map((post, i) => {
-    const day = Math.floor(i / slots.length) % days;
-    const slot = slots[i % slots.length]!;
-    const jstMs = jstTomorrow + day * DAY + slot * 60_000 + Math.floor(i / (slots.length * days)) * DAY;
-    const scheduledFor = new Date(jstMs - 9 * H);
+    const dayOffset = 1 + (Math.floor(i / slots.length) % days); // 明日から days 日に分散
+    const slotMin = slots[i % slots.length]!;
+    // JST 壁時計 (jy/jm/(jd+dayOffset) 00:00 + slotMin 分) → UTC = それ - 9h
+    const scheduledFor = new Date(Date.UTC(jy, jm, jd + dayOffset, 0, slotMin) - 9 * H);
     const body = coreTags.length > 0 ? appendHashtags(channel, post.body.trim(), coreTags) : post.body.trim();
     return {
       book_id: null,
