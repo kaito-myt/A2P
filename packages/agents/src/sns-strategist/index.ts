@@ -26,7 +26,9 @@ import type { LoggingContext, WithTokenLoggingDeps } from '../lib/with-token-log
 import type { LoadModelAssignmentDeps } from '../lib/load-model-assignment.js';
 import { generateImage as defaultGenerateImage, type GenerateImageFn } from '../tools/image-gen.js';
 
-const DEFAULT_MAX_OUTPUT_TOKENS = 3072;
+// リッチな日本語プロファイル(柱+画像プロンプト2本)は 3072 では途中切れし
+// generateObject が "No object generated" になるため十分に確保する。
+const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
 
 /** チャンネル種別 → 日本語ラベル (プロンプト内表示用)。 */
 const CHANNEL_LABEL: Record<string, string> = {

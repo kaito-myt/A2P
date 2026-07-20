@@ -20,7 +20,8 @@ import {
 import type { LoggingContext, WithTokenLoggingDeps } from '../lib/with-token-logging.js';
 import type { LoadModelAssignmentDeps } from '../lib/load-model-assignment.js';
 
-const DEFAULT_MAX_OUTPUT_TOKENS = 4096;
+// 複数の育成投稿(日本語)を JSON で返すため、途中切れしないよう十分に確保する。
+const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
 
 const CHANNEL_LABEL: Record<string, string> = {
   x: 'X (旧 Twitter)',
