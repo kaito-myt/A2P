@@ -90,6 +90,9 @@ async function publishViaWebhook(
         title: input.title,
         body: input.body,
         handle: input.config.handle,
+        // F-058: IG/TikTok 用に AI 生成した販促画像の公開URL。中継(Make/Zapier)が
+        // これを投稿メディアに使う。無ければ空配列。
+        mediaUrls: input.mediaUrls ?? [],
       }),
     });
     const text = await res.text();

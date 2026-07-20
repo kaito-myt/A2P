@@ -82,4 +82,20 @@ describe('createHttpPublisherPort — webhook 経由', () => {
     const [url] = fetchImpl.mock.calls[0]! as unknown as [string];
     expect(url).toBe('https://hook.test/relay');
   });
+
+  it('F-058: mediaUrls を webhook ペイロードに載せる (Make中継でIG画像投稿)', async () => {
+    const fetchImpl = fetchReturning(200, JSON.stringify({ url: 'https://instagram.com/p/x' }));
+    const port = createHttpPublisherPort({ fetchImpl });
+    await port.publish({
+      channel: 'instagram',
+      title: null,
+      body: 'キャプション',
+      config: { token: null, handle: '@me', extra: { webhook_url: 'https://hook.test/ig' } },
+      mediaUrls: ['https://r2/signed/promo.png'],
+    });
+    const [, init] = fetchImpl.mock.calls[0]! as unknown as [string, { body: string }];
+    const sent = JSON.parse(init.body) as { channel: string; mediaUrls: string[] };
+    expect(sent.channel).toBe('instagram');
+    expect(sent.mediaUrls).toEqual(['https://r2/signed/promo.png']);
+  });
 });

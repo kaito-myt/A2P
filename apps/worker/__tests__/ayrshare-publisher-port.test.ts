@@ -29,7 +29,7 @@ describe('createAyrsharePublisherPort', () => {
     const port = createAyrsharePublisherPort({ fetchImpl, apiKey: 'k' });
     const res = await port.publish(input({ mediaUrls: ['https://img/x.png'] }));
     expect(res).toEqual({ ok: true, externalUrl: 'https://instagram.com/p/abc' });
-    const call = fetchImpl.mock.calls[0]!;
+    const call = fetchImpl.mock.calls[0]! as unknown as [string, { body: string; headers: { authorization: string } }];
     expect(call[0]).toBe('https://api.ayrshare.com/api/post');
     const sent = JSON.parse(call[1].body) as { post: string; platforms: string[]; mediaUrls: string[] };
     expect(sent.platforms).toEqual(['instagram']);
