@@ -40,9 +40,9 @@ export const ContentPillarSchema = z.object({
   /** 柱の名前（例: 「明日から使える仕事術」）。 */
   name: z.string().min(1).max(120),
   /** 何を・誰に・どんな価値で発信するか。 */
-  description: z.string().min(1).max(1000),
+  description: z.string().max(1000).default(''),
   /** そのままの投稿例（1 本）。 */
-  example_post: z.string().min(1).max(2000),
+  example_post: z.string().max(2000).default(''),
 });
 export type ContentPillar = z.infer<typeof ContentPillarSchema>;
 
@@ -71,28 +71,69 @@ export type HashtagStrategy = z.infer<typeof HashtagStrategySchema>;
  * 注意: 文字数上限/最小数は LLM 出力を弾かないよう緩めに設定する（厳しすぎると
  * generateObject が "response did not match schema" で失敗する）。整形はプロンプト側で誘導。
  */
-export const AccountStrategyProfileSchema = z.object({
-  /** ポジショニング宣言（このアカウントは何屋か）。 */
-  concept: z.string().min(1).max(2000),
-  /** 表示名（プロフィールに出る名前）。 */
-  display_name: z.string().min(1).max(120),
-  /** 推奨ハンドル（@ なし・英数字/アンダースコア）。 */
-  handle_suggestion: z.string().min(1).max(80),
-  /** プロフィール文（各媒体の文字数に収める）。 */
-  bio: z.string().min(1).max(2000),
-  /** 発信の柱（3〜6 本を推奨、最低 1 本）。 */
-  content_pillars: z.array(ContentPillarSchema).min(1).max(10),
-  /** トーン&マナー（語り口）。 */
-  tone_of_voice: z.string().min(1).max(1000),
-  posting_cadence: PostingCadenceSchema,
-  hashtag_strategy: HashtagStrategySchema,
-  /** プラットフォーム別のグロース戦術。 */
-  growth_tactics: z.array(z.string().min(1).max(1000)).min(1).max(12),
-  /** アイコン（正方形）生成プロンプト。文字なし。 */
-  avatar_prompt: z.string().min(1).max(3000),
-  /** カバー/ヘッダー（横長）生成プロンプト。文字なし。 */
-  banner_prompt: z.string().min(1).max(3000),
-  /** 戦略の根拠（任意）。 */
-  rationale: z.string().max(2000).optional(),
-});
+/** 値を文字列へ寄せる（オブジェクト/配列が来たら代表文字列を拾う）。 */
+function coerceToString(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (v && typeof v === 'object') {
+    const s = Object.values(v as Record<string, unknown>).find((x) => typeof x === 'string');
+    return typeof s === 'string' ? s : JSON.stringify(v);
+  }
+  return v == null ? '' : String(v);
+}
+
+/**
+ * LLM 出力の“ゆらぎ”を吸収する前処理。posting_cadence を文字列で返す/hashtag_strategy を配列で返す/
+ * pillars を文字列配列で返す 等の逸脱を、スキーマ形に正規化する。
+ */
+function normalizeProfile(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  const o: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+
+  if (typeof o.posting_cadence === 'string') {
+    o.posting_cadence = { frequency: o.posting_cadence, best_times: [] };
+  }
+  if (Array.isArray(o.hashtag_strategy)) {
+    o.hashtag_strategy = { core: o.hashtag_strategy, rotating: [] };
+  } else if (typeof o.hashtag_strategy === 'string') {
+    o.hashtag_strategy = { core: [o.hashtag_strategy], rotating: [] };
+  }
+  if (Array.isArray(o.growth_tactics)) {
+    o.growth_tactics = o.growth_tactics.map(coerceToString).filter((s) => s.length > 0);
+  }
+  if (Array.isArray(o.content_pillars)) {
+    o.content_pillars = o.content_pillars.map((p) => {
+      if (typeof p === 'string') return { name: p, description: '', example_post: '' };
+      return p;
+    });
+  }
+  return o;
+}
+
+export const AccountStrategyProfileSchema = z.preprocess(
+  normalizeProfile,
+  z.object({
+    /** ポジショニング宣言（このアカウントは何屋か）。 */
+    concept: z.string().min(1).max(2000),
+    /** 表示名（プロフィールに出る名前）。 */
+    display_name: z.string().min(1).max(120),
+    /** 推奨ハンドル（@ なし・英数字/アンダースコア）。 */
+    handle_suggestion: z.string().min(1).max(80),
+    /** プロフィール文（各媒体の文字数に収める）。 */
+    bio: z.string().min(1).max(2000),
+    /** 発信の柱（3〜6 本を推奨、最低 1 本）。 */
+    content_pillars: z.array(ContentPillarSchema).min(1).max(10),
+    /** トーン&マナー（語り口）。 */
+    tone_of_voice: z.string().min(1).max(1000),
+    posting_cadence: PostingCadenceSchema,
+    hashtag_strategy: HashtagStrategySchema,
+    /** プラットフォーム別のグロース戦術。 */
+    growth_tactics: z.array(z.string().min(1).max(1000)).min(1).max(12),
+    /** アイコン（正方形）生成プロンプト。文字なし。 */
+    avatar_prompt: z.string().min(1).max(3000),
+    /** カバー/ヘッダー（横長）生成プロンプト。文字なし。 */
+    banner_prompt: z.string().min(1).max(3000),
+    /** 戦略の根拠（任意）。 */
+    rationale: z.string().max(2000).optional(),
+  }),
+);
 export type AccountStrategyProfile = z.infer<typeof AccountStrategyProfileSchema>;

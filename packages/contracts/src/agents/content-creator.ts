@@ -43,7 +43,31 @@ export const ValuePostSchema = z.object({
 });
 export type ValuePost = z.infer<typeof ValuePostSchema>;
 
-export const AccountContentOutputSchema = z.object({
-  posts: z.array(ValuePostSchema).min(1).max(30),
-});
+/** LLM が posts をトップ配列で返す/pillar 欠落 等のゆらぎを吸収する。 */
+function normalizeContent(raw: unknown): unknown {
+  const arr = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === 'object' && Array.isArray((raw as { posts?: unknown }).posts)
+      ? (raw as { posts: unknown[] }).posts
+      : null;
+  if (!arr) return raw;
+  const posts = arr
+    .map((p) => {
+      if (typeof p === 'string') return { pillar: '一般', body: p };
+      if (p && typeof p === 'object') {
+        const o = p as Record<string, unknown>;
+        return { pillar: typeof o.pillar === 'string' && o.pillar ? o.pillar : '一般', body: o.body ?? o.text ?? o.post ?? '' };
+      }
+      return p;
+    })
+    .filter((p) => p && typeof (p as { body?: unknown }).body === 'string' && (p as { body: string }).body.length > 0);
+  return { posts };
+}
+
+export const AccountContentOutputSchema = z.preprocess(
+  normalizeContent,
+  z.object({
+    posts: z.array(ValuePostSchema).min(1).max(30),
+  }),
+);
 export type AccountContentOutput = z.infer<typeof AccountContentOutputSchema>;
