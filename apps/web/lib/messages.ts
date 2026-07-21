@@ -1871,6 +1871,7 @@ export const messages = {
       processed: (n: number, total: number) => `${n} / ${total} コメント処理済`,
       percent: (pct: number) => `(${pct}%)`,
       complete: '完了',
+      running: '処理中…',
     },
     bookProgress: {
       applied: '適用済み',
