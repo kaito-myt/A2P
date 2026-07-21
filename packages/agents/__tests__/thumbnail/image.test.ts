@@ -154,12 +154,15 @@ describe('generateCoverImage -- happy path', () => {
 // ---------------------------------------------------------------------------
 
 describe('generateCoverImage -- prompt construction', () => {
-  it('prompt forbids text and does NOT embed the title (title is overlaid, not drawn)', async () => {
-    const input = baseInput({ title: 'AI時代の副業術' });
+  it('prompt はタイトル文字を統合描画するよう埋め込む(1パス統合生成)', async () => {
+    const input = baseInput({ title: 'AI時代の副業術', subtitle: '初心者ガイド', author: '宮田海斗' });
     const result = await generateCoverImage(input, baseDeps());
 
-    expect(result.promptUsed).toContain('NO TEXT');
-    expect(result.promptUsed).not.toContain('AI時代の副業術');
+    // 文字ごとデザインさせる方式: タイトル/サブ/著者を正確に描くよう指示する。
+    expect(result.promptUsed).toContain('AI時代の副業術');
+    expect(result.promptUsed).toContain('初心者ガイド');
+    expect(result.promptUsed).toContain('宮田海斗');
+    expect(result.promptUsed).toContain('一字一句正確');
   });
 
   it('prompt includes the style guide (art direction)', async () => {
@@ -174,7 +177,6 @@ describe('generateCoverImage -- prompt construction', () => {
     const result = await generateCoverImage(input, baseDeps());
 
     expect(result.promptUsed).toContain('テーマX');
-    expect(result.promptUsed).toContain('NO TEXT');
   });
 });
 
@@ -442,78 +444,37 @@ describe('generateCoverImage -- composited output', () => {
 // 14. typography refine pass (gpt-image-1 edit)
 // ---------------------------------------------------------------------------
 
-describe('generateCoverImage -- typography refine pass', () => {
-  it('feeds the composited draft + exact title into editImage and uploads the refined result', async () => {
-    const composited = Buffer.from('COMPOSITED_DRAFT');
-    const refined = Buffer.from('REFINED_BEAUTIFUL_COVER');
-    const compose = vi.fn(async () => composited) as unknown as ComposeTypographyFn;
-    const editImage = vi.fn(
+describe('generateCoverImage -- 1パス統合生成 (文字ごとデザイン)', () => {
+  it('composeTypography 未注入なら合成せず、生成画像をそのまま最終カバーに使う', async () => {
+    const uploadBuf = makeFakeUploadBuffer();
+    const coverRepo = makeFakeCoverRepo();
+    // 生成画像バッファを固定して、そのままアップロードされることを確認。
+    const genImage = vi.fn(
       async (_args: GenerateImageArgs): Promise<GenerateImageResult> => ({
-        images: [refined],
-        costJpy: 18.0,
+        images: [Buffer.from('INTEGRATED_COVER')],
+        costJpy: 20.0,
         usage: { imageCount: 1 },
       }),
     ) as unknown as GenerateImageFn;
-    const uploadBuf = makeFakeUploadBuffer();
-    const coverRepo = makeFakeCoverRepo();
 
     await generateCoverImage(
       baseInput({ title: 'メインタイトル', subtitle: 'サブ', author: 'ミヤタ' }),
-      baseDeps({
-        composeTypography: compose,
-        editImage,
-        refineTypography: true,
-        uploadBuffer: uploadBuf,
-        prisma: { cover: coverRepo },
-      }),
+      // composeTypography を明示的に外す(未注入=合成なし)。
+      baseDeps({ composeTypography: undefined, generateImage: genImage, uploadBuffer: uploadBuf, prisma: { cover: coverRepo } }),
     );
 
-    // edit は合成下絵を入力画像に、タイトルを正確に描く指示で呼ばれる
-    expect(editImage).toHaveBeenCalledTimes(1);
-    const editArgs = (editImage as ReturnType<typeof vi.fn>).mock.calls[0]![0] as GenerateImageArgs;
-    expect(editArgs.image).toBe(composited);
-    expect(editArgs.prompt).toContain('メインタイトル');
-    expect(editArgs.prompt).toContain('サブ');
-    expect(editArgs.prompt).toContain('ミヤタ');
-
-    // アップロードされるのは再描画後のバッファ
+    // 合成せず生成画像がそのままアップロードされる。
     const [, buf] = uploadBuf.mock.calls[0]!;
-    expect(buf).toBe(refined);
-
-    const meta = (coverRepo.create.mock.calls[0]![0] as unknown as {
-      data: { generation_meta_json: Record<string, unknown> };
-    }).data.generation_meta_json;
-    expect(meta.typography_refined).toBe(true);
-    expect(meta.image_size_bytes).toBe(refined.byteLength);
-  });
-
-  it('falls back to the composited draft when the refine pass throws', async () => {
-    const composited = Buffer.from('COMPOSITED_DRAFT_FALLBACK');
-    const compose = vi.fn(async () => composited) as unknown as ComposeTypographyFn;
-    const editImage = vi.fn(async () => {
-      throw new Error('gpt-image-1 edit failed');
-    }) as unknown as GenerateImageFn;
-    const uploadBuf = makeFakeUploadBuffer();
-    const coverRepo = makeFakeCoverRepo();
-
-    await generateCoverImage(
-      baseInput(),
-      baseDeps({
-        composeTypography: compose,
-        editImage,
-        refineTypography: true,
-        uploadBuffer: uploadBuf,
-        prisma: { cover: coverRepo },
-      }),
-    );
-
-    // 失敗しても合成版で確実にカバーが出る
-    const [, buf] = uploadBuf.mock.calls[0]!;
-    expect(buf).toBe(composited);
-
+    expect(buf.toString()).toBe('INTEGRATED_COVER');
     const meta = (coverRepo.create.mock.calls[0]![0] as unknown as {
       data: { generation_meta_json: Record<string, unknown> };
     }).data.generation_meta_json;
     expect(meta.typography_refined).toBe(false);
+  });
+
+  it('プロンプトに「読者の目に留まる」「KDPで売れる本の表紙」の意図が入る', async () => {
+    const result = await generateCoverImage(baseInput({ title: 'テストタイトル' }), baseDeps());
+    expect(result.promptUsed).toContain('読者の目に留まる');
+    expect(result.promptUsed).toContain('KDP');
   });
 });

@@ -107,32 +107,46 @@ export interface GenerateCoverImageDeps {
 // ---------------------------------------------------------------------------
 
 function buildImagePrompt(input: ThumbnailImageInput): string {
-  // タイトル等は後で別レイヤー合成するので、AI には文字を描かせない。
-  // アート方向性 (styleGuide) が絵作りを主導する。空ならジャンル汎用のフォールバック。
+  // gpt-image-1 は日本語タイポグラフィを正確かつ美しくデザイン統合して描けるため、
+  // ChatGPT で手作業した時と同じく「文字ごとデザインさせる」1 パス方式を採る
+  // (旧: 文字なし生成→フラット実フォント合成→refine の3段は品質が劣るため廃止)。
+  // アート方向性 (styleGuide) が絵作り・配色・世界観を主導する。
   const artDirection =
     input.styleGuide && input.styleGuide.trim().length > 0
       ? input.styleGuide.trim()
-      : `A clean, modern, commercially appealing book-cover artwork that visually evokes the theme of "${input.title}". Choose a tasteful, professional style appropriate to the topic (photographic, minimalist, symbolic, or illustrated).`;
+      : `A clean, modern, commercially appealing Japanese Kindle book-cover that visually evokes the theme of "${input.title}". Choose a tasteful, professional style appropriate to the topic (photographic, minimalist, symbolic, or illustrated), with a refined, intentional color palette.`;
 
   const lines: string[] = [
-    'Create a professional, commercially appealing book-cover ARTWORK (illustration or photographic composition), portrait orientation, high quality, print-ready.',
+    'これは Amazon KDP (Kindle) で **売れる本を作るためのサムネイル（表紙）画像** です。',
+    'スクロール中の **読者の目に留まる（パッと目を引き、思わずタップしたくなる）**、プロがデザインした魅力的な日本の電子書籍の表紙を1枚作成してください。縦長(portrait)、高解像度、印刷可能品質。',
+    'サムネイル（小さな一覧表示）でも一瞬で目を引き、内容が伝わり、競合の中で埋もれないことを最優先にする。',
     '',
-    'Art direction (follow this closely — it defines the visual concept, style, subject, composition, mood and palette):',
+    'アートディレクション（絵作り・世界観・配色・構図の主導。忠実に反映）:',
     artDirection,
     '',
-    'ABSOLUTELY CRITICAL — NO TEXT:',
-    '- Do NOT render ANY text, letters, words, kanji, kana, numbers, titles, captions, labels, logos, watermarks or signatures ANYWHERE in the image.',
-    '- The title, subtitle and author name are added later as a separate typography layer. The artwork itself must be 100% text-free.',
-    '- Keep the LOWER third of the image relatively clean and simple (calmer, lower-detail, or a smooth area) so title text can be overlaid legibly on top.',
-    '',
-    'Quality guardrails (avoid the cheap AI look):',
-    '- Polished, intentional, professional composition with depth.',
-    '- If human characters appear: correct anatomy (natural hands, fingers, faces, eyes; no extra or fused limbs).',
-    '- No borders or frames, no UI elements, no stock-photo collage, no muddy/oversaturated rainbow gradients.',
-    '- Keep it SFW and appropriate for a general Amazon storefront.',
-    '',
-    'Output: a sharp, high-quality vertical book-cover artwork with NO text anywhere.',
+    '表紙に配置する日本語の文字（**一字一句正確に**・翻訳や変換・省略・追加をしない・崩さない・読みやすく）:',
+    `- メインタイトル（最も大きく主役）:「${input.title}」`,
   ];
+  if (input.subtitle && input.subtitle.trim().length > 0) {
+    lines.push(`- サブタイトル（タイトルより小さく）:「${input.subtitle}」`);
+  }
+  if (input.author && input.author.trim().length > 0) {
+    lines.push(`- 著者名（最も小さく・下部）:「${input.author}」`);
+  }
+  lines.push(
+    '',
+    'タイポグラフィ要件:',
+    '- 文字はデザインに自然に統合し、書店で目を引くプロ品質の美しいタイポグラフィにする（明確な階層・上質なウェイト/コントラスト・配色との調和）。',
+    '- 全ての漢字・ひらがな・カタカナを正確に、崩さず、サムネイルでも読める高コントラストで描く。',
+    '- 上記以外の文字・ロゴ・透かし・バーコード・価格・キャプションは一切追加しない。',
+    '',
+    '品質ガード（安っぽい AI 感を避ける）:',
+    '- 洗練された意図的な構図と奥行き。人物が出る場合は正しい解剖学（自然な手指・顔・目、余分な四肢なし）。',
+    '- 枠や縁取り・UI 要素・ストック写真のコラージュ・濁った過飽和グラデーションは使わない。',
+    '- 一般的な Amazon ストアに適切な健全な内容。',
+    '',
+    '出力: 日本語タイトルが正確かつ美しくデザイン統合された、縦型の高品質な本の表紙。',
+  );
   return lines.join('\n');
 }
 
@@ -241,8 +255,6 @@ export async function generateCoverImage(
   const illustration = genResult.images[0]!;
   const costJpy = genResult.costJpy;
 
-  // --- 4. Composite real Japanese typography over the illustration ---
-  const compose = deps.composeTypography ?? defaultComposeCoverTypography;
   const coverText: CoverText = { title: parsed.title };
   if (parsed.subtitle && parsed.subtitle.trim().length > 0) {
     coverText.subtitle = parsed.subtitle;
@@ -250,44 +262,16 @@ export async function generateCoverImage(
   if (parsed.author && parsed.author.trim().length > 0) {
     coverText.author = parsed.author;
   }
-  const compositedImage = await compose(illustration, coverText);
 
-  // --- 4.5. Typography refine pass (gpt-image-1 edit) ---
-  // 実フォント合成版を「下絵」として gpt-image-1 に渡し、タイトル等を正確に保った
-  // まま魅力的なタイポグラフィへ描き直させる。ベストエフォート: 失敗時は合成版を使う。
-  let finalImage = compositedImage;
+  // --- 4. 文字はプロンプトでデザイン統合済み。原則そのまま最終カバーとして使う。 ---
+  //   万一の文字化けは cover_text_check(ビジョン検査)＋recheck ループが検知して作り直す。
+  //   deps.composeTypography が明示注入された場合のみ、旧方式(実フォント合成)を適用できる
+  //   (テスト/フォールバック用途)。既定は 1 パス統合生成の結果を使う。
+  let finalImage = illustration;
   let refineApplied = false;
-  const refineEnabled = deps.refineTypography ?? true;
-  if (refineEnabled) {
-    try {
-      const editFn: GenerateImageFn = deps.editImage ?? defaultEditImage;
-      const wrappedEdit = withImageLogging(editFn, loggingCtx, deps.withImageLoggingDeps);
-      const refined = await wrappedEdit(
-        {
-          prompt: buildRefinePrompt(coverText),
-          image: compositedImage,
-          width: parsed.width,
-          height: parsed.height,
-          count: 1,
-          quality: 'high',
-          outputFormat: 'jpeg',
-          outputCompression: 92,
-        },
-        deps.imageGenDeps,
-      );
-      const refinedImage = refined.images[0];
-      if (refinedImage && refinedImage.byteLength > 0) {
-        finalImage = refinedImage;
-        refineApplied = true;
-      }
-    } catch (err) {
-      // ベストエフォート: 再描画に失敗しても実フォント合成版で確実にカバーを出す。
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[generateCoverImage] typography refine pass failed; falling back to composited image',
-        err,
-      );
-    }
+  if (deps.composeTypography) {
+    finalImage = await deps.composeTypography(illustration, coverText);
+    refineApplied = true;
   }
 
   // --- 5. Generate cover ID and R2 key ---
