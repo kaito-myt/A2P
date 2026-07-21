@@ -356,6 +356,31 @@ export async function runPipelineBookMarketer(
       { scope: 'per_book', book_id: bookId },
     );
 
+    // 8a-2. フリガナ(readings)を自動生成: KdpMetadata が出来た直後に連鎖させ、
+    //       KDP 入稿チェックリストを開いた時点でフリガナが「最初から」揃うようにする。
+    //       非致命 (失敗しても本編パイプラインは止めない)。
+    try {
+      const readingsJob = await prisma.job.create({
+        data: {
+          kind: 'pipeline.book.readings.generate',
+          book_id: bookId,
+          parent_job_id: jobId,
+          status: 'queued',
+          payload_json: { book_id: bookId },
+        },
+      });
+      await addJob(
+        'pipeline.book.readings.generate',
+        { book_id: bookId, job_id: readingsJob.id },
+        { maxAttempts: 3 },
+      );
+    } catch (readingsErr) {
+      log.warn(
+        { task: PIPELINE_BOOK_MARKETER_TASK_NAME, jobId, bookId, err: readingsErr },
+        'failed to enqueue readings — non-fatal',
+      );
+    }
+
     // 8. 内部 Job 行を新規作成し、その id を payload に乗せて graphile-worker へ enqueue
     //    payload は docs/05 §5.3.3 準拠の `{ book_id, job_id }`。
     //    `job_id` は **新規作成した子 Job の id** (= 親 marketer jobId ではない)。

@@ -37,7 +37,12 @@ export default async function KdpChecklistDetailPage({
       publish_status: true,
       has_blocking_comments: true,
       account: { select: { pen_name: true } },
-      theme: { select: { authorName: { select: { name: true } } } },
+      theme: {
+        select: {
+          authorName: { select: { name: true } },
+          labelName: { select: { name: true } },
+        },
+      },
       kdpMetadata: {
         select: {
           description: true,
@@ -50,6 +55,9 @@ export default async function KdpChecklistDetailPage({
           subtitle_romaji: true,
           author_kana: true,
           author_romaji: true,
+          label_kana: true,
+          label_romaji: true,
+          series_name: true,
         },
       },
       covers: {

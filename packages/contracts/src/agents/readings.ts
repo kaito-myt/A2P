@@ -15,6 +15,8 @@ export const ReadingsInputSchema = z.object({
   subtitle: z.string().optional(),
   /** 著者名 (ペンネーム)。 */
   author: z.string().min(1),
+  /** レーベル名 (任意)。KDP 入稿の出版社/レーベル欄の読み用。 */
+  label: z.string().optional(),
 });
 export type ReadingsInput = z.infer<typeof ReadingsInputSchema>;
 
@@ -26,5 +28,7 @@ export const ReadingsOutputSchema = z.object({
   title_kana: z.string(),
   subtitle_kana: z.string(),
   author_kana: z.string(),
+  /** レーベル名のカタカナ読み (label 未指定なら空)。既存プロンプト互換のため既定 ''。 */
+  label_kana: z.string().default(''),
 });
 export type ReadingsOutput = z.infer<typeof ReadingsOutputSchema>;

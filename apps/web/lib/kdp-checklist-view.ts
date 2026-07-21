@@ -22,9 +22,12 @@ export const CHECKLIST_FIELDS = [
   'author',
   'author_kana',
   'author_romaji',
+  'label',
+  'label_kana',
+  'label_romaji',
+  'series',
   'description',
   'category1',
-  'category2',
   'keywords',
   'price',
   'cover_url',
@@ -106,9 +109,10 @@ export interface PrismaBookForChecklist {
   account: {
     pen_name: string;
   };
-  // テーマにマスタ著者名が割り当てられていれば表紙・入稿の著者名に優先使用する。
+  // テーマにマスタ著者名/レーベル名が割り当てられていれば入稿の著者名/レーベルに使用する。
   theme?: {
     authorName: { name: string } | null;
+    labelName?: { name: string } | null;
   } | null;
   kdpMetadata: {
     description: string;
@@ -121,6 +125,9 @@ export interface PrismaBookForChecklist {
     subtitle_romaji: string | null;
     author_kana: string | null;
     author_romaji: string | null;
+    label_kana: string | null;
+    label_romaji: string | null;
+    series_name: string | null;
   } | null;
   covers: Array<{
     id: string;
@@ -229,12 +236,18 @@ function buildFields(
         return { ...base, value: meta?.author_kana ?? null };
       case 'author_romaji':
         return { ...base, value: meta?.author_romaji ?? null };
+      case 'label':
+        return { ...base, value: meta ? (book.theme?.labelName?.name ?? '') : null };
+      case 'label_kana':
+        return { ...base, value: meta?.label_kana ?? null };
+      case 'label_romaji':
+        return { ...base, value: meta?.label_romaji ?? null };
+      case 'series':
+        return { ...base, value: meta ? (meta.series_name ?? '') : null };
       case 'description':
         return { ...base, value: meta ? meta.description : null };
       case 'category1':
         return { ...base, value: meta ? (meta.categories[0] ?? '') : null };
-      case 'category2':
-        return { ...base, value: meta ? (meta.categories[1] ?? '') : null };
       case 'keywords':
         return {
           ...base,
@@ -277,9 +290,12 @@ function fieldLabel(field: ChecklistField): string {
     author: '著者名',
     author_kana: '著者名（カタカナ）',
     author_romaji: '著者名（ローマ字）',
+    label: 'レーベル',
+    label_kana: 'レーベル（カタカナ）',
+    label_romaji: 'レーベル（ローマ字）',
+    series: 'シリーズ',
     description: '紹介文',
-    category1: 'カテゴリ 1',
-    category2: 'カテゴリ 2',
+    category1: 'カテゴリ',
     keywords: 'キーワード (1-7)',
     price: '価格 (JPY)',
     cover_url: 'カバー URL',

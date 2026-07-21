@@ -44,6 +44,9 @@ const BASE_BOOK: PrismaBookForChecklist = {
     subtitle_romaji: null,
     author_kana: null,
     author_romaji: null,
+    label_kana: null,
+    label_romaji: null,
+    series_name: null,
   },
   covers: [
     { id: 'cover_1', r2_key: 'covers/book_1/v1.png', status: 'adopted' },
@@ -90,12 +93,25 @@ describe('serializeChecklistBook — metadata present', () => {
     expect(authorField.value).toBe('テスト太郎');
   });
 
-  it('category1/category2 が categories 配列から取得される', () => {
+  it('category1 が categories 配列の先頭から取得される（カテゴリは1つ）', () => {
     const result = serializeChecklistBook(BASE_BOOK);
     const cat1 = result.fields.find((f) => f.field === 'category1')!;
-    const cat2 = result.fields.find((f) => f.field === 'category2')!;
     expect(cat1.value).toBe('ビジネス・経済 > 個人投資・副業');
-    expect(cat2.value).toBe('コンピュータ・IT > 人工知能');
+    // category2 は廃止
+    expect(result.fields.find((f) => f.field === ('category2' as unknown as typeof cat1.field))).toBeUndefined();
+  });
+
+  it('レーベル/シリーズ フィールドが含まれる（F-020c）', () => {
+    const book = {
+      ...BASE_BOOK,
+      theme: { authorName: null, labelName: { name: 'フェスタル文庫' } },
+      kdpMetadata: { ...BASE_BOOK.kdpMetadata!, label_kana: 'フェスタルブンコ', label_romaji: 'fesutarubunko', series_name: 'AI副業シリーズ' },
+    };
+    const result = serializeChecklistBook(book);
+    expect(result.fields.find((f) => f.field === 'label')!.value).toBe('フェスタル文庫');
+    expect(result.fields.find((f) => f.field === 'label_kana')!.value).toBe('フェスタルブンコ');
+    expect(result.fields.find((f) => f.field === 'label_romaji')!.value).toBe('fesutarubunko');
+    expect(result.fields.find((f) => f.field === 'series')!.value).toBe('AI副業シリーズ');
   });
 
   it('keywords フィールドに chips 配列が含まれる', () => {
@@ -132,7 +148,7 @@ describe('serializeChecklistBook — metadata missing', () => {
   it('メタデータ依存フィールド (description, price 等) の value が null', () => {
     const result = serializeChecklistBook(bookNoMeta);
     // メタデータ依存フィールド
-    const metadataFields = ['description', 'category1', 'category2', 'keywords', 'price'];
+    const metadataFields = ['description', 'category1', 'label', 'label_kana', 'series', 'keywords', 'price'];
     for (const field of metadataFields) {
       const f = result.fields.find((x) => x.field === field)!;
       expect(f.value).toBeNull();

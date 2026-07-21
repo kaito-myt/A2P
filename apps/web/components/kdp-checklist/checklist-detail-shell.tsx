@@ -6,7 +6,7 @@
  * 一覧 (/kdp/checklist) から書籍を選んで遷移する詳細ページ用。
  * 旧 ChecklistPageShell のタブを廃し、単一書籍の編集に専念する。
  */
-import { useState, useCallback, useTransition } from 'react';
+import { useEffect, useRef, useState, useCallback, useTransition } from 'react';
 import Link from 'next/link';
 
 import { messages } from '@/lib/messages';
@@ -35,6 +35,20 @@ export function ChecklistDetailShell({ book: initialBook }: { book: ChecklistBoo
       );
     });
   }
+
+  // フリガナは「最初から」出すのが方針。メタデータはあるのに読みが未生成の書籍
+  // (自動連鎖前に作られた既存本など) を開いた時点で、ボタンを押さず自動生成する。
+  const autoTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (autoTriggeredRef.current) return;
+    if (book.metadataMissing || !book.readingsMissing) return;
+    autoTriggeredRef.current = true;
+    setReadingsInfo(messages.kdpChecklist.readings.autoStarted);
+    startReadings(async () => {
+      await generateBookReadings({ book_id: book.id });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleFieldUpdate = useCallback(
     (_bookId: string, field: string, patch: { copied?: boolean; checked?: boolean }) => {
@@ -78,21 +92,22 @@ export function ChecklistDetailShell({ book: initialBook }: { book: ChecklistBoo
 
       {!book.metadataMissing && (
         <div className="flex flex-wrap items-center gap-space-snug">
-          <button
-            type="button"
-            onClick={handleGenerateReadings}
-            disabled={readingsPending}
-            className="inline-flex items-center rounded-card border border-border-warm bg-cream px-3 py-1.5 text-button-sm text-charcoal hover:bg-charcoal-04 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            data-testid="generate-readings-btn"
-          >
-            {readingsPending
-              ? messages.kdpChecklist.readings.generating
-              : messages.kdpChecklist.readings.generateButton}
-          </button>
-          {book.readingsMissing && (
-            <span className="text-button-sm text-warning">
+          {book.readingsMissing ? (
+            <span className="text-button-sm text-muted" data-testid="readings-generating">
               {messages.kdpChecklist.readings.notGenerated}
             </span>
+          ) : (
+            <button
+              type="button"
+              onClick={handleGenerateReadings}
+              disabled={readingsPending}
+              className="inline-flex items-center text-button-sm text-muted underline underline-offset-2 hover:no-underline disabled:opacity-50"
+              data-testid="generate-readings-btn"
+            >
+              {readingsPending
+                ? messages.kdpChecklist.readings.generating
+                : messages.kdpChecklist.readings.generateButton}
+            </button>
           )}
           {readingsInfo && <span className="text-button-sm text-success">{readingsInfo}</span>}
         </div>

@@ -9,6 +9,7 @@ const result = {
   title_kana: 'タイトル', title_romaji: 'taitoru',
   subtitle_kana: 'サブ', subtitle_romaji: 'sabu',
   author_kana: 'ミヤタカイト', author_romaji: 'miyatakaito',
+  label_kana: 'フェスタルブンコ', label_romaji: 'fesutarubunko',
 };
 
 function makePrisma(book: Record<string, unknown> | null) {

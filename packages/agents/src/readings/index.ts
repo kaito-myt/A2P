@@ -45,6 +45,8 @@ export interface ReadingsResult {
   subtitle_romaji: string;
   author_kana: string;
   author_romaji: string;
+  label_kana: string;
+  label_romaji: string;
 }
 
 export async function generateReadings(
@@ -90,24 +92,28 @@ export async function generateReadings(
     subtitle_romaji: kanaToRomaji(kana.subtitle_kana),
     author_kana: kana.author_kana,
     author_romaji: kanaToRomaji(kana.author_kana),
+    label_kana: kana.label_kana,
+    label_romaji: kanaToRomaji(kana.label_kana),
   };
 }
 
 function buildUserMessage(input: ReadingsInput): string {
   const lines = [
-    '以下の日本語の「タイトル」「サブタイトル」「著者名」について、',
+    '以下の日本語の「タイトル」「サブタイトル」「著者名」「レーベル名」について、',
     'KDP 入稿用の**カタカナのヨミ（フリガナ）**を生成してください。',
     '',
     `タイトル: ${input.title}`,
     `サブタイトル: ${input.subtitle ?? '(なし)'}`,
     `著者名: ${input.author}`,
+    `レーベル名: ${input.label ?? '(なし)'}`,
     '',
     'ルール:',
     ' - 出力はすべて**全角カタカナ**。ひらがな・漢字・ローマ字を混ぜない。',
     ' - 英単語や数字は一般的な日本語読みをカタカナにする (例: AI→エーアイ, 5→ゴ)。',
     ' - 記号・装飾は読まない。読みが不要/不能な場合は空文字にする。',
     ' - 人名 (著者名) は最も自然な読みを推定する。',
-    ' - 出力は指定の JSON スキーマ (title_kana / subtitle_kana / author_kana) に厳密に従う。',
+    ' - レーベル名が「(なし)」の場合、label_kana は空文字にする。',
+    ' - 出力は指定の JSON スキーマ (title_kana / subtitle_kana / author_kana / label_kana) に厳密に従う。',
   ];
   return lines.join('\n');
 }

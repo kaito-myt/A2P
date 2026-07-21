@@ -489,6 +489,11 @@ model KdpMetadata {
   subtitle_romaji String?
   author_kana     String?
   author_romaji   String?
+  // [F-020c] レーベル名の読み (KDP 入稿の出版社/レーベル欄)。label 名はテーマの LabelName マスタ由来。
+  label_kana      String?
+  label_romaji    String?
+  // [F-020c] シリーズ名 (任意。KDP のシリーズ欄。未設定なら空)。
+  series_name     String?
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
 

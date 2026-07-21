@@ -37,12 +37,20 @@ export interface PipelineBookReadingsGeneratePrisma {
   book: {
     findUnique: (args: {
       where: { id: string };
-      select: { id: true; title: true; subtitle: true; account: { select: { pen_name: true } }; kdpMetadata: { select: { id: true } } };
+      select: {
+        id: true;
+        title: true;
+        subtitle: true;
+        account: { select: { pen_name: true } };
+        theme: { select: { labelName: { select: { name: true } } } };
+        kdpMetadata: { select: { id: true } };
+      };
     }) => Promise<{
       id: string;
       title: string;
       subtitle: string | null;
       account: { pen_name: string };
+      theme: { labelName: { name: string } | null } | null;
       kdpMetadata: { id: string } | null;
     } | null>;
   };
@@ -101,6 +109,7 @@ export async function runPipelineBookReadingsGenerate(
         title: true,
         subtitle: true,
         account: { select: { pen_name: true } },
+        theme: { select: { labelName: { select: { name: true } } } },
         kdpMetadata: { select: { id: true } },
       },
     });
@@ -115,6 +124,7 @@ export async function runPipelineBookReadingsGenerate(
       return;
     }
 
+    const labelName = book.theme?.labelName?.name ?? '';
     const result = await generate({
       jobId,
       bookId,
@@ -122,6 +132,7 @@ export async function runPipelineBookReadingsGenerate(
       title: book.title,
       author: book.account.pen_name,
       ...(book.subtitle ? { subtitle: book.subtitle } : {}),
+      ...(labelName ? { label: labelName } : {}),
     });
 
     await prisma.kdpMetadata.update({
@@ -133,6 +144,8 @@ export async function runPipelineBookReadingsGenerate(
         subtitle_romaji: result.subtitle_romaji,
         author_kana: result.author_kana,
         author_romaji: result.author_romaji,
+        label_kana: result.label_kana,
+        label_romaji: result.label_romaji,
       },
     });
 
