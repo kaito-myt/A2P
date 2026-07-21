@@ -347,6 +347,8 @@ model PromotionPost {
   channel       String // x | instagram | tiktok | note | blog
   // [F-059] 投稿種別: promo=宣伝(本の告知) | value=育成(価値提供・フォロワー獲得)。
   kind          String    @default("promo")
+  // [F-060] 事前レンダリング済みメディア(TikTok 動画 mp4 等)の R2 キー。publish 時に署名URL化して添付。
+  media_key     String?
   // P4 増分2: 投稿先の台帳アカウント (多アカウント routing)。null なら channel 既定設定を使う。
   account_id    String?
   title         String? // note/blog の見出し (SNS は null)

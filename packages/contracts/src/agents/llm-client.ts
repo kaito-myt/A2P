@@ -47,7 +47,13 @@ export type AgentRole =
   // F-057 — SNS アカウント運用設計担当（表示名/bio/アイコン/カバー/発信軸）。
   | 'sns_strategist'
   // F-059 — 育成投稿担当（発信の柱から価値提供型の投稿を生成）。
-  | 'content_creator';
+  | 'content_creator'
+  // F-060 — TikTok 動画の多エージェント台本パイプライン。
+  | 'tiktok_scenario'
+  | 'tiktok_creator'
+  | 'tiktok_editor'
+  | 'tiktok_proofreader'
+  | 'tiktok_marketer';
 
 /**
  * マルチモーダル入力用の画像添付。`content` (テキスト) と併せてユーザーメッセージに付与する。

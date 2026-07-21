@@ -15,6 +15,7 @@ import {
   cancelPromotionPost,
   generateChannelStrategy,
   generateChannelContent,
+  generateChannelVideo,
   publishPostNow,
   setChannelAuto,
   setChannelConnection,
@@ -67,6 +68,7 @@ export function ChannelBoard({
     <div className="flex flex-col gap-space-loose">
       <ChannelTabs active={channel} />
       <StrategyCard channel={channel} strategy={strategy} />
+      {channel === 'tiktok' && <TikTokVideoCard />}
       <AutomationCard setting={setting} />
       {channel === 'blog' ? <OwnedBlogNote /> : <ConnectionCard setting={setting} />}
       <QueueTable posts={posts} />
@@ -330,6 +332,59 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-caption font-medium text-charcoal-82">{label}</span>
       <div className="text-body text-charcoal">{children}</div>
     </div>
+  );
+}
+
+function TikTokVideoCard() {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [topic, setTopic] = useState('');
+  const [queued, setQueued] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const v = m.video;
+
+  function generate() {
+    setQueued(false);
+    setErr(null);
+    start(async () => {
+      const res = await generateChannelVideo({ topic: topic.trim() });
+      if (res.ok) {
+        setQueued(true);
+        setTopic('');
+        router.refresh();
+      } else {
+        setErr(res.error?.message ?? m.actionMsg.error);
+      }
+    });
+  }
+
+  return (
+    <Card title={v.title}>
+      <p className="text-body text-muted">{v.description}</p>
+      <label className="flex flex-col gap-1">
+        <span className="text-caption text-charcoal-82">{v.topicLabel}</span>
+        <input
+          value={topic}
+          onChange={(e) => setTopic(e.target.value)}
+          placeholder={v.topicPlaceholder}
+          className="w-full rounded-default border border-border-warm bg-cream-light px-3 py-2 text-button-sm text-foreground placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      </label>
+      <div className="flex flex-wrap items-center gap-space-snug">
+        <button
+          type="button"
+          onClick={generate}
+          disabled={pending}
+          data-testid="video-generate-tiktok"
+          className="inline-flex items-center rounded-card bg-charcoal px-3 py-1.5 text-button-sm text-cream-light shadow-l2-inset hover:opacity-80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          {pending ? v.generating : v.generate}
+        </button>
+        {queued && <span className="text-caption text-success">{v.queued}</span>}
+        {err && <span className="text-caption text-destructive">{err}</span>}
+      </div>
+      <p className="text-caption text-muted">{v.hint}</p>
+    </Card>
   );
 }
 

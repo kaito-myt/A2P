@@ -115,3 +115,20 @@ export {
   type ValuePost,
   type AccountContentOutput,
 } from './content-creator.js';
+
+export {
+  TikTokVideoInputSchema,
+  ScriptBeatSchema,
+  VideoScenarioSchema,
+  VideoSceneSchema,
+  VideoScriptSchema,
+  StoryboardSceneSchema,
+  StoryboardSchema,
+  type TikTokVideoInput,
+  type ScriptBeat,
+  type VideoScenario,
+  type VideoScene,
+  type VideoScript,
+  type StoryboardScene,
+  type Storyboard,
+} from './tiktok-video.js';

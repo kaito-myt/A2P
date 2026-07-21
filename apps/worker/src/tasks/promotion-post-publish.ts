@@ -52,6 +52,7 @@ export interface PromotionPostPublishPrisma {
         title: true;
         body: true;
         status: true;
+        media_key: true;
       };
     }) => Promise<{
       id: string;
@@ -61,6 +62,7 @@ export interface PromotionPostPublishPrisma {
       title: string | null;
       body: string;
       status: string;
+      media_key: string | null;
     } | null>;
     updateMany: (args: {
       where: { id: string; status: string };
@@ -103,8 +105,14 @@ export interface PromotionPostPublishDeps {
   resolvePort?: (channel: string) => PublisherPort;
   /** token_enc 復号関数 (テスト差し替え)。 */
   decryptToken?: (enc: string) => string;
-  /** F-058/F-059: IG/TikTok の添付メディア(公開URL)を用意する。既定は宣伝=本の販促画像/育成=投稿ごと画像。 */
-  buildMediaUrls?: (channel: string, bookId: string | null, postId: string, body: string) => Promise<string[]>;
+  /** F-058/F-059/F-060: IG/TikTok の添付メディア(公開URL)を用意する。既定は事前mp4→本の販促画像→投稿ごと画像。 */
+  buildMediaUrls?: (
+    channel: string,
+    bookId: string | null,
+    postId: string,
+    body: string,
+    mediaKey: string | null,
+  ) => Promise<string[]>;
   now?: () => Date;
 }
 
@@ -131,6 +139,7 @@ function defaultResolvePort(channel: string): PublisherPort {
 
 /**
  * IG/TikTok の添付メディア既定実装。
+ *  - 事前レンダリング済み media_key(TikTok 動画 mp4 等)があればそれを最優先。
  *  - 宣伝(本あり): その本の販促画像を生成し署名 URL を返す。
  *  - 育成(book_id=null): 投稿ごとにユニークな画像を生成する(同一画像の連投を避ける)。
  */
@@ -139,9 +148,14 @@ async function defaultBuildMediaUrls(
   bookId: string | null,
   postId: string,
   body: string,
+  mediaKey: string | null,
 ): Promise<string[]> {
   if (channel !== 'instagram' && channel !== 'tiktok') return [];
   const storage = await import('@a2p/storage');
+  // 事前生成メディア(動画等)を優先。
+  if (mediaKey) {
+    return [await storage.getSignedDownloadUrl(mediaKey, 3600)];
+  }
   const key = bookId
     ? await ensureBookPromoImage(bookId)
     : await generateValuePostImage(postId, body);
@@ -170,7 +184,16 @@ export async function runPromotionPostPublish(
 
   const post = await prisma.promotionPost.findUnique({
     where: { id: postId },
-    select: { id: true, book_id: true, channel: true, account_id: true, title: true, body: true, status: true },
+    select: {
+      id: true,
+      book_id: true,
+      channel: true,
+      account_id: true,
+      title: true,
+      body: true,
+      status: true,
+      media_key: true,
+    },
   });
   if (!post) {
     log.warn({ task: PROMOTION_POST_PUBLISH_TASK_NAME, postId }, 'post not found — skip');
@@ -246,7 +269,7 @@ export async function runPromotionPostPublish(
     // F-058: IG/TikTok は画像/動画が必須。販促画像の署名 URL を用意する。
     let mediaUrls: string[] = [];
     try {
-      mediaUrls = await buildMediaUrls(post.channel, post.book_id, post.id, post.body);
+      mediaUrls = await buildMediaUrls(post.channel, post.book_id, post.id, post.body, post.media_key);
     } catch (err) {
       log.warn({ task: PROMOTION_POST_PUBLISH_TASK_NAME, postId, err }, 'media build failed — publishing without media');
     }

@@ -15,6 +15,7 @@ export {
   channelBanner,
   bookPromoImage,
   promotionPostImage,
+  promotionPostVideo,
   bookArtifact,
   catalogSnapshot,
   chapterDraft,

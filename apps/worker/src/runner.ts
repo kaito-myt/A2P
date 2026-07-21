@@ -121,6 +121,10 @@ import {
   promotionContentGenerateTask,
 } from './tasks/promotion-content-generate.js';
 import {
+  PROMOTION_VIDEO_GENERATE_TASK_NAME,
+  promotionVideoGenerateTask,
+} from './tasks/promotion-video-generate.js';
+import {
   PROMOTION_POST_PUBLISH_TASK_NAME,
   promotionPostPublishTask,
 } from './tasks/promotion-post-publish.js';
@@ -205,6 +209,7 @@ export function buildTaskList(): TaskList {
     [PROMOTION_POSTS_GENERATE_TASK_NAME]: promotionPostsGenerateTask,
     [PROMOTION_STRATEGY_GENERATE_TASK_NAME]: promotionStrategyGenerateTask,
     [PROMOTION_CONTENT_GENERATE_TASK_NAME]: promotionContentGenerateTask,
+    [PROMOTION_VIDEO_GENERATE_TASK_NAME]: promotionVideoGenerateTask,
     [PROMOTION_POST_PUBLISH_TASK_NAME]: promotionPostPublishTask,
     [PROMOTION_DISPATCH_TASK_NAME]: promotionDispatchTask,
     [BAKEOFF_RUN_TASK_NAME]: bakeoffRunTask,

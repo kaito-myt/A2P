@@ -213,6 +213,19 @@ export {
   type ContentCreatorDeps,
 } from './content-creator/index.js';
 
+export {
+  createTikTokVideoScript,
+  type TikTokVideoDeps,
+} from './tiktok-video/index.js';
+
+export {
+  synthesizeSpeech,
+  type SynthesizeSpeechArgs,
+  type SynthesizeSpeechResult,
+  type SynthesizeSpeechDeps,
+  type OpenAISpeechClient,
+} from './tools/tts.js';
+
 export { kanaToRomaji } from './lib/kana-to-romaji.js';
 
 export {

@@ -23,6 +23,7 @@
     "./agents/optimizer": "./src/agents/optimizer.ts",
     "./agents/sns-strategist": "./src/agents/sns-strategist.ts",
     "./agents/content-creator": "./src/agents/content-creator.ts",
+    "./agents/tiktok-video": "./src/agents/tiktok-video.ts",
     "./org": "./src/org/index.ts",
     "./promotion/channels": "./src/promotion/channels.ts",
     "./book/chapter-title": "./src/book/chapter-title.ts",

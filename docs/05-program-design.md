@@ -2858,6 +2858,11 @@ export const logger = pino({
   dispatcher は `OR:[{book.publish_status='published'},{book_id=null}]` で value も対象化。publish の
   buildMediaUrls は book 無し IG/TikTok に**チャンネルの banner 画像**を流用。UI は戦略カードの
   「育成投稿を生成」ボタン＋投稿キューの kind バッジ(宣伝/育成)。運用は価値8:宣伝2 を想定。
+- **F-060 TikTok スライド動画(多エージェント)**: 「続きが気になる(射幸心を煽る)」9:16 縦動画を自動生成。
+  台本は5エージェントの直列パイプライン(`packages/agents/src/tiktok-video/`): `tiktok_scenario`(構成台本・強フック→小出し→クリフハンガー)→`tiktok_creator`(絵コンテ・背景画像プロンプト+テロップ)→`tiktok_editor`(尺配分・VideoScript確定)→`tiktok_proofreader`(校閲)→`tiktok_marketer`(フック/CTA/ハッシュタグ強化)。全て generateText+extractLlmJson。prompt=`apply-tiktok-video.ts`(scenario/marketer=Opus, 他=Sonnet)。
+  レンダリング(`apps/worker/src/tasks/promotion-post/video-render.ts`): シーン毎に gpt-image-1(1024x1536縦・文字なし)→`composeCoverTypography`でテロップ焼込(Noto Sans JP流用)→OpenAI TTS(`tools/tts.ts` `audio.speech`, gpt-4o-mini-tts, mp3, cost=token_usage role='tts_audio')→ffmpegで画像+音声を1080x1920クリップ化(-shortest=音声尺)→concat。**ffmpegはapps/worker/Dockerfileにapt-getで追加**。child_processはexecFile(archive-db-backup前例)。
+  worker `promotion.video.generate {topic?,book_id?,target_seconds?}`: 戦略(concept/tone/柱/core hashtags)を材料に台本→レンダ→R2(`promotion/videos/{post_id}.mp4`)→`promotion_posts`(channel='tiktok', kind=book有→promo/無→value, **media_key**=mp4, 本文=caption+ハッシュタグ, status=draft→scheduled)。先にdraft作成してidをキーにし、失敗時はdelete。
+  **`promotion_posts.media_key`**(事前レンダ済みメディアのR2キー)を追加。publishの`buildMediaUrls`は media_key最優先で署名URL化(IG/TikTok)→無ければ本の販促画像/投稿ごと画像。TikTok実投稿はMake中継(webhook→TikTokモジュール, video URL=mediaUrls[1], caption=body)。UI=tiktokチャンネルボードの「TikTok動画を生成」カード。
 - **`promotion_posts`** (F-052 販促投稿キュー)。`book_id`, `channel`, `title?`, `body`, `scheduled_for`,
   `status` (draft/scheduled/posting/posted/failed/skipped/canceled), `external_url?`, `error?`, `posted_at?`。
   channel は **x / instagram / tiktok / note / blog** (旧 sns を X/IG/TikTok に分割)。

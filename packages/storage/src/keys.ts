@@ -210,6 +210,12 @@ export function promotionPostImage(postId: string): string {
   return `promotion/posts/${postId}.jpg`;
 }
 
+/** `promotion/videos/{post_id}.mp4` — TikTok スライド動画 (F-060)。 */
+export function promotionPostVideo(postId: string): string {
+  assertId('postId', postId);
+  return `promotion/videos/${postId}.mp4`;
+}
+
 /**
  * 論理削除用のキー変換 (docs/05 §8.1: `r2_key` を `_deleted/...` にリネーム)。
  * 既に `_deleted/` 配下にある場合はそのまま返す。
