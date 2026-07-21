@@ -1811,6 +1811,12 @@ export const messages = {
       statusApplied: '適用済み',
       statusNotApplicable: '適用不可',
       statusSuperseded: '削除済み',
+      selectAllLabel: (n: number) => `全選択（未消化 ${n} 件）`,
+      selectAllAria: '未消化コメントをすべて選択',
+      selectedCount: (n: number) => `${n} 件を選択中`,
+      clearSelection: '選択を解除',
+      selectGroupAria: 'この書籍の未消化コメントをすべて選択',
+      groupSelectedCount: (n: number) => `${n} 件選択`,
     },
     bulk: {
       selectionCount: (n: number) => `${n} 件選択中`,

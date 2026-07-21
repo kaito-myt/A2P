@@ -124,11 +124,25 @@ export function commentStatusLabel(status: CommentStatus | string): string {
   return COMMENT_STATUS_LABELS[status as CommentStatus] ?? status;
 }
 
-/** Badge の variant にマップ。適用済み=success、その他は neutral。 */
+/**
+ * Badge の variant にマップ。各対応状況が一目で区別できるよう色を分ける。
+ *   未消化(pending)=neutral / 適用済み(applied)=success /
+ *   適用不可(not_applicable)=may / 削除済み(superseded)=must
+ */
 export function commentStatusVariant(
   status: CommentStatus | string,
-): 'success' | 'neutral' {
-  return status === 'applied' ? 'success' : 'neutral';
+): 'success' | 'neutral' | 'may' | 'must' {
+  switch (status) {
+    case 'applied':
+      return 'success';
+    case 'not_applicable':
+      return 'may';
+    case 'superseded':
+      return 'must';
+    case 'pending':
+    default:
+      return 'neutral';
+  }
 }
 
 // ---------------------------------------------------------------------------

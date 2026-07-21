@@ -176,16 +176,16 @@ describe('commentStatusLabel', () => {
 });
 
 describe('commentStatusVariant', () => {
-  it('maps applied to success', () => {
+  it('各対応状況を区別できる variant にマップする', () => {
+    expect(commentStatusVariant('pending')).toBe('neutral');
     expect(commentStatusVariant('applied')).toBe('success');
+    expect(commentStatusVariant('not_applicable')).toBe('may');
+    expect(commentStatusVariant('superseded')).toBe('must');
   });
 
-  it.each(['pending', 'not_applicable', 'superseded'] as CommentStatus[])(
-    'maps %s to neutral',
-    (status) => {
-      expect(commentStatusVariant(status)).toBe('neutral');
-    },
-  );
+  it('未知の値は neutral', () => {
+    expect(commentStatusVariant('unknown' as CommentStatus)).toBe('neutral');
+  });
 });
 
 // ---------------------------------------------------------------------------

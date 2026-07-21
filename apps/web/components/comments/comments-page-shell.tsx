@@ -6,7 +6,7 @@
  * Client container that manages filter/group/selection state.
  * Receives serialized rows from RSC page.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   filterCommentsPage,
@@ -79,6 +79,18 @@ export function CommentsPageShell({
     [filteredRows],
   );
 
+  // グループ単位の一括選択 (指定した未消化 ID 群を追加/除去)。
+  const onToggleGroup = useCallback((ids: string[], selectAll: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (selectAll) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }, []);
+
   const onClear = useCallback(() => {
     setSelected(new Set());
   }, []);
@@ -102,6 +114,14 @@ export function CommentsPageShell({
     [filteredRows, selected],
   );
 
+  // 全 pending 件数と選択状況 (グローバル全選択チェックボックスの状態算出)。
+  const totalPending = useMemo(
+    () => filteredRows.filter((r) => r.status === 'pending').length,
+    [filteredRows],
+  );
+  const allSelected = totalPending > 0 && selectedIds.length === totalPending;
+  const someSelected = selectedIds.length > 0 && !allSelected;
+
   return (
     <div className="flex flex-col gap-space-snug">
       <CommentsSummaryKpi kpi={kpi} />
@@ -118,11 +138,20 @@ export function CommentsPageShell({
         {messages.commentsPage.checkboxHint}
       </p>
 
+      <SelectionToolbar
+        totalPending={totalPending}
+        selectedCount={selectedIds.length}
+        allSelected={allSelected}
+        someSelected={someSelected}
+        onToggleAll={onToggleAll}
+        onClear={onClear}
+      />
+
       <CommentsTable
         groups={groups}
         selectedIds={selected}
         onToggle={onToggle}
-        onToggleAll={onToggleAll}
+        onToggleGroup={onToggleGroup}
       />
 
       {selectedIds.length > 0 && (
@@ -131,6 +160,67 @@ export function CommentsPageShell({
           selectedRows={selectedRows}
           onSelectionClear={onClear}
         />
+      )}
+    </div>
+  );
+}
+
+const tm = messages.commentsPage.table;
+
+/**
+ * テーブル上部の一括選択ツールバー (標準的な位置)。
+ * マスタ全選択チェックボックス + 選択件数 + 選択解除。
+ */
+function SelectionToolbar({
+  totalPending,
+  selectedCount,
+  allSelected,
+  someSelected,
+  onToggleAll,
+  onClear,
+}: {
+  totalPending: number;
+  selectedCount: number;
+  allSelected: boolean;
+  someSelected: boolean;
+  onToggleAll: (selectAll: boolean) => void;
+  onClear: () => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = someSelected;
+  }, [someSelected]);
+
+  return (
+    <div
+      data-testid="comments-selection-toolbar"
+      className="flex flex-wrap items-center gap-x-space-relaxed gap-y-1 rounded-card border border-border-warm bg-cream px-3 py-2"
+    >
+      <label className="flex cursor-pointer items-center gap-2 text-button-sm text-charcoal">
+        <input
+          ref={ref}
+          type="checkbox"
+          checked={allSelected}
+          disabled={totalPending === 0}
+          onChange={(e) => onToggleAll(e.target.checked)}
+          aria-label={tm.selectAllAria}
+          className="h-4 w-4 rounded border-charcoal-40 disabled:opacity-40"
+          data-testid="select-all-checkbox"
+        />
+        <span>{tm.selectAllLabel(totalPending)}</span>
+      </label>
+      <span className="text-button-sm text-muted" data-testid="comments-selected-count">
+        {tm.selectedCount(selectedCount)}
+      </span>
+      {selectedCount > 0 && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-button-sm text-accent underline underline-offset-2 hover:no-underline"
+          data-testid="comments-clear-selection"
+        >
+          {tm.clearSelection}
+        </button>
       )}
     </div>
   );
