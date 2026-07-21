@@ -1657,6 +1657,7 @@ export const messages = {
       nextBook: '次の書籍',
       recheckButton: '文字崩れを再チェック',
       recheckStarted: '文字崩れチェックを開始しました（崩れた候補は自動で作り直します。数分後に再読込してください）',
+      wholeSetCommentHint: '候補全体にコメント（例: テイストを変えて）',
     },
     coverText: {
       sectionTitle: 'カバーテキスト案',

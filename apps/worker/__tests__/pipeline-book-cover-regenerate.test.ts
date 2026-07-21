@@ -202,8 +202,34 @@ describe('runPipelineBookCoverRegenerate — commented cover targeting', () => {
     expect(finalJob).toBeDefined();
     const result = finalJob!.result_json as Record<string, unknown>;
     expect(result.regenerated).toBe(true);
-    expect(result.old_cover_id).toBe('cand_2');
+    expect(result.target_cover_id).toBe('cand_2');
     expect(result.new_cover_id).toBe('new_cover');
+  });
+
+  it('adopt=false（修正コメント経由）: 新カバーを候補として残し、既存カバーを採用/reject しない', async () => {
+    const { prisma, captures, state } = buildPrisma({
+      covers: [
+        { id: 'adopted_1', book_id: 'book_1', cover_text_id: 'ct_1', width: 1024, height: 1536, status: 'adopted' },
+      ],
+      proposals: [
+        { id: 'ct_1', book_id: 'book_1', title: 'タイトル', subtitle: 'サブ', status: 'adopted' },
+      ],
+    });
+
+    await runPipelineBookCoverRegenerate(
+      { book_id: 'book_1', job_id: 'job_1', feedback: 'テイストを変えて', adopt: false },
+      addJobNoop,
+      baseDeps(prisma, () => {}),
+    );
+
+    // 既存の採用カバーは触らない・新カバーは adopted に昇格しない（generated のまま候補）。
+    expect(captures.coverUpdates.find((u) => u.id === 'new_cover' && u.status === 'adopted')).toBeUndefined();
+    expect(state.covers.find((c) => c.id === 'adopted_1')!.status).toBe('adopted');
+    const finalJob = captures.jobUpdates.find((u) => u.status === 'done');
+    const result = finalJob!.result_json as Record<string, unknown>;
+    expect(result.regenerated).toBe(true);
+    expect(result.adopted).toBe(false);
+    expect(result.export_job_id).toBeNull();
   });
 
   it('falls back to the adopted CoverTextProposal when the target cover has no cover_text_id', async () => {

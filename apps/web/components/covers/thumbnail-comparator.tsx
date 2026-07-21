@@ -130,8 +130,22 @@ export function ThumbnailComparator({
         </p>
       )}
 
-      {/* Book title */}
-      <h2 className="text-sub-heading text-foreground">{book.title}</h2>
+      {/* Book title + 作品全体(候補セット)へのコメント */}
+      <div className="flex flex-wrap items-center gap-space-snug">
+        <h2 className="text-sub-heading text-foreground">{book.title}</h2>
+        <div className="inline-flex items-center gap-2 rounded-card border border-border-warm bg-cream px-2.5 py-1">
+          <span className="text-caption text-muted">{m.comparator.wholeSetCommentHint}</span>
+          <CommentAffordance
+            bookId={book.id}
+            targetKind="cover"
+            targetId={book.id}
+            existingComments={comments
+              .filter((c) => c.target_kind === 'cover' && c.target_id === book.id)
+              .map(toExistingComment)}
+            onCommentChange={onCommentChange}
+          />
+        </div>
+      </div>
 
       {/* Cover candidates side by side */}
       <section className="flex flex-col gap-space-snug">

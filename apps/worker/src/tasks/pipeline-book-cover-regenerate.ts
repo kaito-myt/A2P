@@ -45,8 +45,15 @@ export const PipelineBookCoverRegeneratePayloadSchema = z.object({
   /**
    * 修正コメントが対象とした Cover の id。採用前の候補に付くことが多いため、
    * これを最優先で再生成対象に解決する（無ければ採用カバーにフォールバック）。
+   * 作品全体(候補セット)へのコメントの場合は未指定 → 新規候補を1枚生成する。
    */
   cover_id: z.string().min(1).optional(),
+  /**
+   * 再生成カバーを即採用するか。既定 true(文字化けバックフィルは即採用+再エクスポート)。
+   * **修正コメント経由は false**: 新カバーを status='generated' の候補として残し、
+   * 運営者が確認してから手動で採用する(勝手に採用しない)。採用時に export される。
+   */
+  adopt: z.boolean().optional(),
 });
 export type PipelineBookCoverRegeneratePayload = z.infer<
   typeof PipelineBookCoverRegeneratePayloadSchema
@@ -109,6 +116,7 @@ export interface PipelineBookCoverRegeneratePrisma {
     findFirst: (args: {
       where: { book_id: string; status?: string; id?: string };
       select: { id: true; cover_text_id: true; width: true; height: true; status: true };
+      orderBy?: { created_at: 'desc' };
     }) => Promise<{ id: string; cover_text_id: string | null; width: number; height: number; status: string } | null>;
     update: (args: { where: { id: string }; data: { status: string } }) => Promise<unknown>;
     updateMany: (args: {
@@ -158,6 +166,8 @@ export async function runPipelineBookCoverRegenerate(
     });
   }
   const { book_id: bookId, job_id: jobId, feedback, cover_id: commentedCoverId } = parsed.data;
+  // 既定 true（バックフィルは即採用）。修正コメント経由は false（候補として残し確認後に採用）。
+  const adopt = parsed.data.adopt ?? true;
 
   const log = deps.logger ?? createLogger(`worker.${PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME}`);
   const prisma = deps.prisma ?? (defaultPrisma as unknown as PipelineBookCoverRegeneratePrisma);
@@ -217,10 +227,19 @@ export async function runPipelineBookCoverRegenerate(
         select: { id: true, cover_text_id: true, width: true, height: true, status: true },
       });
     }
+    // 作品全体(候補セット)コメント等で対象カバー未指定の場合、寸法/文字の参照用に最新カバーを使う
+    // (adopt=false ならこのカバーは reject しない＝新規候補を1枚追加するだけ)。
+    if (!target) {
+      target = await prisma.cover.findFirst({
+        where: { book_id: bookId },
+        select: { id: true, cover_text_id: true, width: true, height: true, status: true },
+        orderBy: { created_at: 'desc' },
+      });
+    }
     if (!target) {
       log.info(
         { task: PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME, jobId, bookId, commentedCoverId },
-        'no target cover (commented / adopted cover not found) — nothing to regenerate',
+        'no target cover (no cover exists) — nothing to regenerate',
       );
       await prisma.job.update({
         where: { id: jobId },
@@ -315,29 +334,34 @@ export async function runPipelineBookCoverRegenerate(
       ...(author ? { author } : {}),
     });
 
-    // 採用差し替え: 対象カバー → rejected、他に残る採用カバーも rejected、新カバー → adopted。
-    // (単一採用カバーの不変条件を保つ。対象が採用前候補でも新カバーを採用する。)
-    await prisma.cover.update({ where: { id: target.id }, data: { status: 'rejected' } });
-    await prisma.cover.updateMany({
-      where: { book_id: bookId, status: 'adopted', id: { not: out.coverId } },
-      data: { status: 'rejected' },
-    });
-    await prisma.cover.update({ where: { id: out.coverId }, data: { status: 'adopted' } });
+    let exportJobId: string | null = null;
+    if (adopt) {
+      // バックフィル: 採用差し替え。対象カバー→rejected、他の採用カバーも rejected、新カバー→adopted。
+      // 単一採用カバーの不変条件を保つ。その場で再エクスポートして KDP カバーを差し替える。
+      await prisma.cover.update({ where: { id: target.id }, data: { status: 'rejected' } });
+      await prisma.cover.updateMany({
+        where: { book_id: bookId, status: 'adopted', id: { not: out.coverId } },
+        data: { status: 'rejected' },
+      });
+      await prisma.cover.update({ where: { id: out.coverId }, data: { status: 'adopted' } });
 
-    // 再エクスポート (KDP カバーファイルを作り直す)。
-    const exportJob = await prisma.job.create({
-      data: {
-        kind: PIPELINE_BOOK_EXPORT_TASK_NAME,
-        book_id: bookId,
-        status: 'queued',
-        payload_json: { book_id: bookId },
-      },
-    });
-    await addJob(
-      PIPELINE_BOOK_EXPORT_TASK_NAME,
-      { book_id: bookId, job_id: exportJob.id },
-      { maxAttempts: 3 },
-    );
+      const exportJob = await prisma.job.create({
+        data: {
+          kind: PIPELINE_BOOK_EXPORT_TASK_NAME,
+          book_id: bookId,
+          status: 'queued',
+          payload_json: { book_id: bookId },
+        },
+      });
+      await addJob(
+        PIPELINE_BOOK_EXPORT_TASK_NAME,
+        { book_id: bookId, job_id: exportJob.id },
+        { maxAttempts: 3 },
+      );
+      exportJobId = exportJob.id;
+    }
+    // adopt=false（修正コメント経由）: 新カバーは status='generated' の候補として残す。
+    // 対象/採用カバーは触らず、再エクスポートもしない。運営者が確認してから手動で採用する。
 
     await prisma.job.update({
       where: { id: jobId },
@@ -347,9 +371,10 @@ export async function runPipelineBookCoverRegenerate(
         error: null,
         result_json: {
           regenerated: true,
-          old_cover_id: target.id,
+          adopted: adopt,
+          target_cover_id: target.id,
           new_cover_id: out.coverId,
-          export_job_id: exportJob.id,
+          export_job_id: exportJobId,
         },
       },
     });
@@ -359,10 +384,13 @@ export async function runPipelineBookCoverRegenerate(
         task: PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME,
         jobId,
         bookId,
-        oldCoverId: target.id,
+        targetCoverId: target.id,
         newCoverId: out.coverId,
+        adopted: adopt,
       },
-      'cover regenerated (new method) and re-export enqueued',
+      adopt
+        ? 'cover regenerated and adopted (backfill) + re-export enqueued'
+        : 'cover regenerated as candidate (review before adopt)',
     );
   } catch (err) {
     try {

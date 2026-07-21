@@ -419,10 +419,12 @@ export async function runRevisionBookApply(
           .join('\n')
           .slice(0, 3900);
         // 修正コメントが対象とした Cover(target_id) を再生成タスクに渡す。
-        // コメントは採用前の候補に付くことが多く、これを渡さないと再生成が no-op になる。
+        // ただし target_id が bookId のもの(=作品全体/候補セットへのコメント)は特定カバー扱いにせず、
+        // 新規候補を1枚生成させる。個別カバーへのコメントのみ cover_id を渡す。
         const commentedCoverId = coverComments
           .map((c) => c.target_id)
-          .find((id): id is string => Boolean(id));
+          .find((id): id is string => Boolean(id) && id !== bookId);
+        // 修正コメント経由は adopt=false: 新カバーを候補として残し、運営者が確認してから採用する。
         const regenJob = await prisma.job.create({
           data: {
             kind: PIPELINE_BOOK_COVER_REGENERATE_TASK_NAME,
@@ -432,6 +434,7 @@ export async function runRevisionBookApply(
             payload_json: {
               book_id: bookId,
               feedback: coverFeedback,
+              adopt: false,
               ...(commentedCoverId ? { cover_id: commentedCoverId } : {}),
             },
           },
@@ -442,6 +445,7 @@ export async function runRevisionBookApply(
             book_id: bookId,
             job_id: regenJob.id,
             feedback: coverFeedback,
+            adopt: false,
             ...(commentedCoverId ? { cover_id: commentedCoverId } : {}),
           },
           { maxAttempts: 2 },
