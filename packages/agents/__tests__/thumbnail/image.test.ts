@@ -38,6 +38,7 @@ import type {
   GenerateCoverImageDeps,
   ComposeTypographyFn,
 } from '../../src/thumbnail/image.js';
+import { IMAGE_MODEL } from '../../src/tools/image-gen.js';
 import type {
   GenerateImageArgs,
   GenerateImageResult,
@@ -256,7 +257,7 @@ describe('generateCoverImage -- Cover INSERT', () => {
     expect(createCall.data.prompt_used).toBeTruthy();
     expect(createCall.data.generation_meta_json).toMatchObject({
       provider: 'openai',
-      model: 'gpt-image-1',
+      model: IMAGE_MODEL,
       text_overlay: true,
     });
   });
@@ -288,7 +289,7 @@ describe('generateCoverImage -- token_usage', () => {
     expect(data.book_id).toBe('book-TOKEN');
     expect(data.job_id).toBe('job-TOKEN');
     expect(data.provider).toBe('openai');
-    expect(data.model).toBe('gpt-image-1');
+    expect(data.model).toBe(IMAGE_MODEL);
     expect(data.role).toBe('thumbnail_image');
     expect(data.image_count).toBe(1);
   });

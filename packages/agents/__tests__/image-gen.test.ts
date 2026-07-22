@@ -30,6 +30,7 @@ vi.mock('@a2p/crypto', () => ({
 
 import {
   generateImage,
+  IMAGE_MODEL,
   type GenerateImageArgs,
   type GenerateImageResult,
   type ImageGenDeps,
@@ -136,7 +137,7 @@ describe('generateImage — 正常系', () => {
     // size 文字列 / model / n パラメタが正しく渡る
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
-      model: 'gpt-image-1',
+      model: IMAGE_MODEL,
       prompt: 'a beautiful sunset over mountains',
       size: '1024x1024',
       n: 1,
@@ -330,7 +331,7 @@ describe('withImageLogging — 1 generateImage = 1 token_usage INSERT', () => {
       book_id: 'book-1',
       job_id: 'job-1',
       provider: 'openai',
-      model: 'gpt-image-1',
+      model: IMAGE_MODEL,
       role: 'thumbnail_image',
       input_tokens: 0,
       output_tokens: 0,

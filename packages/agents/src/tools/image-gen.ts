@@ -133,7 +133,15 @@ const MAX_RETRIES =
   ) - 1;
 
 const PROVIDER = 'openai';
-const MODEL = 'gpt-image-1';
+/**
+ * 画像生成モデル。既定は `gpt-image-2` — 日本語タイトルのタイポグラフィを高品質に
+ * デザイン統合して描ける最新世代 (gpt-image-1 比で表紙クオリティが大きく向上)。
+ * env `OPENAI_IMAGE_MODEL` で上書き可 (例: スナップショット固定 `gpt-image-2-2026-04-21` /
+ * ロールバック `gpt-image-1`)。cost 記録のため model_catalog に同名の単価行が必要
+ * (apply-openai-catalog.ts に curated 単価を登録済み)。
+ */
+export const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL?.trim() || 'gpt-image-2';
+const MODEL = IMAGE_MODEL;
 
 function pickPolicy(kind: ReturnType<typeof classifyProviderError>['kind']): RetryPolicy {
   switch (kind) {

@@ -38,6 +38,7 @@ import {
 import {
   generateImage as defaultGenerateImage,
   editImage as defaultEditImage,
+  IMAGE_MODEL,
   type GenerateImageFn,
   type ImageGenDeps,
 } from '../tools/image-gen.js';
@@ -287,7 +288,7 @@ export async function generateCoverImage(
 
   const generationMeta = {
     provider: 'openai',
-    model: 'gpt-image-1',
+    model: IMAGE_MODEL,
     cost_jpy: costJpy,
     width: parsed.width,
     height: parsed.height,

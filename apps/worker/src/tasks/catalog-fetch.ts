@@ -588,6 +588,13 @@ export const OPENAI_CURATED_PRICING: ProviderPricingEntry[] = [
     output_price_per_mtok_usd: 0,
     image_price_per_image_usd: 0.04,
   },
+  {
+    // 既定の画像生成モデル (OPENAI_IMAGE_MODEL 既定)。curated 推定単価。
+    model: 'gpt-image-2',
+    input_price_per_mtok_usd: 0,
+    output_price_per_mtok_usd: 0,
+    image_price_per_image_usd: 0.04,
+  },
 ];
 
 /** OpenAI — `openai` SDK `client.models.list()` + cheerio。スクレイプ失敗時はキュレート単価に fallback。 */

@@ -13,6 +13,7 @@
 import { prisma as defaultPrisma } from '@a2p/db';
 
 import { updateBookCost, type UpdateBookCostPrisma } from './update-book-cost.js';
+import { IMAGE_MODEL } from '../tools/image-gen.js';
 import type {
   GenerateImageArgs,
   GenerateImageFn,
@@ -20,7 +21,8 @@ import type {
 } from '../tools/image-gen.js';
 
 const PROVIDER = 'openai';
-const MODEL = 'gpt-image-1';
+// image-gen.ts と同一のモデル名を使い、cost 記録の model_catalog 引きを一致させる。
+const MODEL = IMAGE_MODEL;
 const ROLE = 'thumbnail_image';
 
 export interface ImageLoggingContext {

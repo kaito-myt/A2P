@@ -14,6 +14,8 @@ const CURATED = [
   { model: 'gpt-4o', input: 2.5, output: 10.0, image: null },
   { model: 'gpt-4o-mini', input: 0.15, output: 0.6, image: null },
   { model: 'gpt-image-1', input: 0, output: 0, image: 0.04 },
+  // gpt-image-2: 既定の画像生成モデル。単価は curated 推定 (実測で要更新)。
+  { model: 'gpt-image-2', input: 0, output: 0, image: 0.04 },
 ];
 
 async function main() {
