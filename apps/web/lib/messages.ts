@@ -614,9 +614,9 @@ export const messages = {
       tokenLabel: 'アクセストークン',
       tokenPlaceholderSet: '設定済み（変更する場合のみ入力）',
       tokenPlaceholder: 'トークンを貼り付け',
-      ayrshareTitle: 'Instagram / TikTok は Ayrshare 経由で投稿します',
+      ayrshareTitle: 'Instagram / TikTok は Make 経由で投稿します',
       ayrshareNote:
-        'IG/TikTok は公式の簡単な投稿 API が無いため、多SNS投稿サービス Ayrshare を中継に使います。①Ayrshare に登録 → ②ダッシュボードで Instagram / TikTok アカウントを連携 → ③API キーを Railway の環境変数 AYRSHARE_API_KEY に設定。設定後は「接続テスト」で確認できます。投稿画像は本ごとに AI 生成されます（TikTok は写真モード）。',
+        'IG/TikTok は公式の簡単な投稿 API が無いため、連携サービス Make.com の Webhook を中継に使います。①Make で「Custom webhook」シナリオを作成 → ②Instagram（ビジネス/クリエイター＋Facebookページ連携）/ TikTok の投稿モジュールを接続 → ③発行された Webhook URL を上の「Webhook URL」欄に貼って保存。設定後は「接続テスト」で確認できます。投稿画像は本ごとに AI 生成されます（TikTok は写真/動画）。',
       xCredsTitle: 'X 認証情報（OAuth 1.0a・無期限）',
       xCredsHelp: 'X Developer Portal の「Keys and tokens」の4値を貼り付けてください（自分のアカウントに自動投稿します。失効しません）。',
       xApiKey: 'API キー',
