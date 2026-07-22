@@ -27,6 +27,7 @@
  *  - 最終章 body_md 末尾に aiDisclosureText が含まれる (未含なら強制挿入 + true 返却)
  */
 import { z } from 'zod';
+import { GenreValueSchema } from '../genres.js';
 import { RevisionFeedbackItemSchema } from './writer.js';
 
 /**
@@ -60,7 +61,7 @@ export const EditorInputSchema = z.object({
   /** `accounts.id` — Writer と同じく文脈として保持。 */
   accountId: z.string(),
   /** ジャンル (null = 全ジャンル既定プロンプト fallback)。 */
-  genre: z.enum(['practical', 'business', 'self_help']).nullable(),
+  genre: GenreValueSchema.nullable(),
   /** 採用テーマから派生する文脈 — Writer と同じ最小集合。 */
   themeContext: z.object({
     title: z.string().min(1).max(200),

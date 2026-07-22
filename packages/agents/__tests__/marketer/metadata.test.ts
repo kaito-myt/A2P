@@ -424,7 +424,7 @@ describe('generateMarketerMetadata — prompt-loader 経由でテンプレ取得
     expect(systemMsg!.content).toContain('ChatGPT で月 30 万');
     expect(systemMsg!.content).toContain('差別化フックXX');
     expect(systemMsg!.content).toContain('30 代 IT 系副業者');
-    expect(systemMsg!.content).toContain('business');
+    expect(systemMsg!.content).toContain('ビジネス書');
     expect(systemMsg!.content).toContain('競合本A');
   });
 

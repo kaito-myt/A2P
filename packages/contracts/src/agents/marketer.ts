@@ -16,6 +16,7 @@
  *    空配列時の運用警告は呼出側 (worker タスク) で判定する。
  */
 import { z } from 'zod';
+import { GenreValueSchema } from '../genres.js';
 
 /** F-001 受入基準: 単一書籍向けジャンル指定 + 任意のキーワード/ブリーフ。 */
 export const MarketerThemeInputSchema = z.object({
@@ -30,7 +31,7 @@ export const MarketerThemeInputSchema = z.object({
    */
   jobId: z.string().optional(),
   /** ジャンル (null = 全ジャンル既定プロンプト fallback)。 */
-  genre: z.enum(['practical', 'business', 'self_help']).nullable(),
+  genre: GenreValueSchema.nullable(),
   /** ユーザー入力 (自由テキスト)。空入力は UI 側で弾く前提。 */
   keywordOrBrief: z.string().min(1).max(500),
   /**
@@ -161,7 +162,7 @@ export const MarketerMetadataInputSchema = z.object({
   /** `accounts.id` — F-040 受入基準: 出版アカウントごとの想定読者を考慮。 */
   accountId: z.string(),
   /** ジャンル (null = 全ジャンル既定プロンプト fallback)。 */
-  genre: z.enum(['practical', 'business', 'self_help']).nullable(),
+  genre: GenreValueSchema.nullable(),
   /**
    * 採用テーマから派生する文脈 — Marketer に渡す。
    * NOTE: signals は ThemeSignalsSchema 全部までは要求せず `z.unknown()` で受ける

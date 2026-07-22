@@ -12,6 +12,7 @@ import { z } from 'zod';
 
 import type { Outline, Book, RevisionComment } from '@a2p/db';
 
+import { genreLabel } from '@a2p/contracts';
 import { messages } from './messages';
 
 // ---------------------------------------------------------------------------
@@ -198,11 +199,11 @@ export function pickEligibleIds(
   return out;
 }
 
-/** ジャンル enum を日本語ラベルへ。未知は raw を返す。 */
+/** ジャンルを日本語ラベルへ。ローカル辞書 → カタログ → 素通し。 */
 export function formatGenre(genre: string | null | undefined): string | null {
   if (!genre) return null;
   const g = messages.outlines.genres as Record<string, string>;
-  return g[genre] ?? genre;
+  return g[genre] ?? genreLabel(genre);
 }
 
 /** ISO → "YYYY-MM-DD HH:mm" の単純化 (themes-view と同様)。 */

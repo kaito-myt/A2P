@@ -7,6 +7,7 @@ import {
 } from '@a2p/agents/lib/book-lock';
 import { judgeBook as defaultJudgeBook } from '@a2p/agents/judge';
 import type { Genre } from '@a2p/contracts/agents';
+import { GENRE_SLUGS } from '@a2p/contracts/agents';
 import type { JudgeInput, JudgeOutput } from '@a2p/contracts/agents/judge';
 import { NotFoundError, ValidationError } from '@a2p/contracts/errors';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
@@ -239,7 +240,7 @@ export interface PipelineBookJudgeDeps {
   ) => Promise<{ ok: boolean }>;
 }
 
-const ALLOWED_GENRES = new Set<string>(['practical', 'business', 'self_help']);
+const ALLOWED_GENRES = new Set<string>(GENRE_SLUGS);
 
 const CHAPTER_BODY_LIMIT = 12000;
 const OUTLINE_SUMMARY_LIMIT = 2000;

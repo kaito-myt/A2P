@@ -6,11 +6,12 @@
  * 算出する (ローマ字生成は LLM に任せない)。
  */
 import { z } from 'zod';
+import { GenreValueSchema } from '../genres.js';
 
 export const ReadingsInputSchema = z.object({
   jobId: z.string().optional(),
   bookId: z.string(),
-  genre: z.enum(['practical', 'business', 'self_help']).nullable().optional(),
+  genre: GenreValueSchema.nullable().optional(),
   title: z.string().min(1),
   subtitle: z.string().optional(),
   /** 著者名 (ペンネーム)。 */

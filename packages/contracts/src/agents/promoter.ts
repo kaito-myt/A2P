@@ -5,11 +5,12 @@
  * 出力は DB `promotion_plans.plan_json` にそのまま保存される。
  */
 import { z } from 'zod';
+import { GenreValueSchema } from '../genres.js';
 
 export const PromotionInputSchema = z.object({
   jobId: z.string().optional(),
   bookId: z.string(),
-  genre: z.enum(['practical', 'business', 'self_help']).nullable(),
+  genre: GenreValueSchema.nullable(),
   /** 本の企画・メタ情報 (販促プランの根拠)。 */
   book: z.object({
     title: z.string().min(1).max(200),

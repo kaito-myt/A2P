@@ -25,6 +25,7 @@
  *  - schema は DB `kdp_metadata` 列 + docs/05 §6.3.1 と完全整合 (Hard Rule #3)
  *  - AgentSdkClient は responseSchema 非対応 — 自由テキスト → JSON 抽出 → zod の三段
  */
+import { genreLabel } from '@a2p/contracts/agents';
 import { AgentError } from '@a2p/contracts/errors';
 import type { LLMClient } from '@a2p/contracts/agents';
 import {
@@ -91,7 +92,7 @@ export async function generateMarketerMetadata(
     hook: parsedInput.themeContext.hook,
     target_reader: parsedInput.themeContext.target_reader,
     competitors: summarizeCompetitors(parsedInput.themeContext.competitors),
-    genre: parsedInput.genre ?? 'general',
+    genre: genreLabel(parsedInput.genre) ?? 'general',
   });
 
   // 3. AgentSdkClient (withTokenLogging ラップ済み) 取得
@@ -231,7 +232,7 @@ function buildUserMessage(input: MarketerMetadataInput): string {
   lines.push(
     `差別化フック: ${input.themeContext.hook}`,
     `想定読者: ${input.themeContext.target_reader}`,
-    `ジャンル: ${input.genre ?? 'general'}`,
+    `ジャンル: ${genreLabel(input.genre) ?? 'general'}`,
     '',
     '上記の書籍について Amazon KDP 入稿用メタデータを生成してください。',
     'KDP 制約 (必ず遵守):',

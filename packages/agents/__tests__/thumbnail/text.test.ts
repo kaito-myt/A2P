@@ -379,7 +379,7 @@ describe('generateCoverText -- prompt injection', () => {
     expect(systemMsg!.content).toContain('完全ガイド');
     expect(systemMsg!.content).toContain('AI ツール活用');
     expect(systemMsg!.content).toContain('エンジニア');
-    expect(systemMsg!.content).toContain('business');
+    expect(systemMsg!.content).toContain('ビジネス書');
     expect(systemMsg!.content).toContain('4');
   });
 

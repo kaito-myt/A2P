@@ -8,6 +8,7 @@
  * judge / cover_art_direction と同パターン (loadActivePrompt → createAgentClient →
  * responseSchema 構造化出力)。
  */
+import { genreLabel } from '@a2p/contracts/agents';
 import type { LLMClient } from '@a2p/contracts/agents';
 import {
   OutlineReviewInputSchema,
@@ -54,7 +55,7 @@ export async function reviewOutline(
 
   const prompt = await loadPrompt('outline_review', genre, deps.promptLoaderDeps);
   const systemPrompt = fillPlaceholders(prompt.template, {
-    genre: parsed.genre ?? 'general',
+    genre: genreLabel(parsed.genre) ?? 'general',
   });
 
   const ctx: LoggingContext = { role: 'outline_review', bookId: parsed.bookId };
@@ -91,7 +92,7 @@ function buildUserMessage(input: OutlineReviewInput): string {
     `副題: ${c.subtitle ?? '(なし)'}`,
     `差別化フック: ${c.hook}`,
     `想定読者: ${c.target_reader}`,
-    `ジャンル: ${input.genre ?? 'general'}`,
+    `ジャンル: ${genreLabel(input.genre) ?? 'general'}`,
     `想定総文字数: ${input.targetTotalChars} 字`,
     '',
     '【校正対象の章立て】',

@@ -18,6 +18,7 @@
  *
  * DI: `deps?.createAgentClient` / `deps?.loadActivePrompt` でテスト差し替え可能。
  */
+import { genreLabel } from '@a2p/contracts/agents';
 import { AgentError } from '@a2p/contracts/errors';
 import type { LLMClient } from '@a2p/contracts/agents';
 import {
@@ -81,7 +82,7 @@ export async function judgeBook(
     theme_subtitle: parsedInput.theme_context.subtitle ?? '',
     theme_hook: parsedInput.theme_context.hook,
     target_reader: parsedInput.theme_context.target_reader,
-    genre: parsedInput.genre ?? 'general',
+    genre: genreLabel(parsedInput.genre) ?? 'general',
     chapter_count: parsedInput.chapters.length,
     draft_chapters: JSON.stringify(parsedInput.chapters),
     outline_summary: parsedInput.outline_summary,
@@ -177,7 +178,7 @@ function buildUserMessage(input: JudgeInput): string {
   lines.push(
     `差別化フック: ${input.theme_context.hook}`,
     `想定読者: ${input.theme_context.target_reader}`,
-    `ジャンル: ${input.genre ?? 'general'}`,
+    `ジャンル: ${genreLabel(input.genre) ?? 'general'}`,
     `章数: ${input.chapters.length}`,
     '',
     '【アウトライン概要】',

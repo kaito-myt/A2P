@@ -8,6 +8,7 @@ import {
 import { generateCoverText as defaultGenerateCoverText } from '@a2p/agents/thumbnail/text';
 import { generateCoverArtDirection as defaultGenerateCoverArtDirection } from '@a2p/agents/art-direction';
 import type { Genre } from '@a2p/contracts/agents';
+import { GENRE_SLUGS } from '@a2p/contracts/agents';
 import type {
   ThumbnailTextInput,
   ThumbnailTextOutput,
@@ -174,7 +175,7 @@ export interface PipelineBookThumbnailTextDeps {
   ) => Promise<{ ok: boolean }>;
 }
 
-const ALLOWED_GENRES = new Set<string>(['practical', 'business', 'self_help']);
+const ALLOWED_GENRES = new Set<string>(GENRE_SLUGS);
 const DEFAULT_PROPOSAL_COUNT = 3;
 
 /**

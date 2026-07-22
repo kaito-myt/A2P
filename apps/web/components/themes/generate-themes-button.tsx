@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { generateThemes } from '@/app/actions/themes';
 import { messages } from '@/lib/messages';
+import { GENRE_GROUPS } from '@a2p/contracts';
 
 const m = messages.themes;
 
@@ -29,14 +30,8 @@ export interface NameOption {
   name: string;
 }
 
-type Genre = 'practical' | 'business' | 'self_help' | '';
-
-const GENRE_OPTIONS: Array<{ value: Genre; label: string }> = [
-  { value: '', label: 'おまかせ（指定なし）' },
-  { value: 'practical', label: '実用書' },
-  { value: 'business', label: 'ビジネス書' },
-  { value: 'self_help', label: '自己啓発' },
-];
+/** 空文字 = おまかせ (null 送信)、それ以外はカタログ slug。 */
+type Genre = string;
 
 export function GenerateThemesButton({
   accounts = [],
@@ -166,10 +161,15 @@ export function GenerateThemesButton({
                       onChange={(e) => setGenre(e.target.value as Genre)}
                       disabled={pending}
                     >
-                      {GENRE_OPTIONS.map((g) => (
-                        <option key={g.value} value={g.value}>
-                          {g.label}
-                        </option>
+                      <option value="">おまかせ（指定なし）</option>
+                      {GENRE_GROUPS.map((grp) => (
+                        <optgroup key={grp.group} label={grp.group}>
+                          {grp.items.map((g) => (
+                            <option key={g.slug} value={g.slug}>
+                              {g.label}
+                            </option>
+                          ))}
+                        </optgroup>
                       ))}
                     </select>
                   </div>

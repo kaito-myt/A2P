@@ -7,6 +7,7 @@ import {
 } from '@a2p/agents/lib/book-lock';
 import { editBook as defaultEditBook } from '@a2p/agents/editor';
 import type { Genre } from '@a2p/contracts/agents';
+import { GENRE_SLUGS } from '@a2p/contracts/agents';
 import {
   type EditorChapterInput,
   type EditorInput,
@@ -240,7 +241,7 @@ export interface PipelineBookEditorDeps {
   ) => Promise<{ ok: boolean }>;
 }
 
-const ALLOWED_GENRES = new Set<string>(['practical', 'business', 'self_help']);
+const ALLOWED_GENRES = new Set<string>(GENRE_SLUGS);
 
 /**
  * graphile-worker から呼ばれる Task 本体は下の `pipelineBookEditorTask`.

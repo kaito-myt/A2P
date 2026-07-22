@@ -30,6 +30,7 @@
  *  - schema は DB `chapters` 列 (heading / body_md) + docs/05 §6.3.3 と完全整合 (Hard Rule #3)
  *  - AgentSdkClient は responseSchema 非対応 — 自由テキスト → JSON 抽出 → zod の三段
  */
+import { genreLabel } from '@a2p/contracts/agents';
 import { AgentError } from '@a2p/contracts/errors';
 import type { LLMClient } from '@a2p/contracts/agents';
 import {
@@ -145,7 +146,7 @@ export async function editBook(
       draft_chapters: JSON.stringify(chunkInput.chapters),
       ai_disclosure_text: disclosureForChunk,
       feedback: formatFeedback(parsedInput.feedback),
-      genre: parsedInput.genre ?? 'general',
+      genre: genreLabel(parsedInput.genre) ?? 'general',
     });
 
     const completion = await client.complete({
@@ -435,7 +436,7 @@ function buildUserMessage(input: EditorInput): string {
   lines.push(
     `差別化フック: ${input.themeContext.hook}`,
     `想定読者: ${input.themeContext.target_reader}`,
-    `ジャンル: ${input.genre ?? 'general'}`,
+    `ジャンル: ${genreLabel(input.genre) ?? 'general'}`,
     `章数: ${input.chapters.length}`,
     '',
     '【校閲対象の全章 (JSON 配列)】',

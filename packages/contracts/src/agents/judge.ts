@@ -12,6 +12,7 @@
  *  - book_id の重複キーは SP-10 §T-10-02 掲載例の誤記として除去し 1 つのみ保持。
  */
 import { z } from 'zod';
+import { GenreValueSchema } from '../genres.js';
 
 /**
  * Judge エージェント入力 1 章分。
@@ -37,7 +38,7 @@ export const JudgeInputSchema = z.object({
   /** graphile-worker.jobs.id — token_usage.job_id 紐付け用。 */
   job_id: z.string().optional(),
   /** ジャンル (null = ジャンル横断既定プロンプト fallback)。 */
-  genre: z.enum(['practical', 'business', 'self_help']).nullable(),
+  genre: GenreValueSchema.nullable(),
   /** 採用テーマの文脈情報。 */
   theme_context: z.object({
     title: z.string().min(1).max(200),

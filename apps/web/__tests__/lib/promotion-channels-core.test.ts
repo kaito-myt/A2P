@@ -160,7 +160,7 @@ describe('publishPostNowCore', () => {
     const res = await publishPostNowCore({ post_id: 'p1' }, deps);
     expect(res.ok).toBe(true);
     expect(updateMany).toHaveBeenCalledWith({
-      where: { id: 'p1', status: { in: ['scheduled', 'draft', 'failed'] } },
+      where: { id: 'p1', status: { in: ['scheduled', 'draft', 'failed', 'posting'] } },
       data: { status: 'scheduled', error: null },
     });
     expect(enqueue).toHaveBeenCalledWith('promotion.post.publish', { post_id: 'p1', force: true });
@@ -181,7 +181,7 @@ describe('cancelPostCore', () => {
     const res = await cancelPostCore({ post_id: 'p1' }, deps);
     expect(res.ok).toBe(true);
     expect(updateMany).toHaveBeenCalledWith({
-      where: { id: 'p1', status: { in: ['scheduled', 'draft', 'failed'] } },
+      where: { id: 'p1', status: { in: ['scheduled', 'draft', 'failed', 'posting'] } },
       data: { status: 'canceled' },
     });
   });

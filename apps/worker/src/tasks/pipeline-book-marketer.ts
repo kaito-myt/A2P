@@ -7,6 +7,7 @@ import {
 } from '@a2p/agents/lib/book-lock';
 import { generateMarketerMetadata as defaultGenerateMarketerMetadata } from '@a2p/agents/marketer';
 import type { MarketerMetadataInput } from '@a2p/contracts/agents/marketer';
+import { GENRE_SLUGS } from '@a2p/contracts/agents';
 import { NotFoundError, ValidationError } from '@a2p/contracts/errors';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
 import { prisma as defaultPrisma } from '@a2p/db';
@@ -162,7 +163,7 @@ export interface PipelineBookMarketerDeps {
   now?: () => Date;
 }
 
-const ALLOWED_GENRES = new Set(['practical', 'business', 'self_help']);
+const ALLOWED_GENRES = new Set<string>(GENRE_SLUGS);
 
 /**
  * graphile-worker から呼ばれる Task 本体は下の `pipelineBookMarketerTask`。
@@ -461,11 +462,9 @@ function buildThemeContext(
   return ctx;
 }
 
-/** DB の genre 文字列を Marketer 入力 enum に正規化 (未知値は null fallback)。 */
-function normalizeGenre(g: string): 'practical' | 'business' | 'self_help' | null {
-  return ALLOWED_GENRES.has(g)
-    ? (g as 'practical' | 'business' | 'self_help')
-    : null;
+/** DB の genre 文字列を Marketer 入力へ正規化 (カタログ外の未知値は null fallback)。 */
+function normalizeGenre(g: string): string | null {
+  return ALLOWED_GENRES.has(g) ? g : null;
 }
 
 function serializeError(err: unknown): string {

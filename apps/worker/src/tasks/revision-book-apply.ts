@@ -8,6 +8,7 @@ import {
 import { generateChapter as defaultGenerateChapter } from '@a2p/agents/writer/chapter';
 import { generateOutline as defaultGenerateOutline } from '@a2p/agents/writer/outline';
 import type { Genre } from '@a2p/contracts/agents';
+import { GENRE_SLUGS } from '@a2p/contracts/agents';
 import {
   type ChapterPlan,
   type RevisionFeedbackItem,
@@ -268,7 +269,7 @@ interface ResultSummary {
 // Main logic
 // ---------------------------------------------------------------------------
 
-const ALLOWED_GENRES = new Set<string>(['practical', 'business', 'self_help']);
+const ALLOWED_GENRES = new Set<string>(GENRE_SLUGS);
 
 export async function runRevisionBookApply(
   payload: unknown,

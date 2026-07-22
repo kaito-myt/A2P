@@ -22,6 +22,7 @@
  *    (zod superRefine だと details (total/min/max) を AgentError に渡しにくいため)
  */
 import { z } from 'zod';
+import { GenreValueSchema } from '../genres.js';
 
 /** Writer アウトライン LLM 呼出入力。F-003 受入基準を満たすため、テーマ + 想定文字数を最低限渡す。 */
 export const WriterOutlineInputSchema = z.object({
@@ -32,7 +33,7 @@ export const WriterOutlineInputSchema = z.object({
   /** `accounts.id` — F-001 と同様、出版アカウントごとの想定読者を考慮するため受け取る。 */
   accountId: z.string(),
   /** ジャンル (null = 全ジャンル既定プロンプト fallback)。 */
-  genre: z.enum(['practical', 'business', 'self_help']).nullable(),
+  genre: GenreValueSchema.nullable(),
   /** 採用テーマから派生する文脈 — Writer に渡す最小集合。 */
   themeContext: z.object({
     title: z.string().min(1).max(200),
@@ -104,7 +105,7 @@ export type WriterOutlineOutput = z.infer<typeof WriterOutlineOutputSchema>;
 export const OutlineReviewInputSchema = z.object({
   jobId: z.string().optional(),
   bookId: z.string(),
-  genre: z.enum(['practical', 'business', 'self_help']).nullable(),
+  genre: GenreValueSchema.nullable(),
   themeContext: z.object({
     title: z.string().min(1).max(200),
     subtitle: z.string().min(1).max(200).optional(),
@@ -199,7 +200,7 @@ export const WriterChapterInputSchema = z.object({
   /** `accounts.id` — outline と同じく文脈として保持。 */
   accountId: z.string(),
   /** ジャンル (null = 全ジャンル既定プロンプト fallback)。 */
-  genre: z.enum(['practical', 'business', 'self_help']).nullable(),
+  genre: GenreValueSchema.nullable(),
   /** 採用 outline の章 1 要素 (ChapterPlanSchema)。`Chapter.index` / `Chapter.heading` のソース。 */
   outlineChapter: ChapterPlanSchema,
   /** 書籍全体の方向性 — outline と同じ最小集合。 */

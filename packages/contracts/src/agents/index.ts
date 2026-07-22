@@ -1,3 +1,15 @@
+export {
+  GENRE_CATALOG,
+  GENRE_SLUGS,
+  GENRE_LABELS,
+  GENRE_GROUPS,
+  GenreSlugSchema,
+  GenreValueSchema,
+  genreLabel,
+  isKnownGenre,
+  type GenreDef,
+} from '../genres.js';
+
 export type {
   AgentRole,
   Genre,

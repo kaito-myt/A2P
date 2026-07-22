@@ -540,7 +540,7 @@ describe('editBook — プロンプト差込', () => {
     const args = completeMock.mock.calls[0]![0];
     const systemMsg = args.messages.find((m) => m.role === 'system');
     expect(systemMsg!.content).toContain('ChatGPT 完全活用ガイド');
-    expect(systemMsg!.content).toContain('business');
+    expect(systemMsg!.content).toContain('ビジネス書');
     // 章ごと校閲のため chapter_count は 1 (チャンク = 1 章)
     expect(systemMsg!.content).toContain('章数: 1');
     // draft_chapters: JSON 配列が埋め込まれている (compact JSON: 空白なし)

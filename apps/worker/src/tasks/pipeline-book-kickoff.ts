@@ -8,6 +8,7 @@ import {
 import { loadModelAssignment as defaultLoadModelAssignment } from '@a2p/agents/lib/load-model-assignment';
 import { loadActivePrompt as defaultLoadActivePrompt } from '@a2p/agents/lib/prompt-loader';
 import type { AgentRole, Genre } from '@a2p/contracts/agents';
+import { GENRE_SLUGS } from '@a2p/contracts/agents';
 import { NotFoundError, ValidationError } from '@a2p/contracts/errors';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
 import { prisma as defaultPrisma } from '@a2p/db';
@@ -77,7 +78,7 @@ export const SNAPSHOT_ROLES = [
   'optimizer',
 ] as const satisfies readonly AgentRole[];
 
-const ALLOWED_GENRES = new Set<string>(['practical', 'business', 'self_help']);
+const ALLOWED_GENRES = new Set<string>(GENRE_SLUGS);
 
 /** snapshot 1 役 = { provider, model }。docs/05 §3 Book.model_assignment_snapshot 互換。 */
 export interface ModelAssignmentSnapshotEntry {

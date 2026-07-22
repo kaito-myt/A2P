@@ -396,25 +396,38 @@ describe('runPipelineBookMarketer happy path', () => {
       result_json: { kdp_metadata_id: 'kdp_book_1', notes: 'test note' },
     });
 
-    // 6. 子 enqueue: pipeline.book.writer.outline 用に新規 Job 行を INSERT し、
-    //    その新規 Job.id を payload.job_id に乗せて graphile-worker へ enqueue
-    expect(captures.jobCreates).toHaveLength(1);
-    expect(captures.jobCreates[0]?.data).toMatchObject({
+    // 6. 子 enqueue: フリガナ(readings) と writer.outline の 2 件を新規 Job 行として
+    //    INSERT し、それぞれ新規 Job.id を payload.job_id に乗せて enqueue する。
+    expect(captures.jobCreates).toHaveLength(2);
+    const outlineCreate = captures.jobCreates.find(
+      (c) => c.data.kind === 'pipeline.book.writer.outline',
+    );
+    expect(outlineCreate?.data).toMatchObject({
       kind: 'pipeline.book.writer.outline',
       book_id: 'book_1',
       parent_job_id: 'job_1',
       status: 'queued',
     });
-    expect(addJobCalls).toHaveLength(2);
+    // フリガナ(readings)の子 Job も自動連鎖される (KDP 入稿でフリガナを最初から揃える)
+    expect(
+      captures.jobCreates.some((c) => c.data.kind === 'pipeline.book.readings.generate'),
+    ).toBe(true);
+    // enqueue: cost.check + readings + writer.outline の 3 件
+    expect(addJobCalls).toHaveLength(3);
     // cost check enqueue (F-034 / T-07-02)
     expect(addJobCalls[0]?.identifier).toBe('alert.cost.check');
     expect(addJobCalls[0]?.payload).toEqual({ scope: 'per_book', book_id: 'book_1' });
-    // writer.outline enqueue
-    expect(addJobCalls[1]?.identifier).toBe('pipeline.book.writer.outline');
-    expect(addJobCalls[1]?.payload).toEqual({
-      book_id: 'book_1',
-      job_id: 'child_job_id_1',
-    });
+    // readings enqueue (非致命の連鎖)
+    expect(
+      addJobCalls.some((c) => c.identifier === 'pipeline.book.readings.generate'),
+    ).toBe(true);
+    // writer.outline enqueue — 新規子 Job.id (親 job_1 ではない) を乗せる
+    const outlineEnqueue = addJobCalls.find(
+      (c) => c.identifier === 'pipeline.book.writer.outline',
+    );
+    expect(outlineEnqueue?.payload).toMatchObject({ book_id: 'book_1' });
+    expect((outlineEnqueue?.payload as { job_id: string }).job_id).toEqual(expect.any(String));
+    expect((outlineEnqueue?.payload as { job_id: string }).job_id).not.toBe('job_1');
 
     // 7. lock release は finally で必ず実行
     expect(releaseCalls).toEqual([{ bookId: 'book_1', holder: 'pipeline:job_1' }]);
@@ -437,9 +450,12 @@ describe('runPipelineBookMarketer happy path', () => {
       deps,
     );
 
-    // 子 Job 行が正しい契約で INSERT されている
-    expect(captures.jobCreates).toHaveLength(1);
-    expect(captures.jobCreates[0]?.data).toEqual(
+    // 子 Job 行が正しい契約で INSERT されている (readings + writer.outline の 2 件)
+    expect(captures.jobCreates).toHaveLength(2);
+    const outlineCreate = captures.jobCreates.find(
+      (c) => c.data.kind === 'pipeline.book.writer.outline',
+    );
+    expect(outlineCreate?.data).toEqual(
       expect.objectContaining({
         kind: 'pipeline.book.writer.outline',
         book_id: 'book_1',
@@ -450,12 +466,13 @@ describe('runPipelineBookMarketer happy path', () => {
     );
 
     // graphile-worker への enqueue は新規 Job.id を payload に乗せている
-    expect(addJobCalls).toHaveLength(2);
+    expect(addJobCalls).toHaveLength(3);
     expect(addJobCalls[0]?.identifier).toBe('alert.cost.check');
-    expect(addJobCalls[1]?.payload).toEqual({
-      book_id: 'book_1',
-      job_id: 'child_job_id_xyz',
-    });
+    const outlineEnqueue = addJobCalls.find(
+      (c) => c.identifier === 'pipeline.book.writer.outline',
+    );
+    expect(outlineEnqueue?.payload).toMatchObject({ book_id: 'book_1' });
+    expect((outlineEnqueue?.payload as { job_id: string }).job_id).toEqual(expect.any(String));
   });
 
   it('再実行 (同 job_id) でも upsert により KdpMetadata は 1 件のまま', async () => {

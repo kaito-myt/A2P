@@ -53,7 +53,8 @@ export type PipelineThemeGeneratePayload = z.infer<
 const JobPayloadSchema = z.object({
   theme_session_id: z.string().min(1),
   account_id: z.string().min(1),
-  genre: z.enum(['practical', 'business', 'self_help']).nullable(),
+  // ジャンルは自由 String (カタログ slug)。null = おまかせ。
+  genre: z.string().min(1).max(64).nullable(),
   keyword_or_brief: z.string().min(1).max(500),
   count: z.number().int().min(1).max(30),
   exclude_titles_recent: z.array(z.string()).max(500).optional(),
@@ -316,7 +317,7 @@ function mapCandidateToRow(args: {
   candidate: MarketerThemeCandidate;
   accountId: string;
   themeSessionId: string;
-  genre: 'practical' | 'business' | 'self_help' | null;
+  genre: string | null;
   authorNameId?: string | null;
   labelNameId?: string | null;
 }): {

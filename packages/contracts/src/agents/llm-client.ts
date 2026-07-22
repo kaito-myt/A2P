@@ -64,8 +64,13 @@ export interface LLMMessageImage {
   mimeType: string;
 }
 
-/** docs/02 / docs/05 §6.3 — 対応ジャンル 3 種。 */
-export type Genre = 'practical' | 'business' | 'self_help';
+/**
+ * ジャンル — 以前は 3 値 union だったが、テーマ生成で扱うジャンルを拡張したため
+ * カタログ (`../genres.ts` GENRE_CATALOG) の slug を表す自由 String に広げた。
+ * genre は下流でプロンプト/モデル選定キー兼プロンプト文脈として使われ、未定義値は
+ * role 既定にフォールバックする。表示ラベルは `genreLabel(slug)` で解決する。
+ */
+export type Genre = string;
 
 /**
  * complete()/stream() に渡す任意のツール。

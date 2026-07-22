@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { generatePromotionPlan as defaultGeneratePromotionPlan, type GeneratePromotionDeps } from '@a2p/agents';
 import type { PromotionInput, PromotionPlanOutput } from '@a2p/contracts/agents/promoter';
 import type { Genre } from '@a2p/contracts/agents';
+import { GENRE_SLUGS } from '@a2p/contracts/agents';
 import { NotFoundError, ValidationError } from '@a2p/contracts/errors';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
 import { prisma as defaultPrisma } from '@a2p/db';
@@ -24,7 +25,7 @@ export const PipelineBookPromotionGeneratePayloadSchema = z.object({
   job_id: z.string().min(1),
 });
 
-const ALLOWED_GENRES = new Set<string>(['practical', 'business', 'self_help']);
+const ALLOWED_GENRES = new Set<string>(GENRE_SLUGS);
 function normalizeGenre(g: string | null | undefined): Genre | null {
   return g && ALLOWED_GENRES.has(g) ? (g as Genre) : null;
 }

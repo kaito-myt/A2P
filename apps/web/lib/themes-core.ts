@@ -39,6 +39,7 @@ import {
   isA2PError,
   fail,
   ok,
+  GenreSlugSchema,
   type ActionResult,
 } from '@a2p/contracts';
 import { Prisma, type Account, type Job, type ThemeCandidate } from '@a2p/db';
@@ -61,7 +62,8 @@ import { messages } from './messages';
  */
 export const GenerateThemesInputSchema = z.object({
   accountId: z.string().min(1).max(64),
-  genre: z.enum(['practical', 'business', 'self_help']).nullable(),
+  // ジャンルはカタログ (GENRE_CATALOG) の slug のみ許可。null = おまかせ。
+  genre: GenreSlugSchema.nullable(),
   keywordOrBrief: z.string().min(1).max(500),
   count: z.number().int().min(1).max(30).default(10),
   /**

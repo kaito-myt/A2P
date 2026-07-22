@@ -7,6 +7,7 @@ import {
   type GenerateCoverImageDeps,
 } from '@a2p/agents';
 import type { Genre } from '@a2p/contracts/agents';
+import { GENRE_SLUGS } from '@a2p/contracts/agents';
 import type {
   ThumbnailImageInput,
   ThumbnailImageOutput,
@@ -59,7 +60,7 @@ export type PipelineBookCoverRegeneratePayload = z.infer<
   typeof PipelineBookCoverRegeneratePayloadSchema
 >;
 
-const ALLOWED_GENRES = new Set<string>(['practical', 'business', 'self_help']);
+const ALLOWED_GENRES = new Set<string>(GENRE_SLUGS);
 function normalizeGenre(g: string | null | undefined): Genre | null {
   return g && ALLOWED_GENRES.has(g) ? (g as Genre) : null;
 }

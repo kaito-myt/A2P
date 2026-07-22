@@ -445,7 +445,7 @@ describe('generateOutline — プロンプト差込', () => {
     const args = completeMock.mock.calls[0]![0];
     const systemMsg = args.messages.find((m) => m.role === 'system');
     expect(systemMsg!.content).toContain('ChatGPT 完全活用ガイド');
-    expect(systemMsg!.content).toContain('business');
+    expect(systemMsg!.content).toContain('ビジネス書');
     expect(systemMsg!.content).toContain('9');
     expect(systemMsg!.content).toContain('48000');
   });

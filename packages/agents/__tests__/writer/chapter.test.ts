@@ -550,7 +550,7 @@ describe('generateChapter — プロンプト差込', () => {
     const args = completeMock.mock.calls[0]![0];
     const systemMsg = args.messages.find((m) => m.role === 'system');
     expect(systemMsg!.content).toContain('ChatGPT 完全活用ガイド');
-    expect(systemMsg!.content).toContain('business');
+    expect(systemMsg!.content).toContain('ビジネス書');
     expect(systemMsg!.content).toContain('第3章 案件獲得の戦略');
     expect(systemMsg!.content).toContain('7500');
   });

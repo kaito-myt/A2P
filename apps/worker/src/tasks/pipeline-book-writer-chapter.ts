@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { generateChapter as defaultGenerateChapter } from '@a2p/agents/writer/chapter';
 import type { Genre } from '@a2p/contracts/agents';
+import { GENRE_SLUGS } from '@a2p/contracts/agents';
 import {
   ChapterPlanSchema,
   type WriterChapterInput,
@@ -219,7 +220,7 @@ export interface PipelineBookWriterChapterDeps {
   ) => Promise<{ ok: boolean }>;
 }
 
-const ALLOWED_GENRES = new Set<string>(['practical', 'business', 'self_help']);
+const ALLOWED_GENRES = new Set<string>(GENRE_SLUGS);
 
 /** 直前章の本文先頭抜粋字数 (docs/05 §5.3.4 簡易要約)。 */
 const PREVIOUS_CHAPTER_EXCERPT_CHARS = 200;

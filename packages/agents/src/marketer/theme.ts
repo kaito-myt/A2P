@@ -20,6 +20,7 @@
  *     `deps?.prisma` は loadActivePrompt 内部の repo 差し替えに使う (vitest テストで
  *     Prisma を引かないため)。
  */
+import { genreLabel } from '@a2p/contracts/agents';
 import { AgentError } from '@a2p/contracts/errors';
 import type { LLMClient } from '@a2p/contracts/agents';
 import {
@@ -82,7 +83,7 @@ export async function generateMarketerThemes(
   );
   const systemPrompt = fillPlaceholders(prompt.template, {
     brief: parsedInput.keywordOrBrief,
-    genre: parsedInput.genre ?? 'general',
+    genre: genreLabel(parsedInput.genre) ?? 'general',
     count: parsedInput.count,
     exclude_titles:
       parsedInput.excludeTitlesRecent.length > 0
@@ -192,7 +193,7 @@ function buildUserMessage(input: MarketerThemeInput): string {
   const lines = [
     `キーワード/ブリーフ: ${input.keywordOrBrief}`,
     `生成数: ${input.count}`,
-    `ジャンル: ${input.genre ?? 'general'}`,
+    `ジャンル: ${genreLabel(input.genre) ?? 'general'}`,
   ];
   if (input.excludeTitlesRecent.length > 0) {
     lines.push(`直近採用済みタイトル (避ける):\n${input.excludeTitlesRecent.map((t) => ` - ${t}`).join('\n')}`);

@@ -500,7 +500,7 @@ describe('judgeBook — プロンプト差込', () => {
     const args = completeMock.mock.calls[0]![0];
     const systemMsg = args.messages.find((m) => m.role === 'system');
     expect(systemMsg!.content).toContain('プレースホルダテスト書籍');
-    expect(systemMsg!.content).toContain('practical');
+    expect(systemMsg!.content).toContain('実用書');
     expect(systemMsg!.content).toContain('2'); // chapter_count
     expect(systemMsg!.content).toContain('"index":1');
   });

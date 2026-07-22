@@ -10,6 +10,7 @@
  *  2. createAgentClient('cover_art_direction', genre, ctx)  (token 記録 wrap 済)
  *  3. client.complete({ messages, responseSchema })  → directions[]
  */
+import { genreLabel } from '@a2p/contracts/agents';
 import type { LLMClient } from '@a2p/contracts/agents';
 import { AgentError } from '@a2p/contracts/errors';
 import {
@@ -58,7 +59,7 @@ export async function generateCoverArtDirection(
 
   const prompt = await loadPrompt('cover_art_direction', genre, deps.promptLoaderDeps);
   const systemPrompt = fillPlaceholders(prompt.template, {
-    genre: parsed.genre ?? 'general',
+    genre: genreLabel(parsed.genre) ?? 'general',
     count: parsed.count,
   });
 
@@ -174,7 +175,7 @@ function buildUserMessage(input: CoverArtDirectionInput): string {
     `サブタイトル: ${c.subtitle ?? '(なし)'}`,
     `差別化フック: ${c.hook}`,
     `想定読者: ${c.target_reader}`,
-    `ジャンル: ${input.genre ?? 'general'}`,
+    `ジャンル: ${genreLabel(input.genre) ?? 'general'}`,
     '',
     '## 手順 (必ずこの順で考える)',
     '1. **Amazon Kindle の売れ筋表紙を web_search で実地調査する**。この本のジャンル/サブジャンル/',

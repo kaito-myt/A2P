@@ -6,6 +6,7 @@
  *
  * createAgentClient の `assignmentOverride` で役割の割当を無視し任意モデルを使う。
  */
+import { genreLabel } from '@a2p/contracts/agents';
 import type { AgentRole, Genre, LLMClient } from '@a2p/contracts/agents';
 
 import { createAgentClient as defaultCreateAgentClient } from '../lib/llm-client-factory.js';
@@ -57,7 +58,7 @@ export async function runBakeoffCandidate(
   try {
     const prompt = await loadPrompt(args.role, args.genre);
     // 役割共通の {{genre}} だけ埋める (他プレースホルダは全候補共通で残す=公平比較)。
-    const system = fillPlaceholders(prompt.template, { genre: args.genre ?? 'general' });
+    const system = fillPlaceholders(prompt.template, { genre: genreLabel(args.genre) ?? 'general' });
     const systemContent = args.input.system_extra
       ? `${system}\n\n${args.input.system_extra}`
       : system;

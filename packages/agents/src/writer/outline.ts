@@ -32,6 +32,7 @@
  *  - schema は DB `outlines.chapters_json` + docs/05 §6.3.2 と完全整合 (Hard Rule #3)
  *  - AgentSdkClient は responseSchema 非対応 — 自由テキスト → JSON 抽出 → zod の三段
  */
+import { genreLabel } from '@a2p/contracts/agents';
 import { AgentError } from '@a2p/contracts/errors';
 import type { LLMClient } from '@a2p/contracts/agents';
 import {
@@ -110,7 +111,7 @@ export async function generateOutline(
     reject_note: parsedInput.rejectNote ?? '',
     kdp_keywords:
       parsedInput.kdpMetadata?.keywords.join(', ') ?? '',
-    genre: parsedInput.genre ?? 'general',
+    genre: genreLabel(parsedInput.genre) ?? 'general',
   });
 
   // 3. LLMClient (withTokenLogging ラップ済み) 取得
@@ -253,7 +254,7 @@ function buildUserMessage(input: WriterOutlineInput): string {
   lines.push(
     `差別化フック: ${input.themeContext.hook}`,
     `想定読者: ${input.themeContext.target_reader}`,
-    `ジャンル: ${input.genre ?? 'general'}`,
+    `ジャンル: ${genreLabel(input.genre) ?? 'general'}`,
     `想定章数: ${input.targetChapterCount} (7〜10 章の範囲で調整可)`,
     `想定総文字数: ${input.targetTotalChars} 字 (各章合計 ±15% 範囲を厳守)`,
   );

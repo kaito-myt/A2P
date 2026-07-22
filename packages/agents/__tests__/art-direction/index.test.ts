@@ -80,7 +80,7 @@ describe('generateCoverArtDirection', () => {
     const arg = deps._complete.mock.calls[0]![0] as Record<string, unknown>;
     expect(arg.responseSchema).toBeUndefined();
     const sys = (arg.messages as Array<{ role: string; content: string }>)[0]!.content;
-    expect(sys).toContain('business');
+    expect(sys).toContain('ビジネス書');
     expect(sys).toContain('3');
   });
 });

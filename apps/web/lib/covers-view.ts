@@ -8,6 +8,7 @@
 
 import type { Cover, CoverTextProposal, Book, RevisionComment } from '@a2p/db';
 
+import { genreLabel } from '@a2p/contracts';
 import { messages } from './messages';
 
 // ---------------------------------------------------------------------------
@@ -266,7 +267,8 @@ export function booksWithGeneratedCovers(
 export function formatGenre(genre: string | null | undefined): string | null {
   if (!genre) return null;
   const g = messages.covers.genres as Record<string, string>;
-  return g[genre] ?? genre;
+  // ローカル辞書 → カタログ (全ジャンル) → 素通し の順にラベル解決。
+  return g[genre] ?? genreLabel(genre);
 }
 
 export function formatDateTime(iso: string): string {

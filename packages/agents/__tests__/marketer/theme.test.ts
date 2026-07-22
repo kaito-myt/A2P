@@ -449,7 +449,7 @@ describe('generateMarketerThemes — prompt-loader 経由でテンプレ取得',
     const systemMsg = args.messages.find((m) => m.role === 'system');
     expect(systemMsg).toBeDefined();
     expect(systemMsg!.content).toContain('ChatGPT 副業');
-    expect(systemMsg!.content).toContain('business');
+    expect(systemMsg!.content).toContain('ビジネス書');
     expect(systemMsg!.content).toContain('2'); // count
     expect(systemMsg!.content).toContain('古い本');
   });

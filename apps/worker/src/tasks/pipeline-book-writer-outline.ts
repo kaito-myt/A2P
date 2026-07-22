@@ -8,6 +8,7 @@ import {
 import { generateOutline as defaultGenerateOutline } from '@a2p/agents/writer/outline';
 import { reviewOutline as defaultReviewOutline } from '@a2p/agents/writer/outline-review';
 import type { Genre } from '@a2p/contracts/agents';
+import { GENRE_SLUGS } from '@a2p/contracts/agents';
 import type {
   WriterOutlineInput,
   WriterOutlineOutput,
@@ -190,7 +191,7 @@ export interface PipelineBookWriterOutlineDeps {
 /** Writer outline の既定パラメータ (タスク詳細). */
 const DEFAULT_TARGET_CHAPTER_COUNT = 8;
 const DEFAULT_TARGET_TOTAL_CHARS = 50_000;
-const ALLOWED_GENRES = new Set<string>(['practical', 'business', 'self_help']);
+const ALLOWED_GENRES = new Set<string>(GENRE_SLUGS);
 const OUTLINE_CHAR_TOLERANCE = 0.15;
 
 /**

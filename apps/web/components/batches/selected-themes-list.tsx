@@ -5,6 +5,8 @@
  * 行追加/削除は SP-04 で実装するため、本タスクでは「読み取り表示 + 状態警告」
  * までを担う (status='accepted' でない行は赤バッジで強調)。
  */
+import { genreLabel as catalogGenreLabel } from '@a2p/contracts';
+
 import { messages } from '@/lib/messages';
 
 const m = messages.batches.selected;
@@ -27,7 +29,8 @@ function genreLabel(genre: string): string {
   if (genre === 'practical' || genre === 'business' || genre === 'self_help') {
     return m.genres[genre];
   }
-  return m.genreUnknown;
+  // カタログの全ジャンルを日本語ラベルへ (未知のみ '—')。
+  return catalogGenreLabel(genre) ?? m.genreUnknown;
 }
 
 export function SelectedThemesList({ rows }: SelectedThemesListProps) {

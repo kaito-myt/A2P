@@ -11,6 +11,7 @@
  *  - INSERT is handled by the pipeline worker task (`pipeline.book.thumbnail.text`), not by the agent itself.
  */
 import { z } from 'zod';
+import { GenreValueSchema } from '../genres.js';
 
 /** A single cover-text proposal (title + optional subtitle + optional band copy). */
 export const CoverTextProposalSchema = z.object({
@@ -35,7 +36,7 @@ export const ThumbnailTextInputSchema = z.object({
   /** `accounts.id`. */
   accountId: z.string(),
   /** Genre (null = all-genre default prompt fallback). */
-  genre: z.enum(['practical', 'business', 'self_help']).nullable(),
+  genre: GenreValueSchema.nullable(),
   /** Theme context -- same minimal set as Writer / Editor. */
   themeContext: z.object({
     title: z.string().min(1).max(200),
@@ -125,7 +126,7 @@ export const CoverTextCheckInputSchema = z.object({
   /** `Book.id` -- token_usage.book_id。 */
   bookId: z.string(),
   /** Genre (null = 全ジャンル既定プロンプト fallback)。 */
-  genre: z.enum(['practical', 'business', 'self_help']).nullable().optional(),
+  genre: GenreValueSchema.nullable().optional(),
   /** カバーに描画されているはずのタイトル (verbatim 期待値)。 */
   title: z.string().min(1),
   /** カバーに描画されているはずの副題 (任意)。 */
@@ -180,7 +181,7 @@ export const CoverArtDirectionInputSchema = z.object({
   /** `Book.id` -- token_usage.book_id。 */
   bookId: z.string(),
   /** Genre (null = 全ジャンル既定プロンプト fallback)。 */
-  genre: z.enum(['practical', 'business', 'self_help']).nullable(),
+  genre: GenreValueSchema.nullable(),
   /** 企画コンテキスト (thumbnail_text と同じ最小セット)。 */
   themeContext: z.object({
     title: z.string().min(1).max(200),

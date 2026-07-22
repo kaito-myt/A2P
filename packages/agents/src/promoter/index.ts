@@ -4,6 +4,7 @@
  * 出版した本を「売れる」状態にするための具体的な販促プランを生成する。
  * judge / readings と同パターン (loadActivePrompt → createAgentClient → responseSchema)。
  */
+import { genreLabel } from '@a2p/contracts/agents';
 import type { LLMClient } from '@a2p/contracts/agents';
 import {
   PromotionInputSchema,
@@ -50,7 +51,7 @@ export async function generatePromotionPlan(
 
   const prompt = await loadPrompt('promoter', genre, deps.promptLoaderDeps);
   const systemPrompt = fillPlaceholders(prompt.template, {
-    genre: parsed.genre ?? 'general',
+    genre: genreLabel(parsed.genre) ?? 'general',
   });
 
   const ctx: LoggingContext = { role: 'promoter', bookId: parsed.bookId };
@@ -87,7 +88,7 @@ function buildUserMessage(input: PromotionInput): string {
     `副題: ${b.subtitle ?? '(なし)'}`,
     `差別化フック: ${b.hook ?? '(なし)'}`,
     `想定読者: ${b.target_reader ?? '(なし)'}`,
-    `ジャンル: ${input.genre ?? 'general'}`,
+    `ジャンル: ${genreLabel(input.genre) ?? 'general'}`,
     `著者名: ${b.author ?? '(なし)'}`,
     `現在価格: ${b.price_jpy != null ? `${b.price_jpy}円` : '(未設定)'}`,
     `キーワード: ${b.keywords.length > 0 ? b.keywords.join(', ') : '(なし)'}`,

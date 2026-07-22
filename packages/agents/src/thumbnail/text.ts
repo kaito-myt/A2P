@@ -15,6 +15,7 @@
  *
  * DI: `deps?.createAgentClient` / `deps?.loadActivePrompt` for test substitution.
  */
+import { genreLabel } from '@a2p/contracts/agents';
 import { AgentError } from '@a2p/contracts/errors';
 import type { LLMClient } from '@a2p/contracts/agents';
 import {
@@ -74,7 +75,7 @@ export async function generateCoverText(
     subtitle: parsedInput.themeContext.subtitle ?? '',
     hook: parsedInput.themeContext.hook,
     target_reader: parsedInput.themeContext.target_reader,
-    genre: parsedInput.genre ?? 'general',
+    genre: genreLabel(parsedInput.genre) ?? 'general',
     count: parsedInput.count,
   });
 
@@ -149,7 +150,7 @@ function buildUserMessage(input: ThumbnailTextInput): string {
   lines.push(
     `差別化フック: ${input.themeContext.hook}`,
     `想定読者: ${input.themeContext.target_reader}`,
-    `ジャンル: ${input.genre ?? 'general'}`,
+    `ジャンル: ${genreLabel(input.genre) ?? 'general'}`,
     '',
     `上記の書籍について、表紙に載せるテキスト案を ${input.count} 案生成してください。`,
     '',

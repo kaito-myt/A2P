@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 import type { Book, Outline, Chapter, Job, RevisionComment } from '@a2p/db';
 
+import { genreLabel } from '@a2p/contracts';
 import { messages } from './messages';
 
 // ---------------------------------------------------------------------------
@@ -455,7 +456,7 @@ export function formatCostStatus(status: CostStatus): string {
 export function formatGenre(genre: string | null | undefined): string | null {
   if (!genre) return null;
   const g = m.genres as Record<string, string>;
-  return g[genre] ?? genre;
+  return g[genre] ?? genreLabel(genre);
 }
 
 export function formatDateTime(iso: string): string {
