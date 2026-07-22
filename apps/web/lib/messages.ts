@@ -625,6 +625,7 @@ export const messages = {
       xAccessTokenSecret: 'アクセストークンシークレット',
       save: '接続設定を保存',
       saved: '保存しました',
+      xNeedAll: 'X は4つの値（API キー / API キーシークレット / アクセストークン / アクセストークンシークレット）を全て入力してください。1つでも空だと保存されません。',
       connected: '接続済み',
       notConnected: '未接続',
       test: '接続テスト',

@@ -453,6 +453,7 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
   const [xAccessToken, setXAccessToken] = useState('');
   const [xAccessTokenSecret, setXAccessTokenSecret] = useState('');
   const [saved, setSaved] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -464,30 +465,42 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
 
   function save() {
     setSaved(false);
+    setSaveErr(null);
     setTestResult(null);
+    // X は4値すべて必要。1つでも欠けていると保存されないため明示的に弾く。
+    if (isX && (xApiKey || xApiSecret || xAccessToken || xAccessTokenSecret) && !xAllFilled) {
+      setSaveErr(m.connSection.xNeedAll);
+      return;
+    }
     start(async () => {
-      const res = await setChannelConnection({
-        channel: setting.channel,
-        handle,
-        webhook_url: webhook,
-        ...(isX && xAllFilled
-          ? {
-              x_api_key: xApiKey,
-              x_api_secret: xApiSecret,
-              x_access_token: xAccessToken,
-              x_access_token_secret: xAccessTokenSecret,
-            }
-          : {}),
-        ...(!isX && token.trim().length > 0 ? { token } : {}),
-      });
-      if (res.ok) {
-        setSaved(true);
-        setToken('');
-        setXApiKey('');
-        setXApiSecret('');
-        setXAccessToken('');
-        setXAccessTokenSecret('');
-        router.refresh();
+      try {
+        const res = await setChannelConnection({
+          channel: setting.channel,
+          handle,
+          webhook_url: webhook,
+          ...(isX && xAllFilled
+            ? {
+                x_api_key: xApiKey,
+                x_api_secret: xApiSecret,
+                x_access_token: xAccessToken,
+                x_access_token_secret: xAccessTokenSecret,
+              }
+            : {}),
+          ...(!isX && token.trim().length > 0 ? { token } : {}),
+        });
+        if (res.ok) {
+          setSaved(true);
+          setToken('');
+          setXApiKey('');
+          setXApiSecret('');
+          setXAccessToken('');
+          setXAccessTokenSecret('');
+          router.refresh();
+        } else {
+          setSaveErr(res.error?.message ?? m.actionMsg.error);
+        }
+      } catch {
+        setSaveErr(m.actionMsg.error);
       }
     });
   }
@@ -611,6 +624,7 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
           {testing ? m.connSection.testing : m.connSection.test}
         </button>
         {saved && <span className="text-caption text-success">{m.connSection.saved}</span>}
+        {saveErr && <span className="text-caption text-destructive">{saveErr}</span>}
       </div>
       {testResult && (
         <p
