@@ -472,6 +472,12 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
       setSaveErr(m.connSection.xNeedAll);
       return;
     }
+    // Webhook URL は http(s) のみ。ブラウザ自動補完のメール等が混入したら明示的に弾く。
+    const wh = webhook.trim();
+    if (wh !== '' && !/^https?:\/\//i.test(wh)) {
+      setSaveErr(m.connSection.webhookInvalid);
+      return;
+    }
     start(async () => {
       try {
         const res = await setChannelConnection({
@@ -548,15 +554,21 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
           value={handle}
           onChange={(e) => setHandle(e.target.value)}
           placeholder={m.connSection.handlePlaceholder}
+          autoComplete="off"
+          name={`handle-${setting.channel}`}
         />
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-button-sm text-charcoal-82">{m.connSection.webhookLabel}</span>
         <input
           className={inputCls}
+          type="url"
+          inputMode="url"
           value={webhook}
           onChange={(e) => setWebhook(e.target.value)}
           placeholder="https://…"
+          autoComplete="off"
+          name={`webhook-${setting.channel}`}
         />
         <span className="text-caption text-muted">{m.connSection.webhookHelp}</span>
       </label>

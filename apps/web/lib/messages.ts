@@ -626,6 +626,7 @@ export const messages = {
       save: '接続設定を保存',
       saved: '保存しました',
       xNeedAll: 'X は4つの値（API キー / API キーシークレット / アクセストークン / アクセストークンシークレット）を全て入力してください。1つでも空だと保存されません。',
+      webhookInvalid: 'Webhook URL は「https://」で始まるURLのみ入力できます。X連携では不要なので空欄で構いません（ブラウザの自動入力が入っている場合は削除してください）。',
       connected: '接続済み',
       notConnected: '未接続',
       test: '接続テスト',
