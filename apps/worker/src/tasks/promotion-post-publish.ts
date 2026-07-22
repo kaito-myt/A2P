@@ -156,6 +156,17 @@ async function defaultBuildMediaUrls(
   if (mediaKey) {
     return [await storage.getSignedDownloadUrl(mediaKey, 3600)];
   }
+  // TikTok は動画が本命。未レンダリングなら投稿時にオンデマンドで動画を1本作る
+  // (重い処理・失敗時は下の画像フォールバックへ)。
+  if (channel === 'tiktok') {
+    try {
+      const { ensureTikTokVideoForPost } = await import('./promotion-post/tiktok-video.js');
+      const videoKey = await ensureTikTokVideoForPost(postId, bookId);
+      if (videoKey) return [await storage.getSignedDownloadUrl(videoKey, 3600)];
+    } catch {
+      // フォールバックへ
+    }
+  }
   const key = bookId
     ? await ensureBookPromoImage(bookId)
     : await generateValuePostImage(postId, body);

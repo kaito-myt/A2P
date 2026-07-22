@@ -36,7 +36,7 @@ describe('runCostOptimizeWeekly', () => {
     const res = await runCostOptimizeWeekly({}, { prisma: prisma as never, analyze, now: () => new Date('2026-07-22T00:00:00Z'), genId: () => 'batch-1' });
     expect(analyze).toHaveBeenCalledTimes(1);
     // 集計が渡っている
-    const input = analyze.mock.calls[0]![0] as { total_cost_jpy: number; by_role_model: unknown[] };
+    const input = (analyze.mock.calls[0] as unknown as unknown[])[0] as { total_cost_jpy: number; by_role_model: unknown[] };
     expect(input.total_cost_jpy).toBe(11000);
     expect(res.superseded).toBe(2);
     expect(res.proposals).toBe(1);
