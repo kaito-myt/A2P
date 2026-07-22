@@ -4,3 +4,9 @@ export {
   type CoverText,
   type ComposeCoverOptions,
 } from './compose-cover.js';
+export {
+  composePromoCreative,
+  promoAccent,
+  type PromoContent,
+  type PromoOptions,
+} from './compose-promo.js';
