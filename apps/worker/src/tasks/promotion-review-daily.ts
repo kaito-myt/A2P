@@ -151,6 +151,16 @@ export async function runPromotionReviewDaily(
       const newBody = rev.revised_body.trim();
       if (!rev.changed || newBody.length === 0 || newBody === orig.body.trim()) continue;
 
+      // メタ混入ガード: 内部メモ/他投稿への言及/id が本文に漏れた改善は破棄（公開事故防止）。
+      const metaLeak =
+        /\bid\s*=/.test(newBody) ||
+        upcoming.some((d) => newBody.includes(d.id)) ||
+        /(公開タイミング|投稿と内容が近い|ご検討ください|重複しています|分散をおすすめ)/.test(newBody);
+      if (metaLeak) {
+        log.info({ task: PROMOTION_REVIEW_DAILY_TASK_NAME, postId: rev.id }, 'revision leaked meta/internal note — skip');
+        continue;
+      }
+
       // 販促投稿: 元の URL がすべて残っていなければ破棄（購入導線を守る）。
       if (orig.kind === 'promo') {
         const origUrls = extractUrls(orig.body);

@@ -124,6 +124,10 @@ export function buildOptimizerUserMessage(
     '- 文字数はチャンネルに適した長さに収める(X は日本語で概ね120字以内)。',
     '- 元が十分良ければ無理に変えず changed=false とし、revised_body には元の本文をそのまま返す。',
     '',
+    '重要: revised_body は「そのまま公開される投稿本文」だけにする。',
+    '- 他の投稿への言及・id・「重複」「公開タイミングの分散」等の運用上のメモや提案を本文に混ぜない。',
+    '- そうした気づきは reason にだけ書く（reason は公開されない）。',
+    '',
     '出力は JSON のみ。スキーマ: {"revisions":[{"id":string,"changed":boolean,"revised_body":string,"reason":string}]}。',
     '各 draft の id を必ず1件ずつ含めること。',
   ]

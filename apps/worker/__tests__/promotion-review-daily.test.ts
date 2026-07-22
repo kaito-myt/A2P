@@ -87,6 +87,25 @@ describe('runPromotionReviewDaily', () => {
     expect(updates[0]!.body).toContain(url);
   });
 
+  it('内部メモ/id が本文に漏れた改善は破棄する（公開事故防止）', async () => {
+    const { prisma, updates } = buildPrisma({
+      upcoming: [
+        { id: 'v1', kind: 'value', body: '元の育成本文' },
+        { id: 'v2', kind: 'value', body: '別の育成本文' },
+      ],
+    });
+    const optimize = vi.fn(async () => ({
+      revisions: [
+        { id: 'v1', changed: true, revised_body: '良い本文。\n\nid=v2 の投稿と内容が近いので公開タイミングの分散をご検討ください。', reason: '' },
+        { id: 'v2', changed: true, revised_body: '普通に改善された本文', reason: '' },
+      ],
+    }));
+    const res = await runPromotionReviewDaily({}, { prisma: prisma as never, optimize, now: () => new Date('2026-07-22T00:00:00Z') });
+    // v1 は漏洩でスキップ、v2 のみ採用
+    expect(updates.map((u) => u.id)).toEqual(['v2']);
+    expect(res.updated).toBe(1);
+  });
+
   it('予定投稿が無ければ optimize を呼ばない', async () => {
     const { prisma } = buildPrisma({ upcoming: [] });
     const optimize = vi.fn();
