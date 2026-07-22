@@ -125,6 +125,10 @@ import {
   promotionReviewDailyTask,
 } from './tasks/promotion-review-daily.js';
 import {
+  COST_OPTIMIZE_WEEKLY_TASK_NAME,
+  costOptimizeWeeklyTask,
+} from './tasks/cost-optimize-weekly.js';
+import {
   PROMOTION_VIDEO_GENERATE_TASK_NAME,
   promotionVideoGenerateTask,
 } from './tasks/promotion-video-generate.js';
@@ -214,6 +218,7 @@ export function buildTaskList(): TaskList {
     [PROMOTION_STRATEGY_GENERATE_TASK_NAME]: promotionStrategyGenerateTask,
     [PROMOTION_CONTENT_GENERATE_TASK_NAME]: promotionContentGenerateTask,
     [PROMOTION_REVIEW_DAILY_TASK_NAME]: promotionReviewDailyTask,
+    [COST_OPTIMIZE_WEEKLY_TASK_NAME]: costOptimizeWeeklyTask,
     [PROMOTION_VIDEO_GENERATE_TASK_NAME]: promotionVideoGenerateTask,
     [PROMOTION_POST_PUBLISH_TASK_NAME]: promotionPostPublishTask,
     [PROMOTION_DISPATCH_TASK_NAME]: promotionDispatchTask,
@@ -316,6 +321,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
     promo_dispatch_cron: null,
     promo_daily_review_enabled: false,
     promo_review_cron: null,
+    cost_auto_analyze_enabled: false,
+    cost_analyze_cron: null,
     org_auto_plan_enabled: false,
     org_plan_cron: null,
     org_auto_execute_enabled: false,
@@ -337,6 +344,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
         promo_dispatch_cron: true,
         promo_daily_review_enabled: true,
         promo_review_cron: true,
+        cost_auto_analyze_enabled: true,
+        cost_analyze_cron: true,
         org_auto_plan_enabled: true,
         org_plan_cron: true,
         org_auto_execute_enabled: true,
@@ -363,6 +372,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
       promo_dispatch_cron: row.promo_dispatch_cron,
       promo_daily_review_enabled: row.promo_daily_review_enabled,
       promo_review_cron: row.promo_review_cron,
+      cost_auto_analyze_enabled: row.cost_auto_analyze_enabled,
+      cost_analyze_cron: row.cost_analyze_cron,
       org_auto_plan_enabled: row.org_auto_plan_enabled,
       org_plan_cron: row.org_plan_cron,
       org_auto_execute_enabled: row.org_auto_execute_enabled,

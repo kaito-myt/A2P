@@ -9,6 +9,7 @@ import { FX_FETCH_TASK_NAME } from './tasks/fx-fetch.js';
 import { SALES_FETCH_DISPATCHER_TASK_NAME } from './tasks/sales-fetch-dispatcher.js';
 import { PROMOTION_DISPATCH_TASK_NAME } from './tasks/promotion-dispatch.js';
 import { PROMOTION_REVIEW_DAILY_TASK_NAME } from './tasks/promotion-review-daily.js';
+import { COST_OPTIMIZE_WEEKLY_TASK_NAME } from './tasks/cost-optimize-weekly.js';
 import { ORG_PLAN_TASK_NAME } from './tasks/org-plan.js';
 import { ORG_EXECUTE_DISPATCH_TASK_NAME } from './tasks/org-execute.js';
 import { ORG_OPS_WATCH_TASK_NAME } from './tasks/org-ops-watch.js';
@@ -137,6 +138,19 @@ export const PROMOTION_REVIEW_CRON_ITEM: CronItem = {
 };
 
 /**
+ * F-062: 週次のコスト改善提案 cron（既定 毎週月曜 UTC 20:00 = 火 05:00 JST）。
+ * AppSettings.cost_auto_analyze_enabled=true のときだけ条件付き追加する。
+ */
+export const COST_ANALYZE_CRON_DEFAULT = '0 20 * * 1';
+
+/** `cost.optimize.weekly` の CronItem 定義。 */
+export const COST_ANALYZE_CRON_ITEM: CronItem = {
+  task: COST_OPTIMIZE_WEEKLY_TASK_NAME,
+  match: COST_ANALYZE_CRON_DEFAULT,
+  identifier: 'cost-optimize-weekly',
+};
+
+/**
  * docs/06: CEO ティック (org.plan) の日次 cron。既定 05:00 JST (UTC 20:00)。
  * AppSettings.org_auto_plan_enabled=true のときだけ条件付き追加する。
  */
@@ -219,6 +233,10 @@ export interface CronRuntimeSettings {
   promo_daily_review_enabled?: boolean;
   /** F-061: 日次投稿見直し cron (省略時は既定 JST 08:00)。 */
   promo_review_cron?: string | null;
+  /** F-062: 週次コスト改善提案を cron 有効化するか。 */
+  cost_auto_analyze_enabled?: boolean;
+  /** F-062: 週次コスト分析 cron (省略時は既定 火 05:00 JST)。 */
+  cost_analyze_cron?: string | null;
   /** docs/06: CEO ティック (org.plan) を日次 cron で自動起動するか。 */
   org_auto_plan_enabled?: boolean;
   /** docs/06: org.plan cron (省略時は既定 05:00 JST)。 */
@@ -278,6 +296,14 @@ export function buildCronItemsWithSettings(settings: CronRuntimeSettings): CronI
         ? settings.promo_review_cron.trim()
         : PROMOTION_REVIEW_CRON_DEFAULT;
     items.push({ ...PROMOTION_REVIEW_CRON_ITEM, match: cronMatch });
+  }
+
+  if (settings.cost_auto_analyze_enabled) {
+    const cronMatch =
+      typeof settings.cost_analyze_cron === 'string' && settings.cost_analyze_cron.trim().length > 0
+        ? settings.cost_analyze_cron.trim()
+        : COST_ANALYZE_CRON_DEFAULT;
+    items.push({ ...COST_ANALYZE_CRON_ITEM, match: cronMatch });
   }
 
   if (settings.org_auto_plan_enabled) {

@@ -220,6 +220,12 @@ export {
 } from './content-optimizer/index.js';
 
 export {
+  analyzeCost,
+  buildCostOptimizerUserMessage,
+  type CostOptimizerDeps,
+} from './cost-optimizer/index.js';
+
+export {
   createTikTokVideoScript,
   type TikTokVideoDeps,
 } from './tiktok-video/index.js';

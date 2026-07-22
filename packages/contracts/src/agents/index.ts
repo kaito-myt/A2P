@@ -142,6 +142,23 @@ export {
 } from './content-optimizer.js';
 
 export {
+  CostByRoleModelSchema,
+  CurrentAssignmentSchema,
+  CatalogPriceSchema,
+  CostOptimizerInputSchema,
+  ProposalActionSchema,
+  CostProposalSchema,
+  CostOptimizerOutputSchema,
+  type CostByRoleModel,
+  type CurrentAssignment,
+  type CatalogPrice,
+  type CostOptimizerInput,
+  type ProposalAction,
+  type CostProposal,
+  type CostOptimizerOutput,
+} from './cost-optimizer.js';
+
+export {
   TikTokVideoInputSchema,
   ScriptBeatSchema,
   VideoScenarioSchema,

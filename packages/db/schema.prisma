@@ -933,6 +933,29 @@ model ApiCredential {
 }
 
 // =====================================================================
+// コスト改善提案（F-062）— 週次でコスト分析エージェントが生成、承認で executor が実行
+// =====================================================================
+model CostImprovementProposal {
+  id                   String    @id @default(cuid())
+  batch_id             String // 週次実行のグルーピング
+  category             String // model | cadence | feature | other
+  title                String
+  description          String    @db.Text
+  estimated_saving_jpy Int       @default(0) // 月あたり推定削減額
+  impact_note          String    @db.Text // 影響/リスク
+  action_kind          String // switch_model_assignment | set_app_setting | advisory
+  // type: switch_model_assignment={role,genre?,provider,model} / set_app_setting={key,value}
+  action_params_json   Json
+  status               String    @default("proposed") // proposed | approved | applied | dismissed | failed
+  applied_at           DateTime?
+  apply_result         String?   @db.Text
+  created_at           DateTime  @default(now())
+
+  @@index([status, created_at(sort: Desc)], map: "cost_proposals_status_time_idx")
+  @@map("cost_improvement_proposals")
+}
+
+// =====================================================================
 // アプリ設定（S-027 単一行） [F-030/F-034/F-036/F-038]
 // =====================================================================
 model AppSettings {
@@ -960,6 +983,9 @@ model AppSettings {
   // F-061: 日次で予定投稿の本文を content_optimizer が見直す機能のマスタスイッチ。
   promo_daily_review_enabled      Boolean  @default(false)
   promo_review_cron               String   @default("0 23 * * *") // JST 08:00 に予定投稿を見直し
+  // F-062: 週次でコスト改善提案を生成する機能のマスタスイッチ。
+  cost_auto_analyze_enabled       Boolean  @default(false)
+  cost_analyze_cron               String   @default("0 20 * * 1") // 毎週月曜 05:00 JST にコスト分析
   kdp_submit_timeout_minutes      Int      @default(10)
   kdp_submit_retry_count          Int      @default(2)
   job_log_retention_days          Int      @default(90)

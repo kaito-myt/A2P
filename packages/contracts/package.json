@@ -25,6 +25,7 @@
     "./agents/sns-strategist": "./src/agents/sns-strategist.ts",
     "./agents/content-creator": "./src/agents/content-creator.ts",
     "./agents/content-optimizer": "./src/agents/content-optimizer.ts",
+    "./agents/cost-optimizer": "./src/agents/cost-optimizer.ts",
     "./agents/tiktok-video": "./src/agents/tiktok-video.ts",
     "./org": "./src/org/index.ts",
     "./promotion/channels": "./src/promotion/channels.ts",

@@ -30,6 +30,7 @@ import { BreakdownTables } from '@/components/cost/breakdown-tables';
 import { PredictionAlertStrip } from '@/components/cost/prediction-alert-strip';
 import { TopCostBooksTable } from '@/components/cost/top-cost-books-table';
 import { PausedJobsTable } from '@/components/cost/paused-jobs-table';
+import { CostProposalsPanel, type CostProposalSerialized } from '@/components/cost/cost-proposals-panel';
 
 export const metadata: Metadata = {
   title: `${messages.costDashboard.pageTitle} | ${messages.brand.appName}`,
@@ -177,6 +178,36 @@ export default async function CostDashboardPage() {
   // --- Paused books ---
   const pausedBooks = pausedBooksRaw.map(serializePausedBook);
 
+  // --- Cost improvement proposals (F-062) ---
+  const proposalRows = await prisma.costImprovementProposal.findMany({
+    orderBy: { created_at: 'desc' },
+    take: 24,
+    select: {
+      id: true,
+      category: true,
+      title: true,
+      description: true,
+      estimated_saving_jpy: true,
+      impact_note: true,
+      action_kind: true,
+      status: true,
+      apply_result: true,
+      created_at: true,
+    },
+  });
+  const proposals: CostProposalSerialized[] = proposalRows.map((p) => ({
+    id: p.id,
+    category: p.category,
+    title: p.title,
+    description: p.description,
+    estimated_saving_jpy: p.estimated_saving_jpy,
+    impact_note: p.impact_note,
+    action_kind: p.action_kind,
+    status: p.status,
+    apply_result: p.apply_result,
+    created_at: p.created_at.toISOString(),
+  }));
+
   // --- Check for empty state ---
   const isEmpty = actual === 0 && dailyRows.length === 0;
 
@@ -222,6 +253,12 @@ export default async function CostDashboardPage() {
               forecastRatioPct={forecastRatioPct}
               level={level}
             />
+          </section>
+
+          {/* Cost improvement proposals (F-062) */}
+          <section aria-labelledby="cost-proposals-heading">
+            <h2 id="cost-proposals-heading" className="sr-only">{m.proposals.title}</h2>
+            <CostProposalsPanel proposals={proposals} />
           </section>
 
           {/* Daily cost table */}
