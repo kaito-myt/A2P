@@ -272,9 +272,12 @@ export async function publishPostNowCore(
   });
   if (!post) return fail('not_found', m.error);
 
-  // failed/scheduled/draft を scheduled に戻してから force publish を投げる。
+  // failed/scheduled/draft/posting を scheduled に戻してから force publish を投げる。
+  // 'posting' も対象に含めるのは復旧用: publish タスクが CAS で posting に倒した後で
+  // 例外/ハングし、リトライ時に status!=='scheduled' で skip され posting のまま
+  // 詰まった投稿を、運営者が「今すぐ投稿」で手動リセットして再実行できるようにするため。
   const reset = await deps.postRepo.updateMany({
-    where: { id: post_id, status: { in: ['scheduled', 'draft', 'failed'] } },
+    where: { id: post_id, status: { in: ['scheduled', 'draft', 'failed', 'posting'] } },
     data: { status: 'scheduled', error: null },
   });
   if (reset.count === 0) return fail('conflict', m.error);
@@ -292,7 +295,7 @@ export async function cancelPostCore(
   const { post_id } = parsed.data;
 
   const res = await deps.postRepo.updateMany({
-    where: { id: post_id, status: { in: ['scheduled', 'draft', 'failed'] } },
+    where: { id: post_id, status: { in: ['scheduled', 'draft', 'failed', 'posting'] } },
     data: { status: 'canceled' },
   });
   if (res.count === 0) return fail('conflict', m.error);

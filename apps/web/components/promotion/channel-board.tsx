@@ -23,6 +23,7 @@ import {
 } from '@/app/actions/promotion-channels';
 import { messages } from '@/lib/messages';
 import { cn } from '@/lib/cn';
+import { explainPromotionError } from '@/lib/promotion-error';
 import {
   PROMOTION_CHANNELS,
   type ChannelPostRow,
@@ -664,14 +665,21 @@ function PostRow({ post }: { post: ChannelPostRow }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
 
-  const canAct = ['scheduled', 'failed', 'draft'].includes(post.status);
+  // 'posting' も操作可: 途中で詰まった投稿を手動で再実行/取消できるようにする。
+  const canAct = ['scheduled', 'failed', 'draft', 'posting'].includes(post.status);
 
   function doPublish() {
     setMsg(null);
     start(async () => {
       const res = await publishPostNow({ post_id: post.id });
       setMsg(res.ok ? m.actionMsg.published : res.error?.message ?? m.actionMsg.publishFailed);
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        // 投稿は worker 非同期。scheduled→posting→posted/failed と数秒遅れて確定するため、
+        // 即時 + 遅延で複数回リフレッシュして最終状態(投稿済/失敗)を反映する。
+        // (これをしないと「投稿中」の途中状態のまま止まって見える。)
+        router.refresh();
+        [3000, 7000, 12000].forEach((ms) => setTimeout(() => router.refresh(), ms));
+      }
     });
   }
   function doCancel() {
@@ -703,7 +711,7 @@ function PostRow({ post }: { post: ChannelPostRow }) {
         <span className={cn('rounded-pill px-2 py-0.5 text-caption', statusClass(post.status))}>
           {statusLabel(post.status)}
         </span>
-        {post.error && <div className="mt-1 max-w-[220px] text-caption text-destructive">{post.error}</div>}
+        {post.error && <PostErrorNote error={post.error} />}
       </td>
       <td className="py-2 pr-3">
         {post.title && <div className="font-medium text-charcoal">{post.title}</div>}
@@ -747,5 +755,26 @@ function PostRow({ post }: { post: ChannelPostRow }) {
         </div>
       </td>
     </tr>
+  );
+}
+
+/**
+ * 失敗理由を人間が読める見出し＋対処手順に翻訳して表示する。
+ * 生のエラー文字列は <details> で折りたたんで残す (デバッグ用)。
+ */
+function PostErrorNote({ error }: { error: string }) {
+  const ex = explainPromotionError(error);
+  if (!ex) return null;
+  return (
+    <div className="mt-1 max-w-[260px] rounded-card border border-destructive/40 bg-destructive-bg/40 p-1.5">
+      <div className="text-caption font-medium text-destructive">{ex.title}</div>
+      <div className="mt-0.5 text-caption leading-snug text-charcoal-82">{ex.hint}</div>
+      <details className="mt-1">
+        <summary className="cursor-pointer text-caption text-muted">
+          {messages.promotionChannels.postError.detailsToggle}
+        </summary>
+        <div className="mt-0.5 whitespace-pre-wrap break-words text-caption text-muted">{ex.raw}</div>
+      </details>
+    </div>
   );
 }

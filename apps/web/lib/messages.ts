@@ -680,10 +680,50 @@ export const messages = {
     actionMsg: {
       autoUpdated: '自動運用設定を更新しました',
       connSaved: '接続設定を保存しました',
-      published: '投稿しました',
+      published: '投稿を実行しました（結果が反映されるまで数秒かかります）',
       publishFailed: '投稿に失敗しました',
       canceled: '投稿を取り消しました',
       error: '操作に失敗しました',
+    },
+    // 失敗理由を人間が読める日本語＋対処手順に翻訳する (explainPromotionError)。
+    postError: {
+      detailsToggle: '技術的な詳細',
+      xForbidden: {
+        title: 'Xへの投稿権限がありません（403 Forbidden）',
+        hint: 'Xアプリが「読み取り専用」権限のままです。X Developer Portal → 対象アプリ → User authentication settings で権限を「Read and write」に変更 →「Keys and tokens」でアクセストークン／シークレットを再生成 → 生成された4つの値をこのチャンネルの連携に貼り直してください。※権限変更後に必ずトークンを再生成しないと、古いトークンは読み取り専用のままで403が続きます。',
+      },
+      xUnauthorized: {
+        title: 'Xの認証に失敗しました（401 Unauthorized）',
+        hint: 'APIキー／トークンが誤っているか失効しています。X Developer Portal でキーとトークン（4つの値）を再生成し、このチャンネルの連携に貼り直してください。',
+      },
+      xPayment: {
+        title: 'X APIの利用枠・課金の問題です（402/403）',
+        hint: 'X APIの月間投稿枠を使い切ったか、有料プランの支払いが必要な状態です。X Developer Portal の請求・プラン状況を確認してください。',
+      },
+      rateLimit: {
+        title: '投稿レート上限に達しました（429）',
+        hint: '短時間に投稿しすぎです。しばらく時間を空けてから再投稿してください。自動運用では投稿間隔を広げると安定します。',
+      },
+      notConnected: {
+        title: 'このチャンネルが連携されていません',
+        hint: '投稿先の接続情報（Webhook URL または APIトークン）が設定されていません。チャンネルの「接続設定」から連携情報を保存してから投稿してください。',
+      },
+      webhookRelay: {
+        title: '中継サービス側でエラーが発生しました',
+        hint: 'Make／Zapier など中継シナリオがエラーを返しました。中継側のシナリオが「ON」になっているか、接続（Instagram・Facebookページ連携など）が切れていないかを確認してください。',
+      },
+      invalidBody: {
+        title: '投稿本文が空、または不正です',
+        hint: '本文が空になっているか、文字数などの条件を満たしていません。本文を確認して再生成してください。',
+      },
+      accountNotConnected: {
+        title: '投稿先アカウントが未接続です',
+        hint: 'この投稿に割り当てられた台帳アカウントが未接続です。アカウントの連携を有効にしてから投稿してください。',
+      },
+      generic: {
+        title: '投稿に失敗しました',
+        hint: '一時的なエラーの可能性があります。時間を空けて再投稿するか、詳細を確認してください。',
+      },
     },
   },
   progress: {
