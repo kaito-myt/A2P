@@ -18,6 +18,7 @@ import {
 } from './promotion-post/publisher-port.js';
 import { createBlogPublisherPort } from './promotion-post/blog-publisher-port.js';
 import { createAyrsharePublisherPort } from './promotion-post/ayrshare-publisher-port.js';
+import { createTikTokPublisherPort } from './promotion-post/tiktok-publisher-port.js';
 import { ensureBookPromoImage, generateValuePostImage } from './promotion-post/promo-image.js';
 
 /**
@@ -129,8 +130,13 @@ function defaultResolvePort(channel: string): PublisherPort {
   if (channel === 'blog') {
     return createBlogPublisherPort();
   }
-  // F-058: IG/TikTok は Ayrshare 経由 (API キーがある場合)。無ければ http(webhook)にフォールバック。
-  if ((channel === 'instagram' || channel === 'tiktok') && process.env.AYRSHARE_API_KEY) {
+  // F-063: TikTok は Content Posting API を直接叩く（動画を下書き投稿）。creds が無ければ
+  //   publish 側で not_connected を返す。
+  if (channel === 'tiktok') {
+    return createTikTokPublisherPort();
+  }
+  // F-058: IG は Ayrshare 経由 (API キーがある場合)。無ければ http(webhook)にフォールバック。
+  if (channel === 'instagram' && process.env.AYRSHARE_API_KEY) {
     return createAyrsharePublisherPort();
   }
   const httpDeps: HttpPublisherDeps = {};
