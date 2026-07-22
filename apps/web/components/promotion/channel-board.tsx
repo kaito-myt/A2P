@@ -456,6 +456,18 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  // ブラウザ/パスワードマネージャの自動補完が資格情報欄に user のメール/パスワードを勝手に
+  // 差し込み、保存すると正規トークンを上書きしてしまう事故を防ぐ。読み取り専用にしておき
+  // フォーカスで初めて編集可にすると、ページ読込時の自動補完は対象外になる（Chrome/Edge 実証済）。
+  const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
+  const noAutofill = (field: string) => ({
+    readOnly: !unlocked.has(field),
+    onFocus: () => setUnlocked((s) => (s.has(field) ? s : new Set(s).add(field))),
+    autoComplete: 'new-password' as const,
+    'data-lpignore': 'true',
+    'data-1p-ignore': '',
+    'data-form-type': 'other',
+  });
 
   const xAllFilled =
     xApiKey.trim() !== '' &&
@@ -472,9 +484,15 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
       setSaveErr(m.connSection.xNeedAll);
       return;
     }
+    // ユーザーが実際にフォーカスして編集した欄だけを送信対象にする。フォーカスしていない
+    // 資格情報欄はブラウザ自動補完が入れた値の可能性があり、送信すると正規トークンを
+    // 上書きしてしまうため、その欄は初期保存値を維持する（= 送らない）。
+    const webhookTouched = unlocked.has('webhook');
+    const tokenTouched = unlocked.has('token');
+    const xTouched = xAllFilled && (['apiKey', 'apiSecret', 'accessToken', 'accessTokenSecret'] as const).every((k) => unlocked.has(`x-${k}`));
     // Webhook URL は http(s) のみ。ブラウザ自動補完のメール等が混入したら明示的に弾く。
     const wh = webhook.trim();
-    if (wh !== '' && !/^https?:\/\//i.test(wh)) {
+    if (webhookTouched && wh !== '' && !/^https?:\/\//i.test(wh)) {
       setSaveErr(m.connSection.webhookInvalid);
       return;
     }
@@ -483,8 +501,8 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
         const res = await setChannelConnection({
           channel: setting.channel,
           handle,
-          webhook_url: webhook,
-          ...(isX && xAllFilled
+          ...(webhookTouched ? { webhook_url: webhook } : {}),
+          ...(isX && xTouched
             ? {
                 x_api_key: xApiKey,
                 x_api_secret: xApiSecret,
@@ -492,7 +510,7 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
                 x_access_token_secret: xAccessTokenSecret,
               }
             : {}),
-          ...(!isX && token.trim().length > 0 ? { token } : {}),
+          ...(!isX && tokenTouched && token.trim().length > 0 ? { token } : {}),
         });
         if (res.ok) {
           setSaved(true);
@@ -567,8 +585,8 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
           value={webhook}
           onChange={(e) => setWebhook(e.target.value)}
           placeholder="https://…"
-          autoComplete="off"
           name={`webhook-${setting.channel}`}
+          {...noAutofill('webhook')}
         />
         <span className="text-caption text-muted">{m.connSection.webhookHelp}</span>
       </label>
@@ -592,8 +610,8 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
                 value={value}
                 onChange={(e) => setter(e.target.value)}
                 placeholder={setting.tokenMask ? m.connSection.tokenPlaceholderSet : m.connSection.tokenPlaceholder}
-                autoComplete="off"
                 data-testid={`x-cred-${key}`}
+                {...noAutofill(`x-${key}`)}
               />
             </label>
           ))}
@@ -612,7 +630,7 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
             value={token}
             onChange={(e) => setToken(e.target.value)}
             placeholder={setting.tokenMask ? m.connSection.tokenPlaceholderSet : m.connSection.tokenPlaceholder}
-            autoComplete="off"
+            {...noAutofill('token')}
           />
           {setting.tokenMask && <span className="text-caption text-muted">{setting.tokenMask}</span>}
         </label>
