@@ -614,6 +614,7 @@ export const messages = {
       tokenLabel: 'アクセストークン',
       tokenPlaceholderSet: '設定済み（変更する場合のみ入力）',
       tokenPlaceholder: 'トークンを貼り付け',
+      tokenSetHint: '設定済み。変更する場合はこの欄をクリックして新しい値を入力してください。',
       ayrshareTitle: 'Instagram / TikTok は Make 経由で投稿します',
       ayrshareNote:
         'IG/TikTok は公式の簡単な投稿 API が無いため、連携サービス Make.com の Webhook を中継に使います。①Make で「Custom webhook」シナリオを作成 → ②Instagram（ビジネス/クリエイター＋Facebookページ連携）/ TikTok の投稿モジュールを接続 → ③発行された Webhook URL を上の「Webhook URL」欄に貼って保存。設定後は「接続テスト」で確認できます。投稿画像は本ごとに AI 生成されます（TikTok は写真/動画）。',

@@ -625,14 +625,18 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
         <label className="flex flex-col gap-1">
           <span className="text-button-sm text-charcoal-82">{m.connSection.tokenLabel}</span>
           <input
-            type="password"
+            // 未フォーカス時は設定済みのマスク値を表示（空欄に自動補完が入るのを防ぎ、
+            // 現在設定されていることが一目で分かる）。フォーカスで空欄化し新しい値を入力。
+            type={unlocked.has('token') ? 'password' : 'text'}
             className={inputCls}
-            value={token}
+            value={unlocked.has('token') ? token : setting.tokenMask ?? ''}
             onChange={(e) => setToken(e.target.value)}
             placeholder={setting.tokenMask ? m.connSection.tokenPlaceholderSet : m.connSection.tokenPlaceholder}
             {...noAutofill('token')}
           />
-          {setting.tokenMask && <span className="text-caption text-muted">{setting.tokenMask}</span>}
+          {setting.tokenMask && (
+            <span className="text-caption text-muted">{m.connSection.tokenSetHint}</span>
+          )}
         </label>
       )}
       <div className="flex flex-wrap items-center gap-space-snug">
