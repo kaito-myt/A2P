@@ -957,6 +957,9 @@ model AppSettings {
   // F-052: 期限到来した投稿を自動投稿するディスパッチャ cron を有効化するマスタスイッチ。
   promo_auto_post_enabled         Boolean  @default(false)
   promo_dispatch_cron             String   @default("*/30 * * * *") // 30分毎に期限到来分をチェック
+  // F-061: 日次で予定投稿の本文を content_optimizer が見直す機能のマスタスイッチ。
+  promo_daily_review_enabled      Boolean  @default(false)
+  promo_review_cron               String   @default("0 23 * * *") // JST 08:00 に予定投稿を見直し
   kdp_submit_timeout_minutes      Int      @default(10)
   kdp_submit_retry_count          Int      @default(2)
   job_log_retention_days          Int      @default(90)

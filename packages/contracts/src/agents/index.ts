@@ -129,6 +129,19 @@ export {
 } from './content-creator.js';
 
 export {
+  OptimizerDraftSchema,
+  OptimizerSignalsSchema,
+  ContentOptimizerInputSchema,
+  OptimizerRevisionSchema,
+  ContentOptimizerOutputSchema,
+  type OptimizerDraft,
+  type OptimizerSignals,
+  type ContentOptimizerInput,
+  type OptimizerRevision,
+  type ContentOptimizerOutput,
+} from './content-optimizer.js';
+
+export {
   TikTokVideoInputSchema,
   ScriptBeatSchema,
   VideoScenarioSchema,

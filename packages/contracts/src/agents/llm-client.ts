@@ -48,6 +48,8 @@ export type AgentRole =
   | 'sns_strategist'
   // F-059 — 育成投稿担当（発信の柱から価値提供型の投稿を生成）。
   | 'content_creator'
+  // F-061 — 日次の投稿見直し担当（予定投稿の本文/ハッシュタグを推敲・改善）。
+  | 'content_optimizer'
   // F-060 — TikTok 動画の多エージェント台本パイプライン。
   | 'tiktok_scenario'
   | 'tiktok_creator'

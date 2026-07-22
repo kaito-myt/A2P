@@ -214,6 +214,12 @@ export {
 } from './content-creator/index.js';
 
 export {
+  optimizeScheduledPosts,
+  buildOptimizerUserMessage,
+  type ContentOptimizerDeps,
+} from './content-optimizer/index.js';
+
+export {
   createTikTokVideoScript,
   type TikTokVideoDeps,
 } from './tiktok-video/index.js';
