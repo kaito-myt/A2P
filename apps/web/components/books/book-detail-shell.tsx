@@ -251,7 +251,7 @@ export function BookDetailShell({ book, costBreakdown, evalResults }: BookDetail
         </TabsContent>
 
         <TabsContent value="cover">
-          <CoverTab covers={book.covers} />
+          <CoverTab covers={book.covers} bookId={book.id} />
         </TabsContent>
 
         <TabsContent value="metadata">

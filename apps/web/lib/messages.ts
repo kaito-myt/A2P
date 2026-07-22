@@ -1329,6 +1329,26 @@ export const messages = {
       adopted: '採用',
       candidateLabel: (n: number) => `候補 ${n}`,
       altLabel: (n: number) => `カバー候補 ${n}`,
+      upload: {
+        title: '自作したカバー画像をアップロード',
+        description: 'ブラウザ版 ChatGPT 等で作成した表紙画像をアップロードすると、この本の採用カバーに差し替えます（他の候補は自動で却下）。PNG / JPEG / WebP、最大20MB。',
+        submit: 'アップロードして採用',
+        uploading: 'アップロード中…',
+        success: 'カバーを差し替えました。KDP用ファイルを作り直しています（数十秒後に反映）。',
+        noFile: '画像ファイルを選択してください。',
+        networkError: 'アップロードに失敗しました（通信エラー）。',
+        errorFor: (code: string) => {
+          const map: Record<string, string> = {
+            file_required: '画像ファイルを選択してください。',
+            file_too_large: 'ファイルが大きすぎます（20MBまで）。',
+            unsupported_image: '対応していない画像形式です（PNG / JPEG / WebP のみ）。',
+            book_not_found: '書籍が見つかりません。',
+            unauthorized: 'セッションが切れています。再ログインしてください。',
+          };
+          return map[code] ?? `アップロードに失敗しました（${code}）。`;
+        },
+        hint: 'KDPの表紙は縦長（例 1600×2560, 1.6:1）推奨。実寸PNGは自動で作り直されます。',
+      },
     },
     metadata: {
       sectionTitle: 'メタデータ',
