@@ -473,9 +473,11 @@ describe('generateCoverImage -- 1パス統合生成 (文字ごとデザイン)',
     expect(meta.typography_refined).toBe(false);
   });
 
-  it('プロンプトに「読者の目に留まる」「KDPで売れる本の表紙」の意図が入る', async () => {
+  it('プロンプトに「KDP出版」「目を引く表紙」の意図と、構造化フィールド（タイトル）が入る', async () => {
     const result = await generateCoverImage(baseInput({ title: 'テストタイトル' }), baseDeps());
-    expect(result.promptUsed).toContain('読者の目に留まる');
     expect(result.promptUsed).toContain('KDP');
+    expect(result.promptUsed).toContain('目を引');
+    // 運営者の実証済みフォーマット（・タイトル：「...」）を踏襲している
+    expect(result.promptUsed).toContain('・タイトル：「テストタイトル」');
   });
 });
