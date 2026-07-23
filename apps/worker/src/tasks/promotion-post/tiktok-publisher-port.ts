@@ -16,6 +16,12 @@ import type { PublishInput, PublishResult, PublisherPort } from './publisher-por
 
 const OAUTH_TOKEN_URL = 'https://open.tiktokapis.com/v2/oauth/token/';
 const INBOX_INIT_URL = 'https://open.tiktokapis.com/v2/post/publish/inbox/video/init/';
+const DIRECT_POST_INIT_URL = 'https://open.tiktokapis.com/v2/post/publish/video/init/';
+const CREATOR_INFO_URL = 'https://open.tiktokapis.com/v2/post/publish/creator_info/query/';
+/** 公開投稿(Direct Post)で最も広い公開範囲。creator_info の options に含まれる場合のみ使用。 */
+const PUBLIC_PRIVACY = 'PUBLIC_TO_EVERYONE';
+/** TikTok のタイトル(キャプション)上限。 */
+const TITLE_MAX = 2200;
 
 interface TikTokCreds {
   kind: 'tiktok';
@@ -45,6 +51,12 @@ export interface TikTokPublisherDeps {
   logger?: Logger;
   /** ローテーションされた refresh_token を保存する（既定: tiktok チャンネル設定を再暗号化して更新）。 */
   persistCreds?: (creds: TikTokCreds) => Promise<void>;
+  /**
+   * 公開投稿(Direct Post)を試みるか。既定は env `TIKTOK_DIRECT_POST==='1'`。
+   * 有効でも、creator_info が PUBLIC_TO_EVERYONE を許可する（＝アプリ審査通過済み）場合のみ公開投稿し、
+   * 未審査(SELF_ONLY のみ)なら安全側の下書き(inbox)にフォールバックする。
+   */
+  directPost?: boolean;
 }
 
 async function defaultPersistCreds(creds: TikTokCreds): Promise<void> {
@@ -107,13 +119,40 @@ export function createTikTokPublisherPort(deps: TikTokPublisherDeps = {}): Publi
         const size = videoBytes.byteLength;
         if (size === 0) return { ok: false, reason: 'invalid', message: 'video is empty' };
 
-        // 3. inbox init (FILE_UPLOAD, 単一チャンク)
-        const initRes = await doFetch(INBOX_INIT_URL, {
+        // 3. 投稿方式の決定。公開投稿(Direct Post)は video.publish スコープ＋アプリ審査が前提。
+        //    directPost が有効でも、creator_info が PUBLIC_TO_EVERYONE を許可する場合のみ公開投稿し、
+        //    未審査(SELF_ONLY のみ)なら安全側の下書き(inbox)へフォールバックする。
+        const wantDirect = deps.directPost ?? process.env.TIKTOK_DIRECT_POST === '1';
+        let usePublic = false;
+        if (wantDirect) {
+          try {
+            const ciRes = await doFetch(CREATOR_INFO_URL, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            });
+            const ci = (await ciRes.json()) as { data?: { privacy_level_options?: string[] } };
+            usePublic = Array.isArray(ci.data?.privacy_level_options) && ci.data!.privacy_level_options!.includes(PUBLIC_PRIVACY);
+            if (!usePublic) {
+              log.info({ options: ci.data?.privacy_level_options }, 'tiktok direct post requested but PUBLIC not allowed (unaudited) — falling back to inbox draft');
+            }
+          } catch (e) {
+            log.warn({ err: e }, 'tiktok creator_info query failed — falling back to inbox draft');
+          }
+        }
+
+        // init（公開=Direct Post / それ以外=inbox 下書き）
+        const initUrl = usePublic ? DIRECT_POST_INIT_URL : INBOX_INIT_URL;
+        const initBody: Record<string, unknown> = {
+          source_info: { source: 'FILE_UPLOAD', video_size: size, chunk_size: size, total_chunk_count: 1 },
+        };
+        if (usePublic) {
+          const title = (input.title || input.body || '').slice(0, TITLE_MAX);
+          initBody.post_info = { title, privacy_level: PUBLIC_PRIVACY };
+        }
+        const initRes = await doFetch(initUrl, {
           method: 'POST',
           headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            source_info: { source: 'FILE_UPLOAD', video_size: size, chunk_size: size, total_chunk_count: 1 },
-          }),
+          body: JSON.stringify(initBody),
         });
         const ij = (await initRes.json()) as { data?: { publish_id?: string; upload_url?: string }; error?: { code?: string; message?: string } };
         const uploadUrl = ij.data?.upload_url;
@@ -122,7 +161,7 @@ export function createTikTokPublisherPort(deps: TikTokPublisherDeps = {}): Publi
           const code = ij.error?.code ?? '';
           const msg = ij.error?.message ?? JSON.stringify(ij).slice(0, 200);
           const reason = /token|auth|scope|permission/i.test(`${code} ${msg}`) ? 'auth' : 'unknown';
-          return { ok: false, reason, message: `TikTok init failed: ${code} ${msg}`.trim() };
+          return { ok: false, reason, message: `TikTok init failed (${usePublic ? 'direct' : 'inbox'}): ${code} ${msg}`.trim() };
         }
 
         // 4. 動画バイトを PUT（単一チャンク）
@@ -140,8 +179,9 @@ export function createTikTokPublisherPort(deps: TikTokPublisherDeps = {}): Publi
           return { ok: false, reason: 'unknown', message: `TikTok upload failed: ${putRes.status} ${t.slice(0, 160)}` };
         }
 
-        log.info({ publishId, size }, 'tiktok video uploaded to inbox (draft)');
-        // 下書き投稿。公開はアプリ側手動のため externalUrl は無し（TikTokの受信箱に届く）。
+        log.info({ publishId, size, mode: usePublic ? 'direct_public' : 'inbox_draft' }, 'tiktok video uploaded');
+        // 公開投稿(direct)は TikTok 側で非同期に公開される。下書き(inbox)は受信箱に届く。
+        // いずれも確定 URL は同期取得できないため externalUrl は null（status/fetch で追跡可能）。
         return { ok: true, externalUrl: null };
       } catch (err) {
         log.warn({ err }, 'tiktok publish failed');

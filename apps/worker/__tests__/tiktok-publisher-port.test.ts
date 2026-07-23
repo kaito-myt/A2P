@@ -77,6 +77,47 @@ describe('createTikTokPublisherPort', () => {
     if (!res.ok) expect(res.reason).toBe('invalid');
   });
 
+  it('directPost 有効＋creator_info が PUBLIC 許可→公開投稿(Direct Post)エンドポイントを使う', async () => {
+    const fetchImpl = vi.fn(async (url: string, _init?: { method?: string; body?: string }) => {
+      if (url.includes('/oauth/token/')) return jsonRes({ access_token: 'at1', refresh_token: 'rt_old', expires_in: 86400 });
+      if (url.includes('video.mp4')) return mk({ bytes: new Uint8Array([1, 2, 3, 4]).buffer });
+      if (url.includes('/creator_info/query/')) return jsonRes({ data: { privacy_level_options: ['PUBLIC_TO_EVERYONE', 'SELF_ONLY'] } });
+      if (url.includes('/publish/video/init/')) return jsonRes({ data: { publish_id: 'pub2', upload_url: 'https://upload.tiktok/pub' } });
+      if (url.includes('upload.tiktok')) return mk({ status: 201 });
+      throw new Error('unexpected url ' + url);
+    });
+    const port = createTikTokPublisherPort({ fetchImpl: fetchImpl as never, persistCreds: vi.fn(), directPost: true });
+    const res = await port.publish(baseInput());
+    expect(res.ok).toBe(true);
+    // 公開投稿の init(=/publish/video/init/) を叩き、inbox は使わない
+    const usedDirect = fetchImpl.mock.calls.some((c) => String(c[0]).includes('/publish/video/init/'));
+    const usedInbox = fetchImpl.mock.calls.some((c) => String(c[0]).includes('/inbox/video/init/'));
+    expect(usedDirect).toBe(true);
+    expect(usedInbox).toBe(false);
+    // post_info に PUBLIC_TO_EVERYONE を渡している
+    const directCall = fetchImpl.mock.calls.find((c) => String(c[0]).includes('/publish/video/init/'))!;
+    const body = JSON.parse((directCall[1] as { body: string }).body);
+    expect(body.post_info.privacy_level).toBe('PUBLIC_TO_EVERYONE');
+  });
+
+  it('directPost 有効でも未審査(PUBLIC不可)→安全側の下書き(inbox)にフォールバック', async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes('/oauth/token/')) return jsonRes({ access_token: 'at1', refresh_token: 'rt_old', expires_in: 86400 });
+      if (url.includes('video.mp4')) return mk({ bytes: new Uint8Array([1, 2, 3, 4]).buffer });
+      if (url.includes('/creator_info/query/')) return jsonRes({ data: { privacy_level_options: ['SELF_ONLY'] } });
+      if (url.includes('/inbox/video/init/')) return jsonRes({ data: { publish_id: 'pub3', upload_url: 'https://upload.tiktok/inbox' } });
+      if (url.includes('upload.tiktok')) return mk({ status: 201 });
+      throw new Error('unexpected url ' + url);
+    });
+    const port = createTikTokPublisherPort({ fetchImpl: fetchImpl as never, persistCreds: vi.fn(), directPost: true });
+    const res = await port.publish(baseInput());
+    expect(res.ok).toBe(true);
+    const usedInbox = fetchImpl.mock.calls.some((c) => String(c[0]).includes('/inbox/video/init/'));
+    const usedDirect = fetchImpl.mock.calls.some((c) => String(c[0]).includes('/publish/video/init/'));
+    expect(usedInbox).toBe(true);
+    expect(usedDirect).toBe(false);
+  });
+
   it('refresh失敗→auth', async () => {
     const fetchImpl = vi.fn(async () => jsonRes({ error: 'invalid_grant', error_description: 'expired' }));
     const port = createTikTokPublisherPort({ fetchImpl: fetchImpl as never });
