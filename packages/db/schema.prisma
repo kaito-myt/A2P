@@ -778,11 +778,13 @@ model SalesRecord {
   id           String   @id @default(cuid())
   book_id      String
   year_month   String // "2026-05"
-  royalty_jpy  Int
-  review_count Int      @default(0)
-  avg_stars    Decimal? @db.Decimal(3, 2)
-  bsr          Int? // Amazon Best Seller Rank
-  source       String // manual | auto
+  royalty_jpy  Int // 円換算・全マーケットプレイス合算の月次ロイヤリティ (有料販売+KENP既読分)
+  units_sold   Int      @default(0) // 有料販売部数 (返品控除後 net)。KDP レポート由来
+  kenp_read    Int      @default(0) // KU/KOLL 既読ページ数 (KENP)。KDP レポート由来
+  review_count Int      @default(0) // 商品ページ由来 (別取得、当面 0)
+  avg_stars    Decimal? @db.Decimal(3, 2) // 商品ページ由来 (別取得)
+  bsr          Int? // Amazon Best Seller Rank (商品ページ由来、別取得)
+  source       String // manual_upload | auto | manual
   fetched_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
 

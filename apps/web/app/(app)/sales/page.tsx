@@ -41,6 +41,7 @@ import { SalesTrendChart } from '@/components/sales/sales-trend-chart';
 import { GenreMonthHeatmap } from '@/components/sales/genre-month-heatmap';
 import { BooksKpiTable } from '@/components/sales/books-kpi-table';
 import { SalesFetchStatusBanner } from '@/components/sales/sales-fetch-status-banner';
+import { SalesReportImport } from '@/components/sales/sales-report-import';
 
 export const metadata: Metadata = {
   title: `${messages.salesKpi.pageTitle} | ${messages.brand.appName}`,
@@ -130,6 +131,7 @@ export default async function SalesKpiPage({ searchParams }: PageProps) {
 
         {/* CTAs */}
         <div className="flex shrink-0 flex-wrap items-center gap-space-snug">
+          <SalesReportImport accounts={accounts} />
           <Link
             href="/sales/manual"
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-card bg-charcoal px-3 py-2 text-button-sm text-white hover:bg-charcoal/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
