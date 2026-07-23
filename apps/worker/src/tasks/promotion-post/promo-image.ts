@@ -237,13 +237,18 @@ export async function ensureBookPromoImage(
       book.theme?.target_reader ?? null,
       book.title,
     );
+    // 想定読者を eyebrow に（見出しと重複する場合は省く）。
+    const targetReader = book.theme?.target_reader?.trim();
+    const eyebrow =
+      targetReader && targetReader.length <= 28 && !headline.includes(targetReader) ? targetReader : undefined;
     finalImage = await compose(
       bg,
       coverBuf,
       {
         badge: '新刊',
-        ku: 'KU会員は無料',
+        ku: 'KU 読み放題',
         headline,
+        ...(eyebrow ? { eyebrow } : {}),
         // 見出しが書名と同一なら下段タイトルは省いて重複を避ける。
         title: headline === book.title ? '' : book.title,
         cta: 'プロフィールのリンクから',
