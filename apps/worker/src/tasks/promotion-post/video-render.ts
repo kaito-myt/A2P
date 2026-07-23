@@ -90,6 +90,8 @@ function sceneClipArgs(imagePath: string, audioPath: string, outPath: string): s
     '-i', audioPath,
     '-c:v', 'libx264', '-tune', 'stillimage', '-pix_fmt', 'yuv420p', '-r', '30',
     '-vf', `scale=${VIDEO_W}:${VIDEO_H}:force_original_aspect_ratio=increase,crop=${VIDEO_W}:${VIDEO_H},setsar=1`,
+    // ナレーションを 1.12倍でブリスクに（テンポUP・視聴維持）。atempo はピッチ保持。
+    '-filter:a', 'atempo=1.12',
     '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2',
     '-shortest', outPath,
   ];
