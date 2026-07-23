@@ -128,16 +128,14 @@ function buildImagePrompt(input: ThumbnailImageInput): string {
   if (input.subtitle && input.subtitle.trim().length > 0) {
     lines.push(`・サブタイトル：「${input.subtitle}」`);
   }
-  if (input.author && input.author.trim().length > 0) {
-    lines.push(`・著者名：「${input.author}」`);
-  }
+  // 著者名は表紙に載せない方針 (運営者指示)。author は payload に来ても描かせない。
   lines.push(
     `・特記事項：${artDirection}`,
     '',
     '要件:',
     '- 縦長(portrait)・高解像度・印刷可能品質。サムネイル（小さな一覧表示）でも一瞬で目を引き、内容が伝わり、競合に埋もれない。',
-    '- 上記の日本語（タイトル／サブタイトル／著者名）は **一字一句正確に**（翻訳・変換・省略・追加をせず、崩さず、読みやすく）表紙に配置する。タイトルを最も大きく主役にし、明確な階層と上質なタイポグラフィでデザインに統合する。',
-    '- 上記以外の文字・ロゴ・透かし・バーコード・価格・キャプションは一切描かない。',
+    '- 上記の日本語（タイトル／サブタイトル）は **一字一句正確に**（翻訳・変換・省略・追加をせず、崩さず、読みやすく）表紙に配置する。タイトルを最も大きく主役にし、明確な階層と上質なタイポグラフィでデザインに統合する。',
+    '- 著者名・人物名・出版社名は表紙に描かない。上記以外の文字・ロゴ・透かし・バーコード・価格・キャプションも一切描かない。',
     '- 安っぽい AI 感を避け、洗練された意図的な構図と奥行き。人物が出る場合は自然な解剖学（手指・顔・目、余分な四肢なし）。枠/縁取り/UI要素/ストック写真コラージュ/濁った過飽和グラデーションは使わない。健全な内容。',
   );
   return lines.join('\n');
@@ -248,12 +246,10 @@ export async function generateCoverImage(
   const illustration = genResult.images[0]!;
   const costJpy = genResult.costJpy;
 
+  // 著者名は表紙に載せない方針 (運営者指示)。合成フォールバック経路でも author は付けない。
   const coverText: CoverText = { title: parsed.title };
   if (parsed.subtitle && parsed.subtitle.trim().length > 0) {
     coverText.subtitle = parsed.subtitle;
-  }
-  if (parsed.author && parsed.author.trim().length > 0) {
-    coverText.author = parsed.author;
   }
 
   // --- 4. 文字はプロンプトでデザイン統合済み。原則そのまま最終カバーとして使う。 ---

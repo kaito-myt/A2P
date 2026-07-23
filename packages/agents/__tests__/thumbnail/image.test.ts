@@ -159,11 +159,12 @@ describe('generateCoverImage -- prompt construction', () => {
     const input = baseInput({ title: 'AI時代の副業術', subtitle: '初心者ガイド', author: '宮田海斗' });
     const result = await generateCoverImage(input, baseDeps());
 
-    // 文字ごとデザインさせる方式: タイトル/サブ/著者を正確に描くよう指示する。
+    // 文字ごとデザインさせる方式: タイトル/サブを正確に描くよう指示する。
     expect(result.promptUsed).toContain('AI時代の副業術');
     expect(result.promptUsed).toContain('初心者ガイド');
-    expect(result.promptUsed).toContain('宮田海斗');
     expect(result.promptUsed).toContain('一字一句正確');
+    // 著者名は表紙に載せない方針 — payload に来てもプロンプトに含めない。
+    expect(result.promptUsed).not.toContain('宮田海斗');
   });
 
   it('prompt includes the style guide (art direction)', async () => {
@@ -186,7 +187,7 @@ describe('generateCoverImage -- prompt construction', () => {
 // ---------------------------------------------------------------------------
 
 describe('generateCoverImage -- typography compositing', () => {
-  it('passes title/subtitle/author to composeTypography', async () => {
+  it('passes title/subtitle to composeTypography but never the author (著者名は表紙に載せない)', async () => {
     const compose = makeFakeCompose();
     const input = baseInput({
       title: 'メインタイトル',
@@ -200,8 +201,9 @@ describe('generateCoverImage -- typography compositing', () => {
     expect(text).toMatchObject({
       title: 'メインタイトル',
       subtitle: 'サブ',
-      author: 'ミヤタ カイト',
     });
+    // 著者名は payload に来ても表紙には載せない。
+    expect(text.author).toBeUndefined();
   });
 
   it('omits subtitle/author when not provided', async () => {
