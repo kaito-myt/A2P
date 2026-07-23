@@ -12,29 +12,75 @@ import type { ChecklistStateJson, ChecklistFieldState } from './kdp-checklist-co
 // Field keys (docs/05 §4.3.16 / kdp-checklist-core.ts schema)
 // ---------------------------------------------------------------------------
 
+// KDP「本の詳細」入力ページと同じ並び順にする (上から順にコピペしていける)。
+// KDP のセクション順: 本のタイトル(タイトル/サブ/レーベル) → シリーズ → 著者 →
+//   内容紹介 → カテゴリー → キーワード → [価格設定タブ] → [コンテンツタブ]。
+// レーベルは KDP では「本のタイトル」セクション内 (著者より前) なので著者の前に置く。
 export const CHECKLIST_FIELDS = [
+  // 本のタイトル
   'title',
   'title_kana',
   'title_romaji',
   'subtitle',
   'subtitle_kana',
   'subtitle_romaji',
-  'author',
-  'author_kana',
-  'author_romaji',
   'label',
   'label_kana',
   'label_romaji',
+  // シリーズ
   'series',
+  // 著者
+  'author',
+  'author_kana',
+  'author_romaji',
+  // 内容紹介
   'description',
+  // カテゴリー
   'category1',
+  // キーワード
   'keywords',
+  // 価格設定 (別タブ)
   'price',
+  // コンテンツ (別タブ)
   'cover_url',
   'body_url',
 ] as const;
 
 export type ChecklistField = (typeof CHECKLIST_FIELDS)[number];
+
+/** KDP 入稿ページのセクション (見出しグルーピング用)。 */
+export type KdpSection =
+  | 'title'
+  | 'series'
+  | 'author'
+  | 'description'
+  | 'category'
+  | 'keywords'
+  | 'price'
+  | 'content';
+
+/** フィールド → 所属セクション (KDP ページのグルーピングに一致)。 */
+export const FIELD_SECTION: Record<ChecklistField, KdpSection> = {
+  title: 'title',
+  title_kana: 'title',
+  title_romaji: 'title',
+  subtitle: 'title',
+  subtitle_kana: 'title',
+  subtitle_romaji: 'title',
+  label: 'title',
+  label_kana: 'title',
+  label_romaji: 'title',
+  series: 'series',
+  author: 'author',
+  author_kana: 'author',
+  author_romaji: 'author',
+  description: 'description',
+  category1: 'category',
+  keywords: 'keywords',
+  price: 'price',
+  cover_url: 'content',
+  body_url: 'content',
+};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,6 +88,8 @@ export type ChecklistField = (typeof CHECKLIST_FIELDS)[number];
 
 export interface ChecklistFieldView {
   field: ChecklistField;
+  /** KDP 入稿ページのセクション (見出しグルーピング用) */
+  section: KdpSection;
   /** 表示用ラベル (messages から引く) */
   label: string;
   /** コピー対象の値。null = メタデータ未生成 */
@@ -208,6 +256,7 @@ function buildFields(
     const s = getFieldState(state, field);
     const base = {
       field,
+      section: FIELD_SECTION[field],
       label: fieldLabel(field),
       copied: s.copied,
       checked: s.checked,

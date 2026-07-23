@@ -10,7 +10,11 @@ import { useTransition, useState } from 'react';
 
 import { updateChecklist } from '@/app/actions/kdp-checklist';
 import { messages } from '@/lib/messages';
-import type { ChecklistBookView, ChecklistFieldView } from '@/lib/kdp-checklist-view';
+import type {
+  ChecklistBookView,
+  ChecklistFieldView,
+  KdpSection,
+} from '@/lib/kdp-checklist-view';
 import { CommentAffordance } from '@/components/comments/comment-affordance';
 
 import { CopyToClipboardButton } from './copy-to-clipboard-button';
@@ -25,6 +29,24 @@ interface SubmissionChecklistTableProps {
 }
 
 const m = messages.kdpChecklist;
+
+/** フィールド列に、セクションが変わる位置でセクション見出しを差し込んだ列を返す。 */
+type ChecklistRenderItem =
+  | { kind: 'header'; section: KdpSection }
+  | { kind: 'field'; field: ChecklistFieldView };
+
+function withSectionHeaders(fields: ChecklistFieldView[]): ChecklistRenderItem[] {
+  const items: ChecklistRenderItem[] = [];
+  let prev: KdpSection | null = null;
+  for (const field of fields) {
+    if (field.section !== prev) {
+      items.push({ kind: 'header', section: field.section });
+      prev = field.section;
+    }
+    items.push({ kind: 'field', field });
+  }
+  return items;
+}
 
 export function SubmissionChecklistTable({
   book,
@@ -52,28 +74,57 @@ export function SubmissionChecklistTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-border-warm">
-            {book.fields.map((fieldView) => (
-              <FieldRow
-                key={fieldView.field}
-                fieldView={fieldView}
-                bookId={book.id}
-                onFieldUpdate={onFieldUpdate}
-              />
-            ))}
+            <tr className="bg-cream">
+              <td colSpan={5} className="px-3 py-1.5 text-caption text-muted">
+                {m.sections.languageNote}
+              </td>
+            </tr>
+            {withSectionHeaders(book.fields).map((item) =>
+              item.kind === 'header' ? (
+                <tr key={`sec-${item.section}`} className="bg-cream">
+                  <td
+                    colSpan={5}
+                    className="px-3 pb-1 pt-3 text-button-sm font-semibold text-charcoal"
+                    data-testid={`checklist-section-${item.section}`}
+                  >
+                    {m.sections[item.section]}
+                  </td>
+                </tr>
+              ) : (
+                <FieldRow
+                  key={item.field.field}
+                  fieldView={item.field}
+                  bookId={book.id}
+                  onFieldUpdate={onFieldUpdate}
+                />
+              ),
+            )}
           </tbody>
         </table>
       </div>
 
       {/* Mobile stacked rows */}
       <div className="flex flex-col divide-y divide-border-warm md:hidden">
-        {book.fields.map((fieldView) => (
-          <FieldRowMobile
-            key={fieldView.field}
-            fieldView={fieldView}
-            bookId={book.id}
-            onFieldUpdate={onFieldUpdate}
-          />
-        ))}
+        <div className="bg-cream px-space-snug py-1.5 text-caption text-muted">
+          {m.sections.languageNote}
+        </div>
+        {withSectionHeaders(book.fields).map((item) =>
+          item.kind === 'header' ? (
+            <div
+              key={`sec-${item.section}`}
+              className="bg-cream px-space-snug pb-1 pt-2 text-button-sm font-semibold text-charcoal"
+            >
+              {m.sections[item.section]}
+            </div>
+          ) : (
+            <FieldRowMobile
+              key={item.field.field}
+              fieldView={item.field}
+              bookId={book.id}
+              onFieldUpdate={onFieldUpdate}
+            />
+          ),
+        )}
       </div>
     </div>
   );

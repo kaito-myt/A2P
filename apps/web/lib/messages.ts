@@ -2514,6 +2514,18 @@ export const messages = {
       copy: 'コピー',
       comment: 'コメント',
     },
+    // KDP「本の詳細」ページと同じ並び順のセクション見出し。上から順にコピペしていける。
+    sections: {
+      languageNote: '言語：「日本語」を選択（ページ先頭）',
+      title: '本のタイトル',
+      series: 'シリーズ',
+      author: '著者',
+      description: '内容紹介',
+      category: 'カテゴリー',
+      keywords: 'キーワード',
+      price: '価格設定（別タブ：Kindle 本の価格設定）',
+      content: 'コンテンツ（別タブ：Kindle 本のコンテンツ）',
+    } as Record<string, string>,
     fields: {
       title: 'タイトル',
       subtitle: 'サブタイトル',

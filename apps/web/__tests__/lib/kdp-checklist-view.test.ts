@@ -81,6 +81,22 @@ describe('serializeChecklistBook — metadata present', () => {
     expect(result.fields).toHaveLength(CHECKLIST_FIELDS.length);
   });
 
+  it('KDP 入稿順: レーベルが著者より前 (本のタイトルセクション内)', () => {
+    const result = serializeChecklistBook(BASE_BOOK);
+    const order = result.fields.map((f) => f.field);
+    expect(order.indexOf('label')).toBeLessThan(order.indexOf('series'));
+    expect(order.indexOf('series')).toBeLessThan(order.indexOf('author'));
+    expect(order.indexOf('author')).toBeLessThan(order.indexOf('description'));
+  });
+
+  it('各フィールドに KDP セクションが付与される', () => {
+    const result = serializeChecklistBook(BASE_BOOK);
+    expect(result.fields.find((f) => f.field === 'label')!.section).toBe('title');
+    expect(result.fields.find((f) => f.field === 'author')!.section).toBe('author');
+    expect(result.fields.find((f) => f.field === 'keywords')!.section).toBe('keywords');
+    expect(result.fields.find((f) => f.field === 'cover_url')!.section).toBe('content');
+  });
+
   it('title フィールドが書籍タイトルを返す', () => {
     const result = serializeChecklistBook(BASE_BOOK);
     const titleField = result.fields.find((f) => f.field === 'title')!;
