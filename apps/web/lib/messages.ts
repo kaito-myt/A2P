@@ -615,9 +615,13 @@ export const messages = {
       tokenPlaceholderSet: '設定済み（変更する場合のみ入力）',
       tokenPlaceholder: 'トークンを貼り付け',
       tokenSetHint: '設定済み。変更する場合はこの欄をクリックして新しい値を入力してください。',
-      ayrshareTitle: 'Instagram / TikTok は Make 経由で投稿します',
+      ayrshareTitle: 'Instagram は Make 経由で投稿します',
       ayrshareNote:
-        'IG/TikTok は公式の簡単な投稿 API が無いため、連携サービス Make.com の Webhook を中継に使います。①Make で「Custom webhook」シナリオを作成 → ②Instagram（ビジネス/クリエイター＋Facebookページ連携）/ TikTok の投稿モジュールを接続 → ③発行された Webhook URL を上の「Webhook URL」欄に貼って保存。設定後は「接続テスト」で確認できます。投稿画像は本ごとに AI 生成されます（TikTok は写真/動画）。',
+        'Instagram は公式の簡単な投稿 API が無いため、連携サービス Make.com の Webhook を中継に使います。①Make で「Custom webhook」シナリオを作成 → ②Instagram（ビジネス/クリエイター＋Facebookページ連携）の投稿モジュールを接続 → ③発行された Webhook URL を下の「Webhook URL」欄に貼って保存。設定後は「接続テスト」で確認できます。投稿画像は本ごとに AI 生成されます。',
+      tiktokTitle: 'TikTok は OAuth 認証で接続済みです',
+      tiktokNote:
+        'TikTok は Content Posting API を直接使うため、Client Key / Client Secret / Refresh Token の3点で認証します（OAuth 認証時に保存済み）。アクセストークンは投稿のたびに自動更新されるので、手入力は不要です。投稿すると生成動画が TikTok の「下書き（受信箱）」に届き、アプリ側で公開できます。再認証が必要になった場合のみ、OAuth をやり直してください。',
+      tiktokCredMask: '認証情報',
       xCredsTitle: 'X 認証情報（OAuth 1.0a・無期限）',
       xCredsHelp: 'X Developer Portal の「Keys and tokens」の4値を貼り付けてください（自分のアカウントに自動投稿します。失効しません）。',
       xApiKey: 'API キー',
@@ -645,11 +649,12 @@ export const messages = {
       xRateLimited: 'レート制限中です。しばらく待って再度お試しください（認証自体は失敗していません）。',
       webhookOk: '到達OK ✓ Webhook 中継に接続できました。',
       webhookAuthFailed: '認証NG ✗ Webhook が認証を拒否しました（401/403）。',
-      ayrshareNoKey: 'Ayrshare の API キーが未設定です。AYRSHARE_API_KEY を設定してください（Railway 環境変数）。',
-      ayrshareAuthFailed: '認証NG ✗ Ayrshare の API キーが不正です。',
-      ayrshareLinked: (ch: string) => `認証OK ✓ Ayrshare 経由で ${ch === 'tiktok' ? 'TikTok' : 'Instagram'} に投稿できます（アカウント連携済み）。`,
-      ayrshareKeyOkNotLinked: (ch: string) =>
-        `API キーは有効ですが、Ayrshare 側で ${ch === 'tiktok' ? 'TikTok' : 'Instagram'} アカウントが未連携です。Ayrshare ダッシュボードで連携してください。`,
+      tiktokConnected:
+        '接続OK ✓ TikTok の資格情報を確認しました。投稿時にアクセストークンを自動更新して、動画を下書き（受信箱）へ送信します。',
+      tiktokNotConnected:
+        'TikTok が未接続です。OAuth 認証で資格情報を保存してください（動画の下書き投稿には video.upload スコープが必要です）。',
+      igNeedsWebhook:
+        'Instagram は Make の Webhook URL が必要です。Make でシナリオを作成し、発行された Webhook URL を上の欄に設定して保存してください。',
       noneConfigured: '接続手段がありません。Webhook URL かアクセストークンを設定してください。',
       networkError: 'ネットワークエラーで到達できませんでした。',
       testPassedPrefix: '認証OK',

@@ -443,7 +443,11 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const isX = setting.channel === 'x';
-  const isAyrshare = setting.channel === 'instagram' || setting.channel === 'tiktok';
+  const isTikTok = setting.channel === 'tiktok';
+  const isInstagram = setting.channel === 'instagram';
+  // Webhook / 汎用トークン欄は、専用フローを持つ X・TikTok では出さない。
+  const showWebhook = !isX && !isTikTok;
+  const showTokenField = !isX && !isTikTok;
   const [handle, setHandle] = useState(setting.handle ?? '');
   const [webhook, setWebhook] = useState(setting.webhookUrl ?? '');
   const [token, setToken] = useState('');
@@ -559,10 +563,21 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
           {setting.connected ? m.connSection.connected : m.connSection.notConnected}
         </span>
       </div>
-      {isAyrshare && (
+      {isInstagram && (
         <div className="flex flex-col gap-1 rounded-default border border-accent/30 bg-accent-bg/40 p-space-snug">
           <span className="text-button-sm font-medium text-charcoal">{m.connSection.ayrshareTitle}</span>
           <p className="text-caption text-charcoal-82">{m.connSection.ayrshareNote}</p>
+        </div>
+      )}
+      {isTikTok && (
+        <div className="flex flex-col gap-1 rounded-default border border-accent/30 bg-accent-bg/40 p-space-snug">
+          <span className="text-button-sm font-medium text-charcoal">{m.connSection.tiktokTitle}</span>
+          <p className="text-caption text-charcoal-82">{m.connSection.tiktokNote}</p>
+          {setting.tokenMask && (
+            <span className="text-caption text-muted">
+              {m.connSection.tiktokCredMask}: {setting.tokenMask}
+            </span>
+          )}
         </div>
       )}
       <label className="flex flex-col gap-1">
@@ -576,20 +591,22 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
           name={`handle-${setting.channel}`}
         />
       </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-button-sm text-charcoal-82">{m.connSection.webhookLabel}</span>
-        <input
-          className={inputCls}
-          type="url"
-          inputMode="url"
-          value={webhook}
-          onChange={(e) => setWebhook(e.target.value)}
-          placeholder="https://…"
-          name={`webhook-${setting.channel}`}
-          {...noAutofill('webhook')}
-        />
-        <span className="text-caption text-muted">{m.connSection.webhookHelp}</span>
-      </label>
+      {showWebhook && (
+        <label className="flex flex-col gap-1">
+          <span className="text-button-sm text-charcoal-82">{m.connSection.webhookLabel}</span>
+          <input
+            className={inputCls}
+            type="url"
+            inputMode="url"
+            value={webhook}
+            onChange={(e) => setWebhook(e.target.value)}
+            placeholder="https://…"
+            name={`webhook-${setting.channel}`}
+            {...noAutofill('webhook')}
+          />
+          <span className="text-caption text-muted">{m.connSection.webhookHelp}</span>
+        </label>
+      )}
       {isX ? (
         <div className="flex flex-col gap-space-snug rounded-default border border-border-warm/70 bg-cream p-space-snug">
           <span className="text-button-sm font-medium text-charcoal-82">{m.connSection.xCredsTitle}</span>
@@ -621,7 +638,7 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
             </span>
           )}
         </div>
-      ) : (
+      ) : showTokenField ? (
         <label className="flex flex-col gap-1">
           <span className="text-button-sm text-charcoal-82">{m.connSection.tokenLabel}</span>
           <input
@@ -638,7 +655,7 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
             <span className="text-caption text-muted">{m.connSection.tokenSetHint}</span>
           )}
         </label>
-      )}
+      ) : null}
       <div className="flex flex-wrap items-center gap-space-snug">
         <button
           type="button"

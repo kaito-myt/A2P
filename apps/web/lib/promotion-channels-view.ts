@@ -38,8 +38,6 @@ export interface ChannelSettingView {
   webhookUrl: string | null;
   tokenMask: string | null;
   connected: boolean;
-  /** F-058: IG/TikTok は Ayrshare 経由で投稿する（API キーが設定済みか）。 */
-  ayrshareManaged?: boolean;
 }
 
 /** F-057 — SNS アカウント運用戦略の serialized 形。 */

@@ -106,57 +106,68 @@ describe('probeChannelAuth', () => {
   });
 });
 
-describe('probeChannelAuth — Ayrshare (IG/TikTok)', () => {
-  it('APIキー未設定なら not_connected(none)', async () => {
+describe('probeChannelAuth — TikTok (直叩きAPI)', () => {
+  const TIKTOK_CREDS = JSON.stringify({
+    kind: 'tiktok',
+    clientKey: 'sbaw_k',
+    clientSecret: 'sec',
+    refreshToken: 'rt',
+    openId: 'oid',
+  });
+
+  it('保存済み OAuth 資格情報があれば非破壊で接続OK（外部を叩かない）', async () => {
     const fetchImpl = vi.fn();
     const res = await probeChannelAuth(
-      { channel: 'instagram', token: null, webhookUrl: null },
-      { fetchImpl, ayrshareApiKey: '' },
+      { channel: 'tiktok', token: TIKTOK_CREDS, webhookUrl: null },
+      { fetchImpl },
+    );
+    expect(res.ok).toBe(true);
+    expect(res.method).toBe('tiktok');
+    // refresh はローテーションで token を消費するため、テストでは一切叩かない。
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('資格情報未設定なら not_connected', async () => {
+    const fetchImpl = vi.fn();
+    const res = await probeChannelAuth(
+      { channel: 'tiktok', token: null, webhookUrl: null },
+      { fetchImpl },
     );
     expect(res.ok).toBe(false);
     expect(res.method).toBe('none');
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('200 + activeSocialAccounts に instagram があれば連携済みOK', async () => {
-    const fetchImpl = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({ activeSocialAccounts: ['instagram', 'twitter'] }),
-    }));
+  it('資格情報の形式が不正（4値でない）なら not_connected', async () => {
+    const fetchImpl = vi.fn();
     const res = await probeChannelAuth(
-      { channel: 'instagram', token: null, webhookUrl: null },
-      { fetchImpl, ayrshareApiKey: 'k' },
-    );
-    expect(res.ok).toBe(true);
-    expect(res.method).toBe('ayrshare');
-    const [url, init] = fetchImpl.mock.calls[0]! as unknown as [string, { headers: { authorization: string } }];
-    expect(url).toBe('https://api.ayrshare.com/api/user');
-    expect(init.headers.authorization).toBe('Bearer k');
-  });
-
-  it('200 だが tiktok 未連携なら ok だが未連携メッセージ', async () => {
-    const fetchImpl = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({ activeSocialAccounts: ['instagram'] }),
-    }));
-    const res = await probeChannelAuth(
-      { channel: 'tiktok', token: null, webhookUrl: null },
-      { fetchImpl, ayrshareApiKey: 'k' },
-    );
-    expect(res.ok).toBe(true);
-    expect(res.method).toBe('ayrshare');
-    expect(res.message).toContain('未連携');
-  });
-
-  it('401 は auth 失敗', async () => {
-    const fetchImpl = vi.fn(async () => ({ ok: false, status: 401, text: async () => 'unauth' }));
-    const res = await probeChannelAuth(
-      { channel: 'tiktok', token: null, webhookUrl: null },
-      { fetchImpl, ayrshareApiKey: 'bad' },
+      { channel: 'tiktok', token: JSON.stringify({ kind: 'tiktok', clientKey: 'k' }), webhookUrl: null },
+      { fetchImpl },
     );
     expect(res.ok).toBe(false);
-    expect(res.method).toBe('ayrshare');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('probeChannelAuth — Instagram (Make Webhook)', () => {
+  it('Webhook 未設定なら要設定を案内（none）', async () => {
+    const fetchImpl = vi.fn();
+    const res = await probeChannelAuth(
+      { channel: 'instagram', token: null, webhookUrl: null },
+      { fetchImpl },
+    );
+    expect(res.ok).toBe(false);
+    expect(res.method).toBe('none');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('Webhook があれば test POST で到達確認', async () => {
+    const fetchImpl = fetchReturning(200, 'ok');
+    const res = await probeChannelAuth(
+      { channel: 'instagram', token: null, webhookUrl: 'https://hook.make/ig' },
+      { fetchImpl },
+    );
+    expect(res.ok).toBe(true);
+    expect(res.method).toBe('webhook');
   });
 });
