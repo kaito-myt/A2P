@@ -5,8 +5,11 @@
  */
 export const LEGAL = {
   serviceName: 'A2P（Amazon Automated Publishing Tool）',
-  operator: 'Festal',
-  contactEmail: 'info@festal-inc.com',
+  /** 運営者（個人）。 */
+  operator: '宮田海斗',
+  /** 審査者向け英語表記（ローマ字）。 */
+  operatorEn: 'Kaito Miyata',
+  contactEmail: 'kaito.myt@gmail.com',
   /** 最終更新日 (制定日)。改定時に更新する。 */
   updatedAt: '2026-07-23',
   /** 連携する外部サービス (プライバシーポリシーに列挙)。 */

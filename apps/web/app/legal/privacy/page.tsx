@@ -97,7 +97,7 @@ export default function PrivacyPolicyPage() {
 
       <H>English summary (for reviewers)</H>
       <p className="text-caption text-muted">
-        {LEGAL.serviceName} is a personal tool operated by {LEGAL.operator} to automate the creation and promotion of
+        {LEGAL.serviceName} is a personal tool operated by {LEGAL.operatorEn} (an individual) to automate the creation and promotion of
         the operator&apos;s own e-books. It uses the TikTok Content Posting API solely to publish
         operator-generated promotional videos to the operator&apos;s own TikTok account. OAuth tokens are stored
         encrypted (AES-256-GCM), used only for posting, and are never sold or shared with third parties. Requested
