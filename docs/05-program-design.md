@@ -1838,6 +1838,9 @@ export const ArchiveJobsPayload = z.object({})
 
 ## 6. ランタイムエージェント仕様
 
+> **全ランタイムエージェントの横断インデックスは `docs/07-agent-catalog.md`**（制作/販促/経営を
+> 一覧化）。本節は制作パイプラインの詳細仕様、販促は本書末尾の F-052〜F-063、経営は docs/06。
+
 ### 6.1 LLM クライアント二層構造
 
 `docs/03 §A` の確定方針を実装に落とす。
@@ -2838,15 +2841,19 @@ export const logger = pino({
   (生成/再生成ボタン＋画像プレビュー`/api/promotion/[channel]/[avatar|banner]`)。生成された定番
   ハッシュタグ(`strategy_json.hashtag_strategy.core`)は `promotion.posts.generate` の投稿本文に
   `appendHashtags`(X重み280内)で自動付与される。実投稿はせず、表示名/bio/画像は運営者が各SNSに適用。
-- **F-058 IG/TikTok 実投稿 (Ayrshare 中継)**: X 以外の SNS は公式投稿 API の要件が重い/動画必須のため、
-  多SNS投稿サービス **Ayrshare** (`AYRSHARE_API_KEY` env) を中継に使う。`ayrshare-publisher-port.ts` が
-  `POST api.ayrshare.com/api/post {post, platforms:[instagram|tiktok], mediaUrls}`。IG/TikTok はメディア必須のため、
-  `promotion.post.publish` が `ensureBookPromoImage`(gpt-image-1 で本ごとに1枚・文字なし・`books.promo_image_key` にキャッシュ,
-  token_usage role=`promo_image`)を生成し、署名URL(1h)を `mediaUrls` に渡す。`defaultResolvePort` は ig/tiktok かつ
-  AYRSHARE_API_KEY 有りで Ayrshare ポートを選ぶ(無ければ webhook フォールバック)。**note は Ayrshare 非対応のため
-  webhook 中継のまま**。接続テストは `probeChannelAuth` の ayrshare 分岐(`GET api.ayrshare.com/api/user`)で
-  連携状況を確認。キャプションは X のみ 280 重み制約、IG/TikTok/note/blog はフルキャプション＋全ハッシュタグ
-  (`appendPurchaseLink`/`appendHashtags` を X 限定制約に変更)。TikTok は写真モード(画像)投稿。
+- **F-058 IG/TikTok 実投稿 (中継方式・現行)**: X 以外の SNS は公式投稿 API の要件が重い/動画必須のため、
+  当初は多SNS投稿サービス Ayrshare を検討したが、**現行は IG=Make.com Webhook 中継 / TikTok=Content Posting API
+  直叩き** に変更 (Ayrshare 経路・`AYRSHARE_API_KEY` は撤去。詳細は F-063)。IG/TikTok はメディア必須のため、
+  `promotion.post.publish` が `ensureBookPromoImage`(本ごとに1枚・`books.promo_image_key` にキャッシュ,
+  token_usage role=`promo_image`)を生成し、署名URL(1h)を `mediaUrls` に渡す。`defaultResolvePort` は
+  **instagram=webhook(Make) / tiktok=`createTikTokPublisherPort`(直API) / note/blog=webhook** を選ぶ。
+  接続テストは `probeChannelAuth` で手段別に確認 (F-063 参照)。キャプションは X のみ 280 重み制約、
+  IG/TikTok/note/blog はフルキャプション＋全ハッシュタグ (`appendPurchaseLink`/`appendHashtags` を X 限定制約に)。
+  **IG販促画像の刷新 (2026-07)**: 旧「文字なし雰囲気写真」は購買に繋がらないため、
+  `packages/output/image/compose-promo.ts` `composePromoCreative()` で **1080² のデザイン販促クリエイティブ**
+  (実フォント合成=文字化けゼロ・ジャンル別背景＋採用表紙(影付き)＋新刊/KU無料バッジ＋ベネフィット見出し
+  ＋CTAボタン) を生成。見出しは `CoverTextProposal.band_copy` 冒頭フックを優先。value(育成)投稿は宣伝でない
+  ためライフスタイル画像のまま。既存本は `promo_image_key` を null 化すると次回投稿時に新デザインへ lazy 再生成。
 - **F-059 育成投稿(価値提供・フォロワー獲得)**: 宣伝だけでは伸びないため、アカウント戦略の
   「発信の柱(content_pillars)」から**価値提供型の投稿**を生成する。`content_creator` エージェント
   (`packages/agents/src/content-creator/`, Opus, prompt=`apply-content-creator.ts`) が
@@ -2862,7 +2869,7 @@ export const logger = pino({
   台本は5エージェントの直列パイプライン(`packages/agents/src/tiktok-video/`): `tiktok_scenario`(構成台本・強フック→小出し→クリフハンガー)→`tiktok_creator`(絵コンテ・背景画像プロンプト+テロップ)→`tiktok_editor`(尺配分・VideoScript確定)→`tiktok_proofreader`(校閲)→`tiktok_marketer`(フック/CTA/ハッシュタグ強化)。全て generateText+extractLlmJson。prompt=`apply-tiktok-video.ts`(scenario/marketer=Opus, 他=Sonnet)。
   レンダリング(`apps/worker/src/tasks/promotion-post/video-render.ts`): シーン毎に gpt-image-1(1024x1536縦・文字なし)→`composeCoverTypography`でテロップ焼込(Noto Sans JP流用)→OpenAI TTS(`tools/tts.ts` `audio.speech`, gpt-4o-mini-tts, mp3, cost=token_usage role='tts_audio')→ffmpegで画像+音声を1080x1920クリップ化(-shortest=音声尺)→concat。**ffmpegはapps/worker/Dockerfileにapt-getで追加**。child_processはexecFile(archive-db-backup前例)。
   worker `promotion.video.generate {topic?,book_id?,target_seconds?}`: 戦略(concept/tone/柱/core hashtags)を材料に台本→レンダ→R2(`promotion/videos/{post_id}.mp4`)→`promotion_posts`(channel='tiktok', kind=book有→promo/無→value, **media_key**=mp4, 本文=caption+ハッシュタグ, status=draft→scheduled)。先にdraft作成してidをキーにし、失敗時はdelete。
-  **`promotion_posts.media_key`**(事前レンダ済みメディアのR2キー)を追加。publishの`buildMediaUrls`は media_key最優先で署名URL化(IG/TikTok)→無ければ本の販促画像/投稿ごと画像。TikTok実投稿はMake中継(webhook→TikTokモジュール, video URL=mediaUrls[1], caption=body)。UI=tiktokチャンネルボードの「TikTok動画を生成」カード。
+  **`promotion_posts.media_key`**(事前レンダ済みメディアのR2キー)を追加。publishの`buildMediaUrls`は media_key最優先で署名URL化(IG/TikTok)→無ければ本の販促画像/投稿ごと画像。TikTok実投稿は当初Make中継を検討したが、Makeに公式のオーガニック投稿モジュールが無い(広告用のみ/第三者Zernioは有料)ため **Content Posting API 直叩き**に変更(F-063)。UI=tiktokチャンネルボードの「TikTok動画を生成」カード＋「TikTok接続(OAuth)」カード。
 - **`promotion_posts`** (F-052 販促投稿キュー)。`book_id`, `channel`, `title?`, `body`, `scheduled_for`,
   `status` (draft/scheduled/posting/posted/failed/skipped/canceled), `external_url?`, `error?`, `posted_at?`。
   channel は **x / instagram / tiktok / note / blog** (旧 sns を X/IG/TikTok に分割)。
@@ -2883,10 +2890,22 @@ export const logger = pino({
 | `outline_review` | 章立ての構成校正 (重複/網羅漏れ/順序/粒度) | anthropic/claude-sonnet-4-6 |
 | `readings` | タイトル/著者名のカタカナ読み生成 (ローマ字は決定的変換) | anthropic/claude-sonnet-4-6 |
 | `promoter` | 出版後の販促施策プラン生成 (価格戦略/レビュー/告知文) | anthropic/claude-opus-4-7 |
+| `content_optimizer` | **SNS投稿の日次見直し (F-061)**。戦略のある各chの直近3日 scheduled 投稿を、コンセプト/トーン/定番ハッシュタグ/直近投稿/(将来の)実signalsを材料に非破壊で推敲。revised_body は公開本文のみ(メタ情報混入禁止) | anthropic/claude-sonnet-4-6 |
+| `cost_optimizer` | **週次コスト分析 (F-062)**。直近30日の token_usage を役割×モデルで集計し、モデル割当のより安価な代替/投稿頻度調整等の改善案＋推定削減額を提案 (switch_model_assignment / set_app_setting / advisory) | anthropic/claude-sonnet-4-6 |
 
 `marketer` プロンプトを改訂し、テーマ生成時に **Amazon Kindle 売れ筋ランキングを web_search で
 リサーチ**して需要(demand_level)/競合(competition_level)/売れ筋根拠(bestseller_evidence)/推薦理由
 を signals に出すよう強化 (signals_json に格納、DB変更なし)。
+
+**ジャンル拡張 (3→29 種)**: `packages/contracts/src/genres.ts` を単一の真実源とし
+(GENRE_CATALOG/GENRE_SLUGS/GENRE_LABELS/GENRE_GROUPS/genreLabel/GenreSlugSchema/GenreValueSchema)、
+テーマ生成のジャンル選択肢を 29 種に拡張。`Genre` 型を string に緩和し DB genre は自由 String 列
+(マイグレ不要)。エージェントのプロンプトには slug でなく日本語ラベル(genreLabel)を注入する。
+
+**画像生成モデル**: 既定を **`gpt-image-2`** に切替 (`packages/agents/src/tools/image-gen.ts` の
+`IMAGE_MODEL`、env `OPENAI_IMAGE_MODEL` で上書き可)。日本語文字の描画品質が向上。model_catalog に
+gpt-image-2 単価行を seed 済 (`apply-openai-catalog.ts`)。本ドキュメント内の旧「gpt-image-1」表記は
+この env 既定に読み替える。
 
 ## 追加 worker タスク
 
@@ -2909,6 +2928,29 @@ export const logger = pino({
     実 HTTP (Webhook 汎用経路 / X API v2) は http-publisher-port.ts に隔離。env `PROMOTION_PUBLISHER=stub`。
   - **トリガー**: `updateBookPublishStatus` で「未出版→published」かつ `promo_auto_on_publish_enabled` の時に
     `pipeline.book.promotion.generate` を enqueue → プラン生成 → 投稿キュー生成 → dispatcher が自動投稿。
+- **SNS 日次見直し (F-061)** `promotion.review.daily`（cron）: 戦略のある各chの直近3日 scheduled 投稿を
+  `content_optimizer` で非破壊推敲。promo投稿のURL(購入導線)が消える改善は破棄、changed のみ更新。
+  worker 側にメタ漏れガード（`id=`/公開タイミング分散等の文言を除去）。`AppSettings.promo_daily_review_enabled`
+  ＋`promo_review_cron`（既定 JST08:00）で条件付き有効化。実signals(実インプレッション/トレンド)は差込口のみ(v1未接続)。
+- **週次コスト分析 (F-062)** `cost.optimize.weekly`（cron）: 直近30日の token_usage を役割×モデルで集計→
+  `cost_optimizer`→改善案を `cost_improvement_proposals` に保存（旧 proposed は supersede）。承認実行は
+  `apps/web/lib/cost-proposal-core.ts` が**安全・可逆のみ**適用: `switch_model_assignment`（旧archive→新active）/
+  `set_app_setting`（許可リスト: promo_dispatch_cron/promo_review_cron/promo_daily_review_enabled/cost_analyze_cron のみ）/
+  `advisory`（実行せず了承）。危険キー（予算/上限）は許可リスト外で実行不可。`AppSettings.cost_auto_analyze_enabled`
+  ＋`cost_analyze_cron`（既定 火05:00 JST）で条件付き。UI=`/cost` の「コスト改善提案」パネル（承認/却下・推定削減額）。
+- **TikTok 投稿・アプリ内OAuth接続 (F-063)**: TikTok は Make に公式オーガニック投稿モジュールが無いため
+  **Content Posting API 直叩き**。`tiktok-publisher-port.ts` `createTikTokPublisherPort`: refresh_token で
+  access_token 更新（ローテした refresh_token を再暗号化保存）→動画バイト取得→`/inbox/video/init/`(FILE_UPLOAD)→
+  upload_url へ PUT → TikTok 下書き(受信箱)へ。動画は `ensureTikTokVideoForPost` が publish 時にオンデマンド生成可。
+  **アプリ内 OAuth 接続**: `/api/promotion/tiktok/{start,callback}`＋`tiktok-oauth-core.ts`。UI で Client Key/Secret を
+  保存→表示された Callback URL（`{公開origin}/api/promotion/tiktok/callback`）を Developer portal に登録→
+  「TikTokと接続」で authorization_code を自動交換し `{kind:'tiktok', clientKey, clientSecret, refreshToken, openId}`
+  を暗号化保存。state Cookie で CSRF 対策、redirect_uri は `getRequestOrigin` で公開オリジンから導出し UI 表示と一致。
+  接続状態は refreshToken 有無で判定（未設定/認可待ち/接続済み）。**Sandbox/未審査は下書き(SELF_ONLY)**、
+  一般公開は TikTok App review＋scope `video.publish` が必要。env: `TIKTOK_SCOPES`（既定 user.info.basic,video.upload）、
+  `NEXT_PUBLIC_APP_URL`/`NEXTAUTH_URL`（callback の正規オリジン固定・任意）。
+- **新規 DB**: `cost_improvement_proposals`（status: proposed|applied|dismissed|failed、action_json、推定削減額等）。
+  `app_settings` に `promo_daily_review_enabled`/`promo_review_cron`/`cost_auto_analyze_enabled`/`cost_analyze_cron` を追加。
 
 ## サムネ生成方式の変更 (F-007)
 
@@ -2927,11 +2969,19 @@ Noto Sans JP で実フォント合成** (`packages/output/image/compose-cover.ts
 - `/promotion` + `/promotion/[bookId]` (販促施策プランの生成・閲覧、施策ごとタブ切替、告知文コピペ)。
   サイドバー「販促施策」を独立大項目に昇格。
 - `/promotion/channel/[channel]` (F-052 SNS/note/ブログの自動運用ボード — チャンネル切替タブ・
-  自動運用トグル・接続設定(handle/webhook/token)・**接続テスト**・投稿キュー(手動投稿/取消))。
+  自動運用トグル・接続設定・**接続テスト**・投稿キュー(手動投稿/取消))。
   **接続テスト (非破壊)**: `testChannelConnection` SA → `testChannelConnectionCore` → `probeChannelAuth`
-  (`apps/web/lib/promotion-channel-probe.ts`)。実投稿と同じ資格情報/認証方式で read-only プローブし、
-  トークンを貼った瞬間に認証可否を確認できる。x=`GET /2/users/me` (OAuth1署名)、webhook=`{test:true}` を POST、
-  blog=所有(常にOK)、その他=接続手段なし。x は 403=署名有効(認証OK)・Freeプランで読取制限、401=認証NG と解釈。結果は UI に即時表示 (DB 非永続)、audit_log に可否/手段のみ記録。
+  (`apps/web/lib/promotion-channel-probe.ts`)。手段別に read-only プローブする:
+  x=`GET /2/users/me` (OAuth1署名), **tiktok=保存済み OAuth 資格情報(kind:tiktok, Client Key/Secret/Refresh Token)の
+  形式検証**(refresh はローテーションで token を消費するため叩かない=非破壊), **instagram=Make Webhook**(`{test:true}` POST・
+  未設定は要設定案内), note/blog=webhook/所有。x は 403=署名有効(認証OK)・Freeプランで読取制限、401=認証NG。
+  旧 Ayrshare 経路(`AYRSHARE_API_KEY`)は撤去。結果は UI に即時表示 (DB 非永続)、audit_log に可否/手段のみ記録。
+  **接続フォームの自動補完ガード**: ブラウザ/パスワードマネージャが資格情報欄にメール/パスワードを
+  差し込み、保存で正規トークンを上書きする事故を防ぐため、資格情報欄を read-only-until-focus 化
+  (`autoComplete=new-password` + `data-lpignore`/`1p-ignore`)。保存はユーザーが実際にフォーカスした欄のみ送信し、
+  未フォーカス欄は既存値を維持する。トークン欄は未フォーカス時に設定済みマスク値を表示。
+  **投稿失敗の人間可読化 (F-061前提)**: `apps/web/lib/promotion-error.ts` `explainPromotionError()` が
+  `promotion_posts.error` の生文字列(403 not permitted 等)を日本語見出し＋対処手順に翻訳し、生ログは `<details>` に保持。
   **X 認証は OAuth 1.0a (4値: API Key/Secret + Access Token/Secret)** を採用 (`@a2p/crypto` の
   `buildXOAuth1Header`/`parseXCredentials`)。単一運営者ツールなので失効しない 1.0a を用い、`POST /2/tweets`
   を HMAC-SHA1 署名で投稿する (OAuth2 Bearer は2hで失効するため不採用・レガシー互換のみ残す)。4値は
