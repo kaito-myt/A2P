@@ -81,7 +81,8 @@ export function GenerateThemesButton({
       }
       setOpen(false);
       setKeywordOrBrief('');
-      router.push(`/themes?theme_session_id=${res.data.session_id}`);
+      // セッション別表示は廃止。一覧に戻れば上部の「生成中」バナーに今回の生成が出る。
+      router.push('/themes');
       router.refresh();
     });
   }

@@ -19,9 +19,12 @@ import { isA2PError, fail, ok, type ActionResult } from '@a2p/contracts';
 import { prisma } from '@a2p/db';
 
 import { getSessionOrThrow } from '@/lib/auth-helpers';
+import { createBatchPlanCore } from '@/lib/batches-core';
+import { buildBatchesDeps } from '@/lib/batches-deps';
 import { enqueueJob } from '@/lib/graphile-client';
 import { messages } from '@/lib/messages';
 import {
+  AcceptThemesAndStageBatchInputSchema,
   acceptThemesAndStageBatchCore,
   bulkDecideThemesCore,
   generateThemesCore,
@@ -95,6 +98,64 @@ export async function acceptThemesAndStageBatch(
   const result = await acceptThemesAndStageBatchCore(input, deps);
   if (result.ok) revalidatePath('/themes');
   return result;
+}
+
+/**
+ * 「採用」= テーマ採用 + 夜間バッチ計画を自動作成する 1 本道アクション。
+ *
+ * 従来は「採用」(status のみ) と「採用してバッチ計画へ」(手動 /batches/new) の
+ * 2 ボタンに分かれ、採用しただけの `accepted` テーマがバッチに入らず放置される
+ * 事故が起きていた。本アクションで採用と同時に BatchPlan を自動生成し、
+ * 夜間ディスパッチャ (batch-plan-dispatcher) が planned_at (既定: 今夜 23:00 JST)
+ * に自動キックする。運営者はバッチ画面で確認・前倒しキックできるが、放置しても
+ * 今夜書籍生成が走る (手間ゼロ)。
+ *
+ * フロー:
+ *   1. 選択テーマの pending を accepted に遷移 (rejected 混在は弾く)
+ *   2. createBatchPlanCore で BatchPlan + BatchPlanItem*N を scheduled 生成
+ *   3. `/batches` へ redirect する URL を返す
+ */
+export async function acceptThemesAndCreateBatch(
+  input: unknown,
+): Promise<
+  ActionResult<{
+    batch_id: string;
+    item_count: number;
+    scheduled_at: string;
+    redirect_to: string;
+  }>
+> {
+  // 入力 (theme_ids) を先に検証しておく — 採用/バッチ双方で使う。
+  const parsed = AcceptThemesAndStageBatchInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return fail('validation', messages.themes.errors.bulkValidation, parsed.error.flatten());
+  }
+  const themeIds = parsed.data.theme_ids;
+
+  let themesDeps: ThemesDeps;
+  try {
+    themesDeps = await buildDeps();
+  } catch (err) {
+    return authFail(err);
+  }
+
+  // 1. 採用遷移 (pending -> accepted)。rejected 混在 / 不在は ValidationError で弾かれる。
+  const accepted = await acceptThemesAndStageBatchCore({ theme_ids: themeIds }, themesDeps);
+  if (!accepted.ok) return accepted;
+
+  // 2. バッチ計画を自動生成 (concurrency / planned_at は既定値)。
+  const batchesDeps = buildBatchesDeps(themesDeps.session);
+  const created = await createBatchPlanCore({ themeIds }, batchesDeps);
+  if (!created.ok) return created;
+
+  revalidatePath('/themes');
+  revalidatePath('/batches');
+  return ok({
+    batch_id: created.data.batch_id,
+    item_count: created.data.item_count,
+    scheduled_at: created.data.scheduled_at,
+    redirect_to: '/batches',
+  });
 }
 
 /**

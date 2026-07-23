@@ -66,11 +66,11 @@ export function ThemeCandidatesTable({
             <Th>{m.table.title}</Th>
             <Th>{m.table.hook}</Th>
             <Th>{m.table.targetReader}</Th>
-            <Th align="right">{m.table.competitors}</Th>
-            <Th align="right">{m.table.marketScore}</Th>
-            <Th>{m.table.createdAt}</Th>
-            <Th>{m.table.status}</Th>
-            <Th align="right">{m.table.actions}</Th>
+            <Th align="right" className="whitespace-nowrap">{m.table.competitors}</Th>
+            <Th align="right" className="whitespace-nowrap">{m.table.marketScore}</Th>
+            <Th className="whitespace-nowrap">{m.table.createdAt}</Th>
+            <Th className="whitespace-nowrap">{m.table.status}</Th>
+            <Th align="right" className="whitespace-nowrap">{m.table.actions}</Th>
           </tr>
         </thead>
         <tbody>
@@ -110,18 +110,18 @@ export function ThemeCandidatesTable({
                   </span>
                 </Td>
                 <Td>{r.target_reader ?? m.table.targetReaderEmpty}</Td>
-                <Td align="right">
+                <Td align="right" className="whitespace-nowrap tabular-nums">
                   {r.competitor_count}
                   {m.table.competitorsUnit}
                 </Td>
-                <Td align="right">
+                <Td align="right" className="whitespace-nowrap tabular-nums">
                   {r.market_score !== null ? r.market_score : m.table.marketScoreEmpty}
                 </Td>
-                <Td>{formatDateTime(r.created_at)}</Td>
-                <Td>
+                <Td className="whitespace-nowrap tabular-nums">{formatDateTime(r.created_at)}</Td>
+                <Td className="whitespace-nowrap">
                   <ThemeStatusBadge status={r.status} rowId={r.id} />
                 </Td>
-                <Td align="right">
+                <Td align="right" className="whitespace-nowrap">
                   <Link
                     href={`/themes/${r.id}`}
                     className="text-charcoal underline-offset-4 hover:underline"

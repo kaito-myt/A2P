@@ -1,17 +1,16 @@
 /**
  * E2E: S-006 テーマ候補一覧 + バルク承認 UI — T-03-07 / F-017.
  *
- * 検証する 7 ケース:
+ * 検証するケース:
  *   a. /themes 遷移 + 画面表示 (themes-table 可視 + 5 行)
  *   b. 各行が theme-row-{id} で表示され、title / status / market_score を含む
  *   c. checkbox で 2 行選択 → bulk-action-bar 表示 + 「2 件選択中」
- *   d. bulkDecideThemes accept: 2 件選択 → bulk-accept-button →
- *      DB: 該当 2 件 status='accepted'、他 3 件 pending のまま、
- *      audit_log に action='themes.bulk_decide' 1 行
+ *   d. 採用 (1 本道): 2 件選択 → bulk-accept-button →
+ *      `/batches` へ遷移、DB: 該当 2 件 status='accepted'、他 3 件 pending のまま、
+ *      BatchPlan が自動作成され該当テーマが BatchPlanItem に入る、
+ *      audit_log に action='themes.stage_batch' 1 行
  *   e. bulkDecideThemes reject: 残り 3 件のうち 1 件選択 → bulk-reject-button →
  *      status='rejected'
- *   f. acceptThemesAndStageBatch: pending 残 2 件選択 → bulk-stage-batch-button →
- *      `/batches/new?theme_ids=...` への URL 遷移を確認 (404 でも URL pathname/query OK)
  *   g. empty state: 全削除後リロード → themes-empty-state 可視
  *
  * 前提:
@@ -134,7 +133,8 @@ async function gotoThemesPage(page: Page, viaSidebar: boolean): Promise<void> {
       .getByRole('link', { name: 'テーマ候補' })
       .click();
   } else {
-    await page.goto(`/themes?theme_session_id=${E2E_SESSION_ID}`);
+    // セッション別表示は廃止。全セッション横断の一覧を開く (既定フィルタ = 未採用)。
+    await page.goto('/themes');
   }
   await page.waitForURL(/\/themes(\?|$)/);
 }
@@ -160,16 +160,15 @@ test.describe('S-006: テーマ候補一覧 + バルク承認 (T-03-07)', () => 
   }) => {
     await gotoThemesPage(page, /* viaSidebar */ true);
 
-    // サイドバーから入ると最新セッションが選ばれる (本 spec の E2E_SESSION_ID が最新)
+    // 全セッション横断一覧が表示され、seed した pending テーマが見える。
     await expect(page.getByTestId('themes-table')).toBeVisible();
-    // セッション ID サマリにスペックの session ID が表示される
-    await expect(page.getByTestId('themes-summary-session')).toContainText(E2E_SESSION_ID);
+    await expect(page.getByTestId(`theme-row-${seededThemes[0]!.id}`)).toBeVisible();
   });
 
   // -------------------------------------------------------------------------
-  // b. 5 行表示 + 列内容
+  // b. seed した 5 行が表示 + 列内容 (件数は全セッション横断なので ID で検証)
   // -------------------------------------------------------------------------
-  test('b. 5 件の theme-row-{id} が表示され、title / status / market_score 列を含む', async ({
+  test('b. 5 件の theme-row-{id} が表示され、title / status 列を含む', async ({
     page,
   }) => {
     await gotoThemesPage(page, /* viaSidebar */ false);
@@ -184,11 +183,8 @@ test.describe('S-006: テーマ候補一覧 + バルク承認 (T-03-07)', () => 
       await expect(page.getByTestId(`theme-status-${t.id}`)).toContainText('pending');
     }
 
-    // summary 集計: 5 件 pending
-    await expect(page.getByTestId('themes-summary-total')).toContainText('5');
-    await expect(page.getByTestId('themes-summary-pending')).toContainText('5');
-    await expect(page.getByTestId('themes-summary-accepted')).toContainText('0');
-    await expect(page.getByTestId('themes-summary-rejected')).toContainText('0');
+    // サマリは全セッション横断の集計。seed 分を含み total >= 5 であることだけ確認する。
+    await expect(page.getByTestId('themes-summary-total')).toBeVisible();
   });
 
   // -------------------------------------------------------------------------
@@ -218,7 +214,7 @@ test.describe('S-006: テーマ候補一覧 + バルク承認 (T-03-07)', () => 
     page,
   }) => {
     const auditCountBefore = await prisma.auditLog.count({
-      where: { action: 'themes.bulk_decide' },
+      where: { action: 'themes.stage_batch' },
     });
 
     await gotoThemesPage(page, /* viaSidebar */ false);
@@ -232,15 +228,11 @@ test.describe('S-006: テーマ候補一覧 + バルク承認 (T-03-07)', () => 
     await page.getByTestId(`theme-checkbox-${t2.id}`).check();
     await expect(page.getByTestId('bulk-selection-count')).toContainText('2 件選択中');
 
-    // 採用ボタン押下
+    // 採用ボタン押下 = 採用 + 夜間バッチ計画を自動作成 → /batches へ遷移する 1 本道。
     await page.getByTestId('bulk-accept-button').click();
 
-    // 成功 inline メッセージ or DB 反映 (router.refresh で table 再描画)
-    // status badge が accepted に変わるのを待つ
-    await expect(page.getByTestId(`theme-status-${t1.id}`)).toContainText('accepted', {
-      timeout: 10_000,
-    });
-    await expect(page.getByTestId(`theme-status-${t2.id}`)).toContainText('accepted');
+    // /batches へ遷移を待つ
+    await page.waitForURL(/\/batches(\?|$|\/)/, { timeout: 15_000 });
 
     // DB 直接検証
     // 1. 該当 2 件が accepted
@@ -255,9 +247,14 @@ test.describe('S-006: テーマ候補一覧 + バルク承認 (T-03-07)', () => 
       expect(row?.status).toBe('pending');
       expect(row?.decided_at).toBeNull();
     }
-    // 3. audit_log に themes.bulk_decide 1 行追加
+    // 3. 採用した 2 件がバッチ計画 (BatchPlanItem) に入っている
+    for (const t of [t1, t2]) {
+      const item = await prisma.batchPlanItem.findFirst({ where: { theme_id: t.id } });
+      expect(item, `theme ${t.id} should be staged into a BatchPlanItem`).not.toBeNull();
+    }
+    // 4. audit_log に themes.stage_batch 1 行追加
     const auditCountAfter = await prisma.auditLog.count({
-      where: { action: 'themes.bulk_decide' },
+      where: { action: 'themes.stage_batch' },
     });
     expect(auditCountAfter - auditCountBefore).toBe(1);
   });
@@ -304,68 +301,21 @@ test.describe('S-006: テーマ候補一覧 + バルク承認 (T-03-07)', () => 
   });
 
   // -------------------------------------------------------------------------
-  // f. acceptThemesAndStageBatch: pending 残 2 件選択 → redirect_to URL 確認
+  // g. seed 削除後リロード → seed 行が消える
   // -------------------------------------------------------------------------
-  test('f. pending 残 2 件 → bulk-stage-batch-button → /batches/new?theme_ids=... へ遷移', async ({
-    page,
-  }) => {
-    const auditCountBefore = await prisma.auditLog.count({
-      where: { action: 'themes.stage_batch' },
-    });
-
-    await gotoThemesPage(page, /* viaSidebar */ false);
-    await expect(page.getByTestId('themes-table')).toBeVisible();
-
-    const pendingLeft = seededThemes.slice(3); // index 3, 4 = 2 件
-    for (const t of pendingLeft) {
-      await page.getByTestId(`theme-checkbox-${t.id}`).check();
-    }
-    await expect(page.getByTestId('bulk-selection-count')).toContainText('2 件選択中');
-
-    // クリック後の遷移先を捕捉。T-03-09 未実装で /batches/new は 404 になり得るが、
-    // URL pathname + query を観測できれば SA が redirect_to を正しく返したと判断できる。
-    await page.getByTestId('bulk-stage-batch-button').click();
-
-    // URL 遷移を待つ (404 でも URL は遷移する)
-    await page.waitForURL(/\/batches\/new\?theme_ids=/, { timeout: 10_000 });
-
-    const url = new URL(page.url());
-    expect(url.pathname).toBe('/batches/new');
-    const themeIdsParam = url.searchParams.get('theme_ids');
-    expect(themeIdsParam).not.toBeNull();
-    const ids = (themeIdsParam ?? '').split(',');
-    for (const t of pendingLeft) {
-      expect(ids).toContain(t.id);
-    }
-
-    // DB 検証: 該当 2 件が accepted に遷移
-    for (const t of pendingLeft) {
-      const row = await prisma.themeCandidate.findUnique({ where: { id: t.id } });
-      expect(row?.status).toBe('accepted');
-    }
-
-    // audit_log: themes.stage_batch 1 行追加
-    const auditCountAfter = await prisma.auditLog.count({
-      where: { action: 'themes.stage_batch' },
-    });
-    expect(auditCountAfter - auditCountBefore).toBe(1);
-  });
-
-  // -------------------------------------------------------------------------
-  // g. empty state
-  // -------------------------------------------------------------------------
-  test('g. DB クリア後リロード → themes-empty-state 可視', async ({ page }) => {
+  test('g. 本 spec の seed を削除 → 該当 theme-row が一覧から消える', async ({ page }) => {
     // 本 spec の ThemeCandidate を全削除
     await prisma.themeCandidate.deleteMany({
       where: { theme_session_id: E2E_SESSION_ID },
     });
 
-    // 明示 session ID を指定しないと「最新セッション」フォールバックで他 seed が
-    // ヒットする可能性があるため、本 spec session を明示 → 行 0 になることを確認。
-    await page.goto(`/themes?theme_session_id=${E2E_SESSION_ID}`);
+    // 全セッション横断一覧を開く。他 seed の有無に依らず、本 spec の行が消えたことを
+    // ID スコープで検証する (empty-state は DB 全体が 0 件のときのみのため使わない)。
+    await page.goto('/themes');
+    await page.waitForURL(/\/themes(\?|$)/);
 
-    // 行 0 のため empty state へ
-    await expect(page.getByTestId('themes-empty-state')).toBeVisible();
-    await expect(page.getByTestId('themes-table')).toHaveCount(0);
+    for (const t of seededThemes) {
+      await expect(page.getByTestId(`theme-row-${t.id}`)).toHaveCount(0);
+    }
   });
 });

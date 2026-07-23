@@ -16,8 +16,6 @@
 import { revalidatePath } from 'next/cache';
 
 import { isA2PError, fail, type ActionResult } from '@a2p/contracts';
-import { prisma } from '@a2p/db';
-import { getMonthlyTotalCost } from '@a2p/db/cost-aggregation';
 
 import { getSessionOrThrow } from '@/lib/auth-helpers';
 import {
@@ -25,50 +23,14 @@ import {
   kickBatchNowCore,
   type BatchesDeps,
   type CreateBatchPlanResult,
-  type CreateBatchPlanTxFn,
   type KickBatchNowResult,
-  type KickBatchNowTxFn,
 } from '@/lib/batches-core';
-import { enqueueJob } from '@/lib/graphile-client';
+import { buildBatchesDeps } from '@/lib/batches-deps';
 import { messages } from '@/lib/messages';
-
-const realCreateTransaction: CreateBatchPlanTxFn = async (fn) =>
-  prisma.$transaction(async (tx) =>
-    fn({
-      batchPlanRepo: tx.batchPlan,
-      batchPlanItemRepo: tx.batchPlanItem,
-      auditLogRepo: tx.auditLog,
-    }),
-  );
-
-const realKickTransaction: KickBatchNowTxFn = async (fn) =>
-  prisma.$transaction(async (tx) =>
-    fn({
-      batchPlanRepo: tx.batchPlan,
-      batchPlanItemRepo: tx.batchPlanItem,
-      jobRepo: tx.job,
-      auditLogRepo: tx.auditLog,
-    }),
-  );
 
 async function buildDeps(): Promise<BatchesDeps> {
   const session = await getSessionOrThrow();
-  return {
-    themeCandidateRepo: prisma.themeCandidate,
-    batchPlanRepo: prisma.batchPlan,
-    batchPlanItemRepo: prisma.batchPlanItem,
-    jobRepo: prisma.job,
-    modelAssignmentRepo: prisma.modelAssignment,
-    modelCatalogRepo: prisma.modelCatalog,
-    auditLogRepo: prisma.auditLog,
-    appSettingsRepo: prisma.appSettings as unknown as BatchesDeps['appSettingsRepo'],
-    getMonthlyTotalCostFn: (_prismaArg, year, month) =>
-      getMonthlyTotalCost(prisma, year, month),
-    session,
-    runCreateTransaction: realCreateTransaction,
-    runKickTransaction: realKickTransaction,
-    enqueueJob,
-  };
+  return buildBatchesDeps(session);
 }
 
 function authFail(err: unknown): ActionResult<never> {

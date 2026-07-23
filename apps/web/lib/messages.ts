@@ -66,7 +66,7 @@ export const messages = {
     itemOrgDashboard: '経営ダッシュボード',
     itemOrgTasks: '全社ToDo',
     itemThemes: 'テーマ候補',
-    itemBatchPlan: '新規プロジェクト / バッチ計画',
+    itemBatchPlan: 'バッチ計画',
     itemOutlines: 'アウトライン承認',
     itemContentReview: '本文承認',
     itemThumbnails: 'サムネ承認',
@@ -831,7 +831,7 @@ export const messages = {
   themes: {
     generateSuccess: 'テーマ生成ジョブを起動しました',
     pageTitle: 'テーマ候補一覧',
-    pageSubtitle: '生成済みテーマ候補を一括採用 / 却下します',
+    pageSubtitle: '生成したテーマ候補を横断して確認し、採用 / 却下します',
     breadcrumbHome: 'ホーム',
     breadcrumbPipeline: '出版パイプライン',
     breadcrumbThemes: 'テーマ候補',
@@ -845,6 +845,34 @@ export const messages = {
       pending: (n: number) => `pending ${n} 件`,
       accepted: (n: number) => `accepted ${n} 件`,
       rejected: (n: number) => `rejected ${n} 件`,
+    },
+    filters: {
+      statusLabel: 'ステータス',
+      genreLabel: 'ジャンル',
+      periodLabel: '期間',
+      genreAll: 'すべてのジャンル',
+      count: (n: number) => `${n} 件`,
+      period: {
+        all: '全期間',
+        today: '今日',
+        d7: '直近7日',
+        d30: '直近30日',
+      },
+    },
+    generating: {
+      heading: '生成中のテーマ',
+      chip: (genre: string) => `${genre} を生成中`,
+      chipUnknown: 'テーマ生成中',
+      elapsed: (secs: number) => `経過 ${secs} 秒`,
+      note: 'Web 検索を伴うため 1〜2 分かかります。完了すると自動で一覧に表示されます。',
+      popupTitle: '生成リクエストの内容',
+      fieldGenre: 'ジャンル',
+      fieldKeyword: 'キーワード / ブリーフ',
+      fieldCount: '生成数',
+      fieldAccount: 'アカウント',
+      fieldStartedAt: '開始',
+      close: '閉じる',
+      countUnit: '件',
     },
     table: {
       title: 'タイトル',
@@ -881,6 +909,8 @@ export const messages = {
     bulkSuccess: {
       accept: (n: number) => `${n} 件のテーマを採用しました`,
       reject: (n: number) => `${n} 件のテーマを却下しました`,
+      acceptBatch: (n: number) =>
+        `${n} 件を採用し、今夜のバッチ計画を作成しました（夜間に自動で書籍生成が始まります）`,
     },
     empty: {
       title: 'テーマ候補がまだありません',

@@ -43,6 +43,23 @@ interface CountSummary {
   rejected: number;
 }
 
+/**
+ * 生成中セッション (上部バナー用)。`pipeline.theme.generate` の未完了 Job から作る。
+ * RSC → Client 境界を越えるため Date は string 化済み。
+ */
+export interface GeneratingSession {
+  jobId: string;
+  sessionId: string | null;
+  /** ジャンル表示ラベル (おまかせ/未知は null)。 */
+  genreLabel: string | null;
+  keywordOrBrief: string | null;
+  count: number | null;
+  accountLabel: string | null;
+  /** queued | running */
+  status: string;
+  createdAt: string;
+}
+
 function statusOf(s: string): ThemeStatus {
   return s === 'accepted' || s === 'rejected' ? s : 'pending';
 }

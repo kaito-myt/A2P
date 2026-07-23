@@ -3,8 +3,10 @@
 /**
  * S-006 BulkActionBar (T-03-07 / F-017).
  *
- * - 「採用」「却下」: `bulkDecideThemes` SA を起動 (pending のみ対象)
- * - 「採用してバッチ計画へ」: `acceptThemesAndStageBatch` SA を起動 → redirect
+ * - 「採用」: `acceptThemesAndCreateBatch` SA を起動 = 採用 + 夜間バッチ計画を
+ *   自動作成 → `/batches` へ遷移。従来の「採用のみ」ボタンは廃止し、採用したら
+ *   必ずバッチに乗る 1 本道にする (accepted のまま放置される事故を防ぐ)。
+ * - 「却下」: `bulkDecideThemes` SA を起動 (pending のみ対象)
  * - 「選択解除」: 親 (themes-page-shell) の selection を空にする
  *
  * 進行中 (useTransition) の間はボタン全部 disabled。
@@ -14,7 +16,7 @@ import { useState, useTransition } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
-  acceptThemesAndStageBatch,
+  acceptThemesAndCreateBatch,
   bulkDecideThemes,
 } from '@/app/actions/themes';
 import { messages } from '@/lib/messages';
@@ -39,49 +41,50 @@ export function BulkActionBar({
 
   const selectionCount = selectedIds.length;
   // selectedIds === 0 のときは bar 自体を表示しない (parent 側で制御)。
-  const canDecide = selectedPendingIds.length > 0;
-  // 「採用してバッチ計画へ」は accepted も混ぜて転送可能なので selectedIds で判定。
-  const canStage = selectedIds.length > 0;
+  const canReject = selectedPendingIds.length > 0;
+  // 「採用」は accepted も混ぜてバッチ投入できるので selectedIds で判定。
+  const canAccept = selectedIds.length > 0;
 
-  function decide(decision: 'accept' | 'reject') {
+  // 「採用」= 採用 + 夜間バッチ計画を自動作成 → /batches へ遷移 (1 本道)。
+  function accept() {
     setError(null);
     setInfo(null);
-    if (!canDecide) {
+    if (!canAccept) {
+      setError(m.errors.bulkValidation);
+      return;
+    }
+    startTransition(async () => {
+      const result = await acceptThemesAndCreateBatch({ theme_ids: selectedIds });
+      if (!result.ok) {
+        setError(result.error.message);
+        return;
+      }
+      // 成功トーストは遷移先で消えるが、体感のため一瞬表示してから push。
+      setInfo(m.bulkSuccess.acceptBatch(result.data.item_count));
+      onSelectionClear();
+      router.push(result.data.redirect_to);
+    });
+  }
+
+  function reject() {
+    setError(null);
+    setInfo(null);
+    if (!canReject) {
       setError(m.errors.noPending);
       return;
     }
     startTransition(async () => {
       const result = await bulkDecideThemes({
         theme_ids: selectedPendingIds,
-        decision,
+        decision: 'reject',
       });
       if (!result.ok) {
         setError(result.error.message);
         return;
       }
-      const n = result.data.updated;
-      setInfo(
-        decision === 'accept' ? m.bulkSuccess.accept(n) : m.bulkSuccess.reject(n),
-      );
+      setInfo(m.bulkSuccess.reject(result.data.updated));
       onSelectionClear();
       router.refresh();
-    });
-  }
-
-  function stageBatch() {
-    setError(null);
-    setInfo(null);
-    if (!canStage) {
-      setError(m.errors.bulkValidation);
-      return;
-    }
-    startTransition(async () => {
-      const result = await acceptThemesAndStageBatch({ theme_ids: selectedIds });
-      if (!result.ok) {
-        setError(result.error.message);
-        return;
-      }
-      router.push(result.data.redirect_to);
     });
   }
 
@@ -110,8 +113,8 @@ export function BulkActionBar({
         <Button
           type="button"
           variant="default"
-          disabled={pending || !canDecide}
-          onClick={() => decide('accept')}
+          disabled={pending || !canAccept}
+          onClick={accept}
           data-testid="bulk-accept-button"
         >
           {m.bulk.accept}
@@ -119,20 +122,11 @@ export function BulkActionBar({
         <Button
           type="button"
           variant="destructive"
-          disabled={pending || !canDecide}
-          onClick={() => decide('reject')}
+          disabled={pending || !canReject}
+          onClick={reject}
           data-testid="bulk-reject-button"
         >
           {m.bulk.reject}
-        </Button>
-        <Button
-          type="button"
-          variant="default"
-          disabled={pending || !canStage}
-          onClick={stageBatch}
-          data-testid="bulk-stage-batch-button"
-        >
-          {m.bulk.stageBatch}
         </Button>
         <Button
           type="button"

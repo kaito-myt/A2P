@@ -397,14 +397,16 @@ CostMeter / AlertBadge / CommentBadge の 3 つは **どの画面でも常に視
   1. フィルタバー（アカウント / ジャンル / 生成日時 / ステータス pending/accepted/rejected）
   2. 「新規テーマ生成」ボタン（生成数指定モーダル → F-001 ジョブキック）
   3. テーマ候補グリッド/テーブル（チェックボックス、タイトル、想定読者、差別化要素、競合 ASIN/URL、想定売上シグナル、生成日時、ステータス）
-  4. 選択行に対する **BulkActionBar**（下部固定）: 「採用」「却下」「採用してバッチ計画へ」「コメント追加」
+  4. 選択行に対する **BulkActionBar**（下部固定）: 「採用」「却下」「コメント追加」
 - **主要コンポーネント**:
   - ThemeCandidatesTable: 入力 `{filter}` → ページネーション + ソート
   - BulkSelectionState: 選択行 ID 保持
   - BulkActionBar:
-    - 「採用」→ `POST /api/themes/bulk-accept` → S-006 にとどまる（ステータス更新）
-    - 「採用してバッチ計画へ」→ 採用と同時に選択中の ID を S-008 にハンドオフ
-    - 「却下」→ `POST /api/themes/bulk-reject`
+    - 「採用」→ `acceptThemesAndCreateBatch` SA = **採用 + 夜間バッチ計画を自動作成** → `/batches` へ遷移。
+      採用しただけで放置される事故を防ぐ 1 本道（旧「採用のみ」ボタンは廃止し、
+      「採用」と「採用してバッチ計画へ」を統合）。バッチは既定 `planned_at`（今夜 23:00 JST）で
+      scheduled 作成され、夜間ディスパッチャ (`batch-plan-dispatcher`) が自動キックする。
+    - 「却下」→ `bulkDecideThemes({ decision: 'reject' })`
   - GenerateThemesModal: 入力 `{account_id, genre, count}` → F-001 起動
 - **ユーザー操作と結果**:
   - 20 件以上を 1 操作で承認可能（F-017 受け入れ基準）

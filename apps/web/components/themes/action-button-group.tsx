@@ -3,8 +3,9 @@
 /**
  * S-007 アクションボタン群 (T-03-08).
  *
- * 単一 candidate の accept / reject は新 SA を作らず、T-03-07 の
- * `bulkDecideThemes({ theme_ids: [id], decision })` を流用する。
+ * - accept: `acceptThemesAndCreateBatch({ theme_ids: [id] })` = 採用 + 夜間バッチ
+ *   計画を自動作成 → `/batches` へ遷移 (一覧のバルクバーと同じ 1 本道)。
+ * - reject: `bulkDecideThemes({ theme_ids: [id], decision: 'reject' })`。
  *
  * - pending → accept / reject ボタン enabled
  * - accepted / rejected → 各ボタン disabled + ヒント表示
@@ -18,7 +19,7 @@ import { useState, useTransition } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { CommentAffordance } from '@/components/comments/comment-affordance';
-import { bulkDecideThemes } from '@/app/actions/themes';
+import { acceptThemesAndCreateBatch, bulkDecideThemes } from '@/app/actions/themes';
 import { messages } from '@/lib/messages';
 import type { CommentPriority, CommentStatus } from '@/lib/comment-helpers';
 import type { ThemeStatus, ThemeCommentSerialized } from '@/lib/themes-view';
@@ -59,16 +60,29 @@ export function ActionButtonGroup({ themeId, status, bookId, comments = [] }: Ac
     setInfo(null);
     setPendingDecision(decision);
     startTransition(async () => {
+      if (decision === 'accept') {
+        // 採用 = 採用 + 夜間バッチ計画を自動作成 → /batches へ遷移。
+        const result = await acceptThemesAndCreateBatch({ theme_ids: [themeId] });
+        if (!result.ok) {
+          setError(result.error.message);
+          setPendingDecision(null);
+          return;
+        }
+        setInfo(ma.acceptSuccess);
+        setPendingDecision(null);
+        router.push('/batches');
+        return;
+      }
       const result = await bulkDecideThemes({
         theme_ids: [themeId],
-        decision,
+        decision: 'reject',
       });
       if (!result.ok) {
         setError(result.error.message);
         setPendingDecision(null);
         return;
       }
-      setInfo(decision === 'accept' ? ma.acceptSuccess : ma.rejectSuccess);
+      setInfo(ma.rejectSuccess);
       setPendingDecision(null);
       router.refresh();
     });
