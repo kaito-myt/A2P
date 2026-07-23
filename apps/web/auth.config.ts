@@ -37,8 +37,9 @@ export const authConfig: NextAuthConfig = {
         return true;
       }
 
-      // 書籍カタログ (/books) は SNS プロフィールリンクの導線先 — 未認証で閲覧可。
-      if (pathname === '/books' || pathname.startsWith('/books/')) {
+      // 書籍カタログ (/shop) は SNS プロフィールリンクの導線先 — 未認証で閲覧可。
+      // (/books は認証必須の管理画面=書籍ライブラリなので公開しない)
+      if (pathname === '/shop' || pathname.startsWith('/shop/')) {
         return true;
       }
 

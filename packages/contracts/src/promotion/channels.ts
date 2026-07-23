@@ -206,7 +206,7 @@ export function amazonUrlForAsin(asin: string | null | undefined): string | null
 
 const PURCHASE_LABEL = '\n\n▼詳細・購入はこちら\n';
 
-const PURCHASE_LABEL_IG = '\n\n📚 詳細・購入はプロフィールのリンクから';
+const PURCHASE_LABEL_IG = '\n\n📚 詳細・購入はこちら（プロフィールのリンクからも）\n';
 
 /**
  * 戦略にハッシュタグが無い場合のフォールバック（本紹介アカウント汎用）。
@@ -252,11 +252,10 @@ export function appendPurchaseLink(
     const fitted = truncateToWeight(trimmedBody, maxBody);
     return `${fitted}${PURCHASE_LABEL}${url}`;
   }
-  // Instagram はキャプション内 URL が非活性(クリック不可)なので、生URLは載せず
-  // 「プロフィールのリンクから」導線のみ添える。実リンクは IG プロフィールの bio に
-  // 設定する運用 (books ランディング or Amazon 著者ページ)。
+  // Instagram: キャプション内 URL はクリックできないが、運営方針で Amazon URL を明記する
+  // (コピー用/情報として)。クリック可能な導線は bio のプロフィールリンク(/shop ランディング)で補う。
   if (channel === 'instagram') {
-    return `${trimmedBody}${PURCHASE_LABEL_IG}`;
+    return `${trimmedBody}${PURCHASE_LABEL_IG}${url}`;
   }
   // TikTok / note / blog は長文可でそのまま付与。
   return `${trimmedBody}${PURCHASE_LABEL}${url}`;

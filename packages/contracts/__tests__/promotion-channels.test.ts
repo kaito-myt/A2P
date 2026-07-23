@@ -233,13 +233,12 @@ describe('appendHashtags', () => {
 });
 
 describe('appendPurchaseLink / appendHashtags — IG/TikTok フルキャプション (F-058)', () => {
-  it('Instagram は本文を切り詰めず、生URLは載せずプロフィール導線のみ付ける', () => {
+  it('Instagram は本文を切り詰めず、Amazon URL＋プロフィール導線を付ける', () => {
     const body = 'あ'.repeat(200); // weighted 400
     const out = appendPurchaseLink('instagram', body, 'B0FVFCKJNF');
     expect(out.startsWith('あ'.repeat(200))).toBe(true); // 切り詰めない
-    // IG はキャプション内 URL が非活性なので生URLは載せない。
-    expect(out).not.toContain('https://www.amazon.co.jp/dp/B0FVFCKJNF');
-    expect(out).toContain('プロフィールのリンクから');
+    expect(out).toContain('https://www.amazon.co.jp/dp/B0FVFCKJNF'); // URL は明記する
+    expect(out).toContain('プロフィールのリンク');
   });
   it('TikTok も280制約を受けずそのまま付与', () => {
     const body = 'あ'.repeat(200);

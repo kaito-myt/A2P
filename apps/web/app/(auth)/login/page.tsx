@@ -64,10 +64,10 @@ export default async function LoginPage({ searchParams }: PageProps) {
             }}
           >
             <Image
-              src="/logo.png"
+              src="/logo-mark.png"
               alt={messages.brand.appName}
-              width={2508}
-              height={627}
+              width={600}
+              height={200}
               priority
               sizes="280px"
               data-testid="login-brand-logo"
