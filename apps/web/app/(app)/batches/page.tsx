@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { prisma } from '@a2p/db';
 
 import { messages } from '@/lib/messages';
+import { cn } from '@/lib/cn';
 
 export const metadata: Metadata = {
   title: `${messages.batches.listPageTitle} | ${messages.brand.appName}`,
@@ -44,9 +45,28 @@ export default async function BatchesListPage() {
     prisma.batchPlan.findMany({
       orderBy: { created_at: 'desc' },
       take: 7,
-      include: { items: { select: { id: true } } },
+      include: {
+        items: {
+          select: { id: true, theme_id: true, status: true, book: { select: { id: true, title: true, status: true } } },
+        },
+      },
     }),
   ]);
+
+  // BatchPlanItem.theme_id は ThemeCandidate への Prisma リレーションが無いため JS で結合する。
+  // (item に book が付いていれば book.title を優先、無ければ採用テーマ名を表示。)
+  const themeIds = Array.from(
+    new Set(recent.flatMap((b) => b.items.map((i) => i.theme_id).filter((x): x is string => Boolean(x)))),
+  );
+  const themes = themeIds.length
+    ? await prisma.themeCandidate.findMany({ where: { id: { in: themeIds } }, select: { id: true, title: true } })
+    : [];
+  const themeTitleById = new Map(themes.map((t) => [t.id, t.title]));
+
+  function itemLabel(item: (typeof recent)[number]['items'][number]): { title: string; status: string } {
+    const title = item.book?.title ?? (item.theme_id ? themeTitleById.get(item.theme_id) : undefined) ?? m.list.noThemes;
+    return { title, status: item.book?.status ?? item.status };
+  }
 
   const countByStatus: Record<StatusKey, number> = {
     scheduled: 0,
@@ -131,6 +151,7 @@ export default async function BatchesListPage() {
                   <th className="px-space-relaxed py-2 font-medium">{m.list.colPlannedAt}</th>
                   <th className="px-space-relaxed py-2 font-medium">{m.list.colConcurrency}</th>
                   <th className="px-space-relaxed py-2 font-medium">{m.list.colItems}</th>
+                  <th className="px-space-relaxed py-2 font-medium">{m.list.colThemes}</th>
                   <th className="px-space-relaxed py-2 font-medium">{m.list.colPredictedCost}</th>
                   <th className="px-space-relaxed py-2 font-medium">{m.list.colStatus}</th>
                   <th className="px-space-relaxed py-2 font-medium">{m.list.colCreatedAt}</th>
@@ -154,6 +175,39 @@ export default async function BatchesListPage() {
                     </td>
                     <td className="px-space-relaxed py-2 text-charcoal-82">
                       {b.items.length}
+                    </td>
+                    <td className="px-space-relaxed py-2 text-charcoal-82">
+                      {b.items.length === 0 ? (
+                        <span className="text-muted">{m.list.noThemes}</span>
+                      ) : (
+                        <ul className="flex max-w-[22rem] flex-col gap-0.5">
+                          {b.items.map((item) => {
+                            const { title, status } = itemLabel(item);
+                            return (
+                              <li key={item.id} className="flex items-center gap-1.5">
+                                <span
+                                  className={cn(
+                                    'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
+                                    status === 'done'
+                                      ? 'bg-success'
+                                      : status === 'failed'
+                                        ? 'bg-destructive'
+                                        : 'bg-warning',
+                                  )}
+                                  title={status}
+                                />
+                                {item.book ? (
+                                  <Link href={`/books/${item.book.id}`} className="truncate hover:underline">
+                                    {title}
+                                  </Link>
+                                ) : (
+                                  <span className="truncate">{title}</span>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
                     </td>
                     <td className="px-space-relaxed py-2 text-charcoal-82">
                       {m.list.jpyPrefix}

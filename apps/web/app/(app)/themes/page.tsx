@@ -83,6 +83,21 @@ export default async function ThemesPage({ searchParams }: ThemesPageProps) {
     }),
   ]);
 
+  // 過去のテーマ生成セッション一覧（切替用）。「前のリクエストが消えた」ように見えるのは
+  // 最新セッションしか表示していなかったため — ここで過去セッションへ辿れるようにする。
+  const sessionGroups = await prisma.themeCandidate.groupBy({
+    by: ['theme_session_id'],
+    _count: { _all: true },
+    _max: { created_at: true },
+    orderBy: { _max: { created_at: 'desc' } },
+    take: 12,
+  });
+  const sessionList = sessionGroups.map((g) => ({
+    id: g.theme_session_id,
+    count: g._count._all,
+    createdAt: g._max.created_at ? g._max.created_at.toISOString().slice(5, 16).replace('T', ' ') : '',
+  }));
+
   // このセッションのテーマ生成ジョブが進行中か (候補が出るまで「生成中」表示)
   const generatingCount = sessionId
     ? await prisma.job.count({
@@ -116,6 +131,29 @@ export default async function ThemesPage({ searchParams }: ThemesPageProps) {
             <GenerateThemesButton accounts={accounts} authors={authorNames} labels={labelNames} />
           </div>
         </div>
+        {sessionList.length > 1 && (
+          <div className="flex flex-col gap-1" data-testid="themes-session-switcher">
+            <span className="text-caption text-muted">{m.sessionSwitcherLabel}</span>
+            <div className="flex flex-wrap gap-1.5">
+              {sessionList.map((s) => {
+                const active = s.id === sessionId;
+                return (
+                  <Link
+                    key={s.id}
+                    href={`/themes?theme_session_id=${s.id}`}
+                    className={
+                      active
+                        ? 'rounded-pill bg-charcoal px-2.5 py-1 text-caption text-cream-light'
+                        : 'rounded-pill border border-border-warm bg-cream px-2.5 py-1 text-caption text-charcoal-82 hover:bg-cream-light'
+                    }
+                  >
+                    {s.createdAt}（{s.count}）
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {sessionId && (
           <div
             className="flex flex-wrap items-center gap-x-space-relaxed gap-y-1 text-button-sm text-charcoal-82"
