@@ -10,6 +10,7 @@ import type { Book, Outline, Chapter, Job, RevisionComment } from '@a2p/db';
 
 import { genreLabel } from '@a2p/contracts';
 import { messages } from './messages';
+import { formatJstDateTime } from './datetime';
 
 // ---------------------------------------------------------------------------
 // Book status helpers
@@ -462,12 +463,8 @@ export function formatGenre(genre: string | null | undefined): string | null {
 export function formatDateTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  const y = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${y}-${mo}-${day} ${hh}:${mm}`;
+  // JST 固定表示 (サーバ=UTC でも 9 時間ズレないように)。
+  return formatJstDateTime(d);
 }
 
 /**

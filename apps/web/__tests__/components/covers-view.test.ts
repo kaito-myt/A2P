@@ -332,7 +332,7 @@ describe('formatGenre', () => {
   });
 
   it('returns raw value for unknown genre', () => {
-    expect(formatGenre('mystery')).toBe('mystery');
+    expect(formatGenre('nonexistent_genre_xyz')).toBe('nonexistent_genre_xyz');
   });
 
   it('returns null for null/undefined', () => {

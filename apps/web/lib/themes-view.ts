@@ -15,6 +15,8 @@ import { z } from 'zod';
 
 import type { ThemeCandidate, RevisionComment } from '@a2p/db';
 
+import { formatJstDateTime } from './datetime';
+
 export type ThemeStatus = 'pending' | 'accepted' | 'rejected';
 
 /** RSC → Client へ渡せるよう Date/Json を string/primitive に潰した形。 */
@@ -173,16 +175,15 @@ export function pickSelectedIds(
   return ids;
 }
 
-/** ISO 文字列 → "YYYY-MM-DD HH:mm" (JST 想定の単純フォーマット)。 */
+/**
+ * ISO 文字列 → "YYYY-MM-DD HH:mm" (JST 固定)。
+ * サーバ (Railway=UTC) / クライアントの TZ に依らず Asia/Tokyo で整形する
+ * (旧実装は端末ローカル時刻で、UTC サーバだと 9 時間ズレていた)。
+ */
 export function formatDateTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${y}-${m}-${day} ${hh}:${mm}`;
+  return formatJstDateTime(d);
 }
 
 /** 長文 hook 等の truncate (60 文字を超えたら省略記号)。 */

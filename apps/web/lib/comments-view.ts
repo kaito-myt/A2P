@@ -11,6 +11,8 @@
 
 import type { CommentPriority, CommentStatus, TargetKind } from './comment-helpers';
 
+import { formatJstDateTime } from './datetime';
+
 // ---------------------------------------------------------------------------
 // Serialized types (RSC → Client 境界越え用)
 // ---------------------------------------------------------------------------
@@ -255,12 +257,8 @@ export function formatDateTime(iso: string): string {
   try {
     const d = new Date(iso);
     if (isNaN(d.getTime())) return iso;
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const hh = String(d.getHours()).padStart(2, '0');
-    const min = String(d.getMinutes()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+    // JST 固定表示 (サーバ=UTC でも 9 時間ズレないように)。
+    return formatJstDateTime(d);
   } catch {
     return iso;
   }

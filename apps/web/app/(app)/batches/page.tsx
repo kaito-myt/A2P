@@ -11,6 +11,7 @@ import { prisma } from '@a2p/db';
 
 import { messages } from '@/lib/messages';
 import { cn } from '@/lib/cn';
+import { formatJstDateTime } from '@/lib/datetime';
 
 export const metadata: Metadata = {
   title: `${messages.batches.listPageTitle} | ${messages.brand.appName}`,
@@ -167,8 +168,8 @@ export default async function BatchesListPage() {
                     <td className="px-space-relaxed py-2 font-mono text-charcoal-82">
                       {b.id.slice(0, 12)}…
                     </td>
-                    <td className="px-space-relaxed py-2 text-charcoal-82">
-                      {b.planned_at.toISOString().slice(0, 16).replace('T', ' ')}
+                    <td className="px-space-relaxed py-2 whitespace-nowrap text-charcoal-82">
+                      {formatJstDateTime(b.planned_at)}
                     </td>
                     <td className="px-space-relaxed py-2 text-charcoal-82">
                       {b.concurrency}
@@ -216,8 +217,8 @@ export default async function BatchesListPage() {
                     <td className="px-space-relaxed py-2 text-foreground">
                       {statusLabel(b.status)}
                     </td>
-                    <td className="px-space-relaxed py-2 text-charcoal-82">
-                      {b.created_at.toISOString().slice(0, 16).replace('T', ' ')}
+                    <td className="px-space-relaxed py-2 whitespace-nowrap text-charcoal-82">
+                      {formatJstDateTime(b.created_at)}
                     </td>
                   </tr>
                 ))}
