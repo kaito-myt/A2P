@@ -8,6 +8,7 @@ import {
   appendHashtags,
   amazonUrlForAsin,
   truncateToWeight,
+  resolveHashtags,
   X_MAX_WEIGHT,
 } from '@a2p/contracts/promotion/channels';
 import type { PromotionPlanOutput } from '@a2p/contracts/agents/promoter';
@@ -161,8 +162,11 @@ export async function runPromotionPostsGenerate(
       : channel === 'x'
         ? truncateToWeight(body.trim(), X_MAX_WEIGHT)
         : body;
-    const tags = coreHashtagsByChannel.get(channel);
-    return tags && tags.length > 0 ? appendHashtags(channel, withLink, tags) : withLink;
+    // 戦略タグが無いチャンネルでもデフォルトの本紹介タグにフォールバックして必ず付与する
+    // (blog は本文が長文/記事なのでタグ付与しない)。
+    if (channel === 'blog') return withLink;
+    const tags = resolveHashtags(coreHashtagsByChannel.get(channel));
+    return appendHashtags(channel, withLink, tags);
   };
 
   const created = await prisma.promotionPost.createMany({

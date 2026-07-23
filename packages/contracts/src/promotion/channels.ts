@@ -206,7 +206,26 @@ export function amazonUrlForAsin(asin: string | null | undefined): string | null
 
 const PURCHASE_LABEL = '\n\n▼詳細・購入はこちら\n';
 
-const PURCHASE_LABEL_IG = '\n\n📚詳細・購入はプロフィールのリンクから\n';
+const PURCHASE_LABEL_IG = '\n\n📚 詳細・購入はプロフィールのリンクから';
+
+/**
+ * 戦略にハッシュタグが無い場合のフォールバック（本紹介アカウント汎用）。
+ * appendHashtags は空配列だと何もしないため、必ず何か付くよう resolveHashtags を通す。
+ */
+export const DEFAULT_BOOK_HASHTAGS: readonly string[] = [
+  '#本紹介',
+  '#読書',
+  '#おすすめ本',
+  '#読書好きな人と繋がりたい',
+  '#本のある暮らし',
+  '#Kindle',
+];
+
+/** 戦略タグが空ならデフォルトの本紹介タグにフォールバックする。 */
+export function resolveHashtags(tags: readonly string[] | null | undefined): string[] {
+  const cleaned = (tags ?? []).filter((t): t is string => typeof t === 'string' && t.trim().length > 0);
+  return cleaned.length > 0 ? cleaned : [...DEFAULT_BOOK_HASHTAGS];
+}
 
 /**
  * 投稿本文に Amazon 購入リンクを付与する (売上導線)。
@@ -233,9 +252,11 @@ export function appendPurchaseLink(
     const fitted = truncateToWeight(trimmedBody, maxBody);
     return `${fitted}${PURCHASE_LABEL}${url}`;
   }
-  // Instagram はキャプション内 URL が非活性なので、リンク文言＋URL(コピー用)を添える。
+  // Instagram はキャプション内 URL が非活性(クリック不可)なので、生URLは載せず
+  // 「プロフィールのリンクから」導線のみ添える。実リンクは IG プロフィールの bio に
+  // 設定する運用 (books ランディング or Amazon 著者ページ)。
   if (channel === 'instagram') {
-    return `${trimmedBody}${PURCHASE_LABEL_IG}${url}`;
+    return `${trimmedBody}${PURCHASE_LABEL_IG}`;
   }
   // TikTok / note / blog は長文可でそのまま付与。
   return `${trimmedBody}${PURCHASE_LABEL}${url}`;

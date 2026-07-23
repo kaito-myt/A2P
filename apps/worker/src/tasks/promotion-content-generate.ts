@@ -5,6 +5,7 @@ import { createAccountContent as defaultCreateAccountContent } from '@a2p/agents
 import {
   PromotionChannelSchema,
   appendHashtags,
+  resolveHashtags,
   type PromotionChannel,
 } from '@a2p/contracts/promotion/channels';
 import {
@@ -149,7 +150,8 @@ export async function runPromotionContentGenerate(
   }
 
   // 5. 日程付与 (明日から VALUE_SLOTS を days 日に分散) + 定番ハッシュタグ付与。
-  const coreTags = p.hashtag_strategy?.core ?? [];
+  // 戦略にタグが無くてもデフォルトの本紹介タグにフォールバックして必ず付与する。
+  const coreTags = resolveHashtags(p.hashtag_strategy?.core);
   const slots = VALUE_SLOTS_JST_MIN;
   // JST の暦日(明日)を基準にスロット時刻を割り当てる。
   const jst = new Date(now().getTime() + 9 * H);
@@ -162,7 +164,7 @@ export async function runPromotionContentGenerate(
     const slotMin = slots[i % slots.length]!;
     // JST 壁時計 (jy/jm/(jd+dayOffset) 00:00 + slotMin 分) → UTC = それ - 9h
     const scheduledFor = new Date(Date.UTC(jy, jm, jd + dayOffset, 0, slotMin) - 9 * H);
-    const body = coreTags.length > 0 ? appendHashtags(channel, post.body.trim(), coreTags) : post.body.trim();
+    const body = channel === 'blog' ? post.body.trim() : appendHashtags(channel, post.body.trim(), coreTags);
     return {
       book_id: null,
       channel,

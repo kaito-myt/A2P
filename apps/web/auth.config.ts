@@ -37,6 +37,11 @@ export const authConfig: NextAuthConfig = {
         return true;
       }
 
+      // 書籍カタログ (/books) は SNS プロフィールリンクの導線先 — 未認証で閲覧可。
+      if (pathname === '/books' || pathname.startsWith('/books/')) {
+        return true;
+      }
+
       // 法務ページ (/legal/*) は公開必須 — プライバシーポリシー/利用規約は
       // TikTok 等の外部審査で URL 提出に使うため、未認証で閲覧可。
       if (pathname === '/legal' || pathname.startsWith('/legal/')) {

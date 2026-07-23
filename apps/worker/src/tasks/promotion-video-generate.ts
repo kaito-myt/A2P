@@ -7,7 +7,7 @@ import {
   type TikTokVideoInput,
   type VideoScript,
 } from '@a2p/contracts/agents';
-import { appendHashtags } from '@a2p/contracts/promotion/channels';
+import { appendHashtags, resolveHashtags } from '@a2p/contracts/promotion/channels';
 import { ValidationError } from '@a2p/contracts/errors';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
 import { prisma as defaultPrisma } from '@a2p/db';
@@ -156,8 +156,8 @@ export async function runPromotionVideoGenerate(
 
   // 4. 投稿本文（キャプション + ハッシュタグ）。
   let body = script.caption.trim();
-  const tags = [...new Set([...(script.hashtags ?? []), ...coreTags])];
-  if (tags.length > 0) body = appendHashtags('tiktok', body, tags);
+  const tags = resolveHashtags([...new Set([...(script.hashtags ?? []), ...coreTags])]);
+  body = appendHashtags('tiktok', body, tags);
 
   // 5. 先に post を draft 作成 → id を得て mp4 キーにする。
   const post = await prisma.promotionPost.create({
