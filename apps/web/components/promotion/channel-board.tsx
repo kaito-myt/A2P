@@ -7,9 +7,9 @@
  *  - 接続設定フォーム (handle / webhook / token)
  *  - 投稿キュー (予定/投稿済/失敗 + 手動投稿・取消)
  */
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 import {
   cancelPromotionPost,
@@ -17,6 +17,7 @@ import {
   generateChannelContent,
   generateChannelVideo,
   publishPostNow,
+  saveTikTokAppCredentials,
   setChannelAuto,
   setChannelConnection,
   testChannelConnection,
@@ -439,6 +440,166 @@ function AutomationCard({ setting }: { setting: ChannelSettingView }) {
   );
 }
 
+/**
+ * TikTok アプリ内 OAuth 接続カード。
+ *  1. Client Key / Client Secret を保存
+ *  2. 表示された Callback URL を TikTok Developer portal に登録
+ *  3.「TikTokと接続」→ 認可 → 自動でトークン保存
+ */
+function TikTokConnect({ setting, inputCls }: { setting: ChannelSettingView; inputCls: string }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [pending, start] = useTransition();
+  const [clientKey, setClientKey] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [unlocked, setUnlocked] = useState<Set<string>>(new Set());
+  const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [callbackUrl, setCallbackUrl] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const tk = m.connSection.tiktok;
+  const authorized = Boolean(setting.tiktokAuthorized);
+  const appCredsSaved = Boolean(setting.tiktokAppCredsSaved);
+
+  // Callback URL はサーバ(redirect_uri)と一致させるため、実際の公開オリジンから組み立てる。
+  useEffect(() => {
+    setCallbackUrl(`${window.location.origin}/api/promotion/tiktok/callback`);
+  }, []);
+
+  // OAuth 戻り (?tiktok=connected|error) を一度だけ表示し、URL をクリーンにする。
+  const oauthResult = searchParams.get('tiktok');
+  const oauthReason = searchParams.get('reason');
+  useEffect(() => {
+    if (!oauthResult) return;
+    if (oauthResult === 'connected') setSaveMsg({ ok: true, text: tk.oauthConnected });
+    else if (oauthResult === 'need_app_creds') setSaveMsg({ ok: false, text: tk.needAppCreds });
+    else if (oauthResult === 'error') setSaveMsg({ ok: false, text: `${tk.oauthError}${oauthReason ? `（${oauthReason}）` : ''}` });
+    router.replace('/promotion/channel/tiktok');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oauthResult, oauthReason]);
+
+  const noAutofill = (field: string) => ({
+    readOnly: !unlocked.has(field),
+    onFocus: () => setUnlocked((s) => (s.has(field) ? s : new Set(s).add(field))),
+    autoComplete: 'new-password' as const,
+    'data-lpignore': 'true',
+    'data-1p-ignore': '',
+    'data-form-type': 'other',
+  });
+
+  function saveAppCreds() {
+    setSaveMsg(null);
+    start(async () => {
+      const res = await saveTikTokAppCredentials({ client_key: clientKey, client_secret: clientSecret });
+      if (res.ok) {
+        setSaveMsg({ ok: true, text: tk.appCredsSaved });
+        setClientKey('');
+        setClientSecret('');
+        router.refresh();
+      } else {
+        setSaveMsg({ ok: false, text: res.error?.message ?? m.actionMsg.error });
+      }
+    });
+  }
+
+  async function copyCallback() {
+    try {
+      await navigator.clipboard.writeText(callbackUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-space-snug rounded-default border border-accent/30 bg-accent-bg/40 p-space-snug">
+      <div className="flex items-center gap-2">
+        <span className="text-button-sm font-medium text-charcoal">{tk.title}</span>
+        <span
+          className={cn(
+            'rounded-pill px-2 py-0.5 text-caption font-medium',
+            authorized ? 'bg-success-bg text-success' : appCredsSaved ? 'bg-warning-bg text-warning' : 'bg-charcoal-04 text-charcoal-82',
+          )}
+        >
+          {authorized ? tk.statusAuthorized : appCredsSaved ? tk.statusNeedAuth : tk.statusNeedCreds}
+        </span>
+      </div>
+      <p className="text-caption text-charcoal-82">{tk.note}</p>
+
+      {/* Step 1: Client Key / Secret */}
+      <div className="flex flex-col gap-1">
+        <span className="text-caption font-medium text-charcoal-82">{tk.step1}</span>
+        <input
+          className={inputCls}
+          value={unlocked.has('ck') ? clientKey : setting.tiktokAppCredsSaved ? tk.savedMask : clientKey}
+          onChange={(e) => setClientKey(e.target.value)}
+          placeholder={tk.clientKeyPlaceholder}
+          {...noAutofill('ck')}
+        />
+        <input
+          type={unlocked.has('cs') ? 'password' : 'text'}
+          className={inputCls}
+          value={unlocked.has('cs') ? clientSecret : setting.tiktokAppCredsSaved ? tk.savedMask : clientSecret}
+          onChange={(e) => setClientSecret(e.target.value)}
+          placeholder={tk.clientSecretPlaceholder}
+          {...noAutofill('cs')}
+        />
+        <button
+          type="button"
+          onClick={saveAppCreds}
+          disabled={pending || clientKey.trim().length < 4 || clientSecret.trim().length < 4}
+          className="mt-1 inline-flex w-fit items-center rounded-card bg-charcoal px-3 py-1.5 text-button-sm text-cream-light hover:opacity-80 disabled:opacity-50"
+        >
+          {tk.saveCreds}
+        </button>
+      </div>
+
+      {/* Step 2: Callback URL 登録 */}
+      <div className="flex flex-col gap-1">
+        <span className="text-caption font-medium text-charcoal-82">{tk.step2}</span>
+        <div className="flex items-center gap-2">
+          <input className={cn(inputCls, 'font-mono text-caption')} value={callbackUrl} readOnly />
+          <button
+            type="button"
+            onClick={copyCallback}
+            className="shrink-0 rounded-card border border-border-warm px-2.5 py-1.5 text-caption hover:bg-cream"
+          >
+            {copied ? tk.copied : tk.copy}
+          </button>
+        </div>
+        <span className="text-caption text-muted">{tk.step2Help}</span>
+      </div>
+
+      {/* Step 3: 認可 */}
+      <div className="flex flex-col gap-1">
+        <span className="text-caption font-medium text-charcoal-82">{tk.step3}</span>
+        <a
+          href="/api/promotion/tiktok/start"
+          className={cn(
+            'inline-flex w-fit items-center rounded-card px-3 py-1.5 text-button-sm',
+            appCredsSaved
+              ? 'bg-accent text-cream-light hover:opacity-80'
+              : 'pointer-events-none bg-charcoal-04 text-charcoal-82',
+          )}
+        >
+          {authorized ? tk.reconnect : tk.connect}
+        </a>
+        {!appCredsSaved && <span className="text-caption text-muted">{tk.needCredsFirst}</span>}
+      </div>
+
+      {setting.tokenMask && (
+        <span className="text-caption text-muted">
+          {m.connSection.tiktokCredMask}: {setting.tokenMask}
+        </span>
+      )}
+      {saveMsg && (
+        <span className={cn('text-caption', saveMsg.ok ? 'text-success' : 'text-destructive')}>{saveMsg.text}</span>
+      )}
+    </div>
+  );
+}
+
 function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -569,17 +730,7 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
           <p className="text-caption text-charcoal-82">{m.connSection.ayrshareNote}</p>
         </div>
       )}
-      {isTikTok && (
-        <div className="flex flex-col gap-1 rounded-default border border-accent/30 bg-accent-bg/40 p-space-snug">
-          <span className="text-button-sm font-medium text-charcoal">{m.connSection.tiktokTitle}</span>
-          <p className="text-caption text-charcoal-82">{m.connSection.tiktokNote}</p>
-          {setting.tokenMask && (
-            <span className="text-caption text-muted">
-              {m.connSection.tiktokCredMask}: {setting.tokenMask}
-            </span>
-          )}
-        </div>
-      )}
+      {isTikTok && <TikTokConnect setting={setting} inputCls={inputCls} />}
       <label className="flex flex-col gap-1">
         <span className="text-button-sm text-charcoal-82">{m.connSection.handleLabel}</span>
         <input

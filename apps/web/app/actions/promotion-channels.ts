@@ -184,6 +184,52 @@ export async function generateChannelVideo(
   return { ok: true, data: { queued: true } };
 }
 
+/**
+ * TikTok の Client Key / Client Secret を保存する (アプリ内 OAuth 接続フローの前段)。
+ * 保存後は UI の「TikTokと接続」ボタンから /api/promotion/tiktok/start で認可を開始する。
+ */
+export async function saveTikTokAppCredentials(
+  input: unknown,
+): Promise<ActionResult<{ saved: true }>> {
+  let session: Awaited<ReturnType<typeof getSessionOrThrow>>;
+  try {
+    session = await getSessionOrThrow();
+  } catch (err) {
+    return authFail(err);
+  }
+  const parsed = input as { client_key?: unknown; client_secret?: unknown };
+  const clientKey = typeof parsed?.client_key === 'string' ? parsed.client_key.trim() : '';
+  const clientSecret = typeof parsed?.client_secret === 'string' ? parsed.client_secret.trim() : '';
+  if (clientKey.length < 4 || clientSecret.length < 4) {
+    return fail('validation', messages.promotionChannels.actionMsg.error);
+  }
+  try {
+    const { saveTikTokAppCredentialsCore } = await import('@/lib/tiktok-oauth-core');
+    await saveTikTokAppCredentialsCore(
+      { clientKey, clientSecret },
+      {
+        channelSettingRepo: prisma.promotionChannelSetting as never,
+        encrypt: encryptApiKey,
+        decrypt: decryptApiKey,
+        mask: maskApiKey,
+      },
+    );
+    await prisma.auditLog.create({
+      data: {
+        actor_id: session.user.id,
+        action: 'promotion.channel.tiktok.app_creds.save',
+        target_kind: 'promotion_channel',
+        target_id: 'tiktok',
+        after_json: { saved: true },
+      },
+    });
+  } catch (err) {
+    return authFail(err);
+  }
+  revalidatePath('/promotion/channel/tiktok');
+  return { ok: true, data: { saved: true } };
+}
+
 export async function publishPostNow(input: unknown) {
   let deps: PromotionChannelsDeps;
   try {

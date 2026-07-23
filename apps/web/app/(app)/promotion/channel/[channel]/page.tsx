@@ -6,8 +6,10 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { prisma } from '@a2p/db';
+import { decryptApiKey } from '@a2p/crypto';
 
 import { messages } from '@/lib/messages';
+import { parseStoredTikTok } from '@/lib/tiktok-oauth-core';
 import { ChannelBoard } from '@/components/promotion/channel-board';
 import {
   isPromotionChannel,
@@ -67,14 +69,30 @@ export default async function PromotionChannelPage({ params }: PageProps) {
       ? ((settingRow.config_json as Record<string, unknown>).webhook_url as string | null) ?? null
       : null;
 
+  // TikTok は「Client Key/Secret 保存済み(=接続開始可)」と「OAuth 認可完了(=refreshToken あり)」を
+  // 区別する。token_enc の有無だけでは前者でも connected 扱いになってしまうため復号して判定する。
+  let tiktokAppCredsSaved = false;
+  let tiktokAuthorized = false;
+  if (ch === 'tiktok' && settingRow?.token_enc) {
+    try {
+      const creds = parseStoredTikTok(decryptApiKey(settingRow.token_enc));
+      tiktokAppCredsSaved = Boolean(creds?.clientKey && creds?.clientSecret);
+      tiktokAuthorized = Boolean(creds?.refreshToken);
+    } catch {
+      /* 復号失敗は未設定扱い */
+    }
+  }
+
   const setting: ChannelSettingView = {
     channel: ch,
     autoEnabled: settingRow?.auto_enabled ?? false,
     handle: settingRow?.handle ?? null,
     webhookUrl,
     tokenMask: settingRow?.token_mask ?? null,
-    // TikTok: token_enc に OAuth 資格情報(JSON)を保存済みなら接続済み。IG/note: webhook。
-    connected: Boolean(settingRow?.token_enc) || Boolean(webhookUrl),
+    // TikTok は OAuth 認可完了で接続済み。IG/note は webhook。X 等は token_enc。
+    connected:
+      ch === 'tiktok' ? tiktokAuthorized : Boolean(settingRow?.token_enc) || Boolean(webhookUrl),
+    ...(ch === 'tiktok' ? { tiktokAppCredsSaved, tiktokAuthorized } : {}),
   };
 
   const strategy: ChannelStrategyView = {
