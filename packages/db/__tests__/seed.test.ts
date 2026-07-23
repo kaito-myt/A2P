@@ -136,25 +136,39 @@ describe('buildAppSettingsSeed', () => {
 describe('buildPromptSeeds', () => {
   const seeds = buildPromptSeeds();
 
-  it('produces 10 roles × 4 genre axes (= 40 rows) (+cover_text_check +readings)', () => {
-    expect(PROMPT_ROLES.length).toBe(10);
-    expect(PROMPT_GENRE_AXES.length).toBe(4);
-    expect(seeds.length).toBe(PROMPT_ROLES.length * PROMPT_GENRE_AXES.length);
-    expect(seeds.length).toBe(40);
+  it('produces one default (genre=null) row per role (ジャンル別は {genre_guidance} 注入で対応)', () => {
+    expect(PROMPT_GENRE_AXES.length).toBe(1);
+    expect(PROMPT_GENRE_AXES[0]).toBeNull();
+    expect(seeds.length).toBe(PROMPT_ROLES.length);
   });
 
-  it('every role gets one row for each of {practical, business, self_help, null}', () => {
+  it('every role gets exactly one genre=null default row', () => {
     for (const role of PROMPT_ROLES) {
       const rows = seeds.filter((s) => s.role === role);
-      expect(rows.length).toBe(PROMPT_GENRE_AXES.length);
-      const genres = new Set(rows.map((r) => r.genre));
-      for (const g of PROMPT_GENRE_AXES) expect(genres.has(g)).toBe(true);
+      expect(rows.length).toBe(1);
+      expect(rows[0]!.genre).toBeNull();
     }
   });
 
-  it('PROMPT_GENRE_AXES is exactly the 3 named genres plus null', () => {
-    expect(PROMPT_GENRE_AXES).toContain(null);
-    for (const g of PROMPT_GENRES) expect(PROMPT_GENRE_AXES).toContain(g);
+  it('PROMPT_GENRE_AXES is exactly [null] (default-only seeding)', () => {
+    expect(PROMPT_GENRE_AXES).toEqual([null]);
+    // PROMPT_GENRES は旧 import 互換のため残置 (3 ジャンル名)。
+    expect(PROMPT_GENRES.length).toBe(3);
+  });
+
+  it('genre-varying roles embed the {genre_guidance} injection token', () => {
+    const varyingRoles = [
+      'marketer',
+      'marketer_plan',
+      'writer',
+      'editor',
+      'thumbnail_text',
+      'thumbnail_image',
+    ] as const;
+    for (const role of varyingRoles) {
+      const row = seeds.find((s) => s.role === role);
+      expect(row?.body).toContain('{genre_guidance}');
+    }
   });
 
   it('all seeds are v1 active and created_by=system', () => {
@@ -275,14 +289,14 @@ describe('runSeed', () => {
     const prisma = makePrismaMock();
     await runSeed(prisma as never, {}, silentLogger);
     const writer = prisma.prompt.rows.find(
-      (r) => r.role === 'writer' && r.genre === 'practical',
+      (r) => r.role === 'writer' && r.genre === null,
     );
     if (!writer) throw new Error('writer prompt missing');
     writer.body = 'USER_OVERRIDDEN_BODY';
     writer.created_by = 'optimizer:abc';
     await runSeed(prisma as never, {}, silentLogger);
     const afterReSeed = prisma.prompt.rows.find(
-      (r) => r.role === 'writer' && r.genre === 'practical',
+      (r) => r.role === 'writer' && r.genre === null,
     );
     expect(afterReSeed?.body).toBe('USER_OVERRIDDEN_BODY');
     // created_by は system 印に戻る (運用者が再認識できるよう)

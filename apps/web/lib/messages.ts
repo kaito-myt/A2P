@@ -3049,10 +3049,12 @@ export const messages = {
   },
   prompts: {
     pageTitle: 'プロンプト管理',
-    pageSubtitle: '役割×ジャンルのプロンプトテンプレートとバージョン履歴を管理します',
+    pageSubtitle: '役割ごとのプロンプトテンプレートとバージョン履歴を管理します',
     breadcrumbHome: 'ホーム',
     breadcrumbModels: 'モデル & プロンプト',
     breadcrumbPrompts: 'プロンプト管理',
+    genreInheritNote:
+      'プロンプトは役割ごとに1本（デフォルト）で運用します。ジャンル別の書き分け（29ジャンル分の「ジャンル方針」）は生成時に自動で本文へ注入されるため、ジャンルごとにプロンプトを作る必要はありません。特定ジャンルだけ全面的に上書きしたい場合のみ、そのジャンルの行を個別に追加してください（追加した行が優先されます）。',
     table: {
       sectionTitle: 'プロンプト一覧',
       colRole: '役割',

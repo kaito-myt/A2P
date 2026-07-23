@@ -16,6 +16,7 @@
  */
 import { ConfigError } from '@a2p/contracts/errors';
 import type { AgentRole, Genre } from '@a2p/contracts/agents';
+import { genreGuidance, genreLabel } from '@a2p/contracts/agents';
 import { prisma as defaultPrisma } from '@a2p/db';
 
 export interface LoadedPrompt {
@@ -103,11 +104,28 @@ export async function loadActivePrompt(
   }
 
   return {
-    template: row.body,
+    // ジャンル方針は本文には焼き込まず、ここで実行時に注入する (genres.ts が単一の真実源)。
+    // これにより「役割プロンプト 1 本」で全 29 ジャンルに対応でき、ジャンル別プロンプトの
+    // 量産・手管理が不要になる。要求 genre に対応する方針を差し込む (null=汎用)。
+    template: injectGenreTokens(row.body, genre),
     version: row.version,
     promptId: row.id,
     genre: (row.genre as Genre | null) ?? null,
   };
+}
+
+/**
+ * プロンプト本文中の `{genre_guidance}` / `{genre_label}` を、要求 genre の値で置換する。
+ * トークンが無い本文には無害 (置換なし)。fillPlaceholders より前に処理するため、
+ * 各エージェントの placeholder 差込では未充填警告が出ない。
+ */
+export function injectGenreTokens(body: string, genre: Genre | null): string {
+  if (!body.includes('{genre_guidance}') && !body.includes('{genre_label}')) {
+    return body;
+  }
+  return body
+    .replace(/\{genre_guidance\}/g, genreGuidance(genre))
+    .replace(/\{genre_label\}/g, genreLabel(genre) ?? '汎用');
 }
 
 // ---------------------------------------------------------------------------

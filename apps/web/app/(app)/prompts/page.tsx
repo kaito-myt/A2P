@@ -91,6 +91,12 @@ export default async function PromptsPage({ searchParams }: PageProps) {
           <h1 className="text-sub-heading text-foreground">{m.pageTitle}</h1>
           <p className="text-body text-muted">{m.pageSubtitle}</p>
         </div>
+        <p
+          data-testid="prompts-genre-inherit-note"
+          className="rounded-card border border-border-warm bg-cream-light px-space-relaxed py-space-snug text-button-sm text-charcoal-82"
+        >
+          {m.genreInheritNote}
+        </p>
       </header>
 
       {/* 2 カラムレイアウト */}

@@ -331,3 +331,52 @@ describe('fillPlaceholders', () => {
     expect(out).toBe('plain string with { spaces } and braces.');
   });
 });
+
+// ---------------------------------------------------------------------------
+// ジャンル方針注入 (injectGenreTokens 経由 / loadActivePrompt が本文に差し込む)
+// ---------------------------------------------------------------------------
+
+describe('loadActivePrompt — {genre_guidance} 注入', () => {
+  const bodyWithToken = '# writer\n\n{genre_guidance}\n\n## 出力\nJSON';
+
+  function repoDefaultOnly() {
+    return makePromptRepo([
+      { id: 'p-def', role: 'writer', genre: null, version: 1, body: bodyWithToken, status: 'active' },
+    ]);
+  }
+
+  it('既知 genre: そのジャンルの方針が注入される', async () => {
+    const r = await loadActivePrompt('writer', 'money', { prisma: repoDefaultOnly() });
+    // 既定(genre=null)本文を使いつつ、要求 genre=money の方針を注入する。
+    expect(r.genre).toBeNull();
+    expect(r.template).toContain('【ジャンル方針：投資・資産運用】');
+    expect(r.template).not.toContain('{genre_guidance}');
+  });
+
+  it('genre=null: 汎用方針が注入される', async () => {
+    const r = await loadActivePrompt('writer', null, { prisma: repoDefaultOnly() });
+    expect(r.template).toContain('【ジャンル方針：汎用】');
+    expect(r.template).not.toContain('{genre_guidance}');
+  });
+
+  it('未知 genre: ラベルは slug、方針は汎用にフォールバック', async () => {
+    const r = await loadActivePrompt('writer', 'unknown_genre' as never, { prisma: repoDefaultOnly() });
+    expect(r.template).toContain('【ジャンル方針：unknown_genre】');
+  });
+
+  it('トークンの無い本文は素通し (置換なし)', async () => {
+    const repo = makePromptRepo([
+      { id: 'p-x', role: 'editor', genre: null, version: 1, body: 'no tokens here', status: 'active' },
+    ]);
+    const r = await loadActivePrompt('editor', 'business', { prisma: repo });
+    expect(r.template).toBe('no tokens here');
+  });
+
+  it('{genre_label} も注入される', async () => {
+    const repo = makePromptRepo([
+      { id: 'p-l', role: 'judge', genre: null, version: 1, body: 'ジャンル「{genre_label}」の読者', status: 'active' },
+    ]);
+    const r = await loadActivePrompt('judge', 'history', { prisma: repo });
+    expect(r.template).toBe('ジャンル「歴史・教養」の読者');
+  });
+});

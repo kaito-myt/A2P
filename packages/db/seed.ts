@@ -45,15 +45,17 @@ export const PROMPT_GENRES = ['practical', 'business', 'self_help'] as const;
 export type PromptGenre = (typeof PROMPT_GENRES)[number];
 
 /**
- * Prompts に投入する全ジャンル軸 (3 ジャンル + null = 4 種)。
- * 全 7 役 × 4 ジャンル = 28 件を v1 active で投入する (SP-01 §3 / T-01-04)。
+ * Prompts のシード軸。**役割ごと 1 本 (genre=null 既定) のみ**投入する。
  *
- * `null` は「ジャンル横断既定」のフォールバック。Marketer/Judge/Optimizer は
- * 主に genre=null を参照するが、UI/Optimizer が将来ジャンル別に差し替える
- * 余地を残すため、Writer/Editor/Thumbnail も含めて全ジャンルに枠を確保する。
+ * ジャンル別の書き方は本文の `{genre_guidance}` プレースホルダに集約し、実行時に
+ * prompt-loader が本の genre に応じて注入する (contracts/genres.ts が単一の真実源)。
+ * これにより 29 ジャンルに増えても「役割 × ジャンル」の全文プロンプトを量産・手管理
+ * する必要がない。ジャンル別に上書きしたい場合は UI から個別 Prompt 行を追加すれば
+ * フォールバック規約でそれが優先される (任意)。
+ *
+ * NOTE: `PROMPT_GENRES` は既存 import 互換のため残置 (旧: 3 ジャンル個別プロンプト)。
  */
 export const PROMPT_GENRE_AXES = [
-  ...PROMPT_GENRES,
   null,
 ] as const satisfies readonly (PromptGenre | null)[];
 
@@ -194,23 +196,11 @@ function buildPromptBody(role: PromptRole, genre: PromptGenre | null): string {
 }
 
 /**
- * ジャンル別の編集方針 (各エージェント共通で末尾に添えるトーン指針)。
- * 具体的な入力データ・出力 JSON 形式は各エージェントが **ユーザーメッセージ** 側で
- * 与えるため、システムプロンプトは「ペルソナ + 品質基準 + ジャンル方針」に専念する
- * (プレースホルダは使わない = 未充填警告を出さない設計)。
+ * ジャンル別の編集方針は `{genre_guidance}` プレースホルダとして本文に埋め、
+ * 実行時に prompt-loader が本の genre に応じて注入する (単一の真実源 = contracts/genres.ts)。
+ * これにより役割プロンプトは 1 本 (genre=null) で全ジャンルに対応でき、ジャンル別プロンプトの
+ * 量産・手管理が不要になる。
  */
-function genrePolicyLine(genre: PromptGenre | null): string {
-  switch (genre) {
-    case 'practical':
-      return '【ジャンル方針：実用書】読者が「今日から実践できる」具体的手順・チェックリスト・テンプレを重視し、抽象論を避ける。';
-    case 'business':
-      return '【ジャンル方針：ビジネス書】フレームワーク・データ・事例で説得力を持たせ、意思決定や成果に直結する示唆を与える。';
-    case 'self_help':
-      return '【ジャンル方針：自己啓発】読者の感情に寄り添い、行動変容を促す。押し付けず、小さな一歩を具体的に提案する。';
-    default:
-      return '【ジャンル方針：汎用】対象ジャンルはユーザーメッセージで指定される。読者の課題解決を最優先し、具体性と再現性を担保する。';
-  }
-}
 
 /** Marketer (テーマ候補生成 + KDP メタデータ生成) の本実装プロンプト。 */
 function buildMarketerPromptBody(genre: PromptGenre | null): string {
@@ -239,7 +229,7 @@ function buildMarketerPromptBody(genre: PromptGenre | null): string {
     '- カテゴリ/キーワードは実際に検索される語を選び、内容と乖離させない (規約順守)。',
     '- 価格は読者層と分量・競合相場から妥当なレンジを提案する。',
     '',
-    genrePolicyLine(genre),
+    '{genre_guidance}',
     '',
     '## 出力',
     'ユーザーメッセージで与えられるタスク (テーマ候補生成 または メタデータ生成)、入力情報、',
@@ -262,7 +252,7 @@ function buildMarketerPlanPromptBody(genre: PromptGenre | null): string {
     '- 季節需要・話題性・シリーズ展開の余地を考慮して投下時期を決める。',
     '- 1 点ごとに「なぜ今これを出すのか」の根拠を簡潔に示す。',
     '',
-    genrePolicyLine(genre),
+    '{genre_guidance}',
     '',
     '## 出力',
     'ユーザーメッセージの入力 (期間・目標点数・既刊・売上トレンド) と JSON 出力形式に',
@@ -290,7 +280,7 @@ function buildWriterPromptBody(genre: PromptGenre | null): string {
     '- 誠実さ：事実の捏造をしない。一般論で断定できない点は表現を慎重にする。',
     '- 小見出し：アウトラインで指定された小見出しは順序通りに `## ` 見出しとして用いる。',
     '',
-    genrePolicyLine(genre),
+    '{genre_guidance}',
     '',
     '## 出力',
     'ユーザーメッセージで与えられる入力 (テーマ・章情報・受入基準) と JSON 出力形式に',
@@ -323,7 +313,7 @@ function buildEditorPromptBody(genre: PromptGenre | null): string {
     '- AI 生成に関する開示文 (ユーザーメッセージで与えられる) を本文中に重複挿入すること。',
     '  開示文の配置はユーザーメッセージの指示に従う。',
     '',
-    genrePolicyLine(genre),
+    '{genre_guidance}',
     '',
     '## 出力',
     'ユーザーメッセージで与えられる原稿・指示・JSON 出力形式に **厳密に** 従うこと。',
@@ -346,7 +336,7 @@ function buildThumbnailTextPromptBody(genre: PromptGenre | null): string {
     '- 内容と乖離した誇大表現や規約違反語は使わない。',
     '- サムネイル映えする配色・レイアウトの方向性 (style hint) も併せて提案する。',
     '',
-    genrePolicyLine(genre),
+    '{genre_guidance}',
     '',
     '## 出力',
     'ユーザーメッセージの入力・件数・JSON 出力形式に厳密に従うこと。',
@@ -367,7 +357,7 @@ function buildThumbnailImagePromptBody(genre: PromptGenre | null): string {
     '- 文字が潰れない余白とコントラストを確保する。透かし・枠は入れない。',
     '- 小サイズでも判別できるシンプルで力強いデザインにする。',
     '',
-    genrePolicyLine(genre),
+    '{genre_guidance}',
     '',
     '## 出力',
     'ユーザーメッセージの入力・出力形式に従うこと。日本語または英語の指示に従い、',

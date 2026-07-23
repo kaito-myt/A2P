@@ -2998,6 +2998,27 @@ ChatGPT ブラウザ版で高品質だった運営者の実証済みフォーマ
 - 文字化けは `cover_text_check`（ビジョン検査）＋ recheck ループが検知して作り直す。
 - アート方向性は `cover_art_direction` が本ごとに決定。カバーは JPEG・縦長 (1024×1536)。
 
+## プロンプトのジャンル対応方式 (F-027 / ジャンル 29 種対応)
+
+ジャンルが 3 種 (practical/business/self_help) から 29 種 (`contracts/genres.ts` GENRE_CATALOG) へ
+拡張されたのに伴い、「役割 × ジャンル」の全文プロンプトを DB に量産する旧方式を廃止し、
+**役割プロンプト 1 本 (genre=null 既定) + 実行時のジャンル方針注入** に一本化した。
+
+- **単一の真実源**: `contracts/genres.ts` の `GENRE_POLICIES`（slug→方針 1〜2 文）と
+  `genreGuidance(slug)`（`【ジャンル方針：<label>】<policy>` を返す。null/未知は汎用）。
+  ジャンル追加＝ここに 1 行足すだけで全役割に効く。
+- **注入点**: `prompt-loader.loadActivePrompt(role, genre)` が本文中の `{genre_guidance}` /
+  `{genre_label}` を要求 genre の値で置換してから返す（`injectGenreTokens`）。トークンの無い
+  本文には無害。各エージェントの `fillPlaceholders` より前に処理されるため未充填警告は出ない。
+- **本文**: 既定本文が実際にジャンルで変わるのは 6 役
+  (marketer / marketer_plan / writer / editor / thumbnail_text / thumbnail_image)。これらの
+  本文に `{genre_guidance}` を埋める。残りの役割はジャンル非依存（genre は user message で伝わる）。
+- **フォールバック規約は不変**: 特定ジャンルだけ全面上書きしたい場合は UI から個別 Prompt 行を
+  追加すれば `OR:[{genre},{genre:null}]` により優先される（任意）。
+- **移行**: `packages/db/apply-genre-guidance.ts`（冪等）で本番の 6 役既定本文を更新し、
+  business/practical/self_help のジャンル別行を archive（全ジャンルを既定＋注入へ一本化）。
+- seed は役割ごと genre=null の 1 本のみ投入（`PROMPT_GENRE_AXES = [null]`）。
+
 ## 追加画面 (App Router)
 
 - `/content-review` (本文承認ゲート — outline/thumbnail 承認と同列のパイプライン画面)

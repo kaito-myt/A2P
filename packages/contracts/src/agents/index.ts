@@ -3,9 +3,12 @@ export {
   GENRE_SLUGS,
   GENRE_LABELS,
   GENRE_GROUPS,
+  GENRE_POLICIES,
+  GENERIC_GENRE_POLICY,
   GenreSlugSchema,
   GenreValueSchema,
   genreLabel,
+  genreGuidance,
   isKnownGenre,
   type GenreDef,
 } from '../genres.js';
