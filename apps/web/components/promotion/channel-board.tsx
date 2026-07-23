@@ -577,6 +577,8 @@ function TikTokConnect({ setting, inputCls }: { setting: ChannelSettingView; inp
         <span className="text-caption font-medium text-charcoal-82">{tk.step3}</span>
         <a
           href="/api/promotion/tiktok/start"
+          target="_blank"
+          rel="noopener noreferrer"
           className={cn(
             'inline-flex w-fit items-center rounded-card px-3 py-1.5 text-button-sm',
             appCredsSaved
@@ -587,6 +589,7 @@ function TikTokConnect({ setting, inputCls }: { setting: ChannelSettingView; inp
           {authorized ? tk.reconnect : tk.connect}
         </a>
         {!appCredsSaved && <span className="text-caption text-muted">{tk.needCredsFirst}</span>}
+        <span className="text-caption text-muted">{tk.newTabHint}</span>
       </div>
 
       {setting.tokenMask && (

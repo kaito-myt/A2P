@@ -640,6 +640,7 @@ export const messages = {
         reconnect: '再認証する',
         needCredsFirst: '先に Client Key / Secret を保存してください。',
         needAppCreds: 'Client Key / Secret が未保存です。先に保存してください。',
+        newTabHint: '認可は別タブで開きます。完了後はこのページを再読み込みすると接続状態が反映されます。',
         oauthConnected: '接続が完了しました ✓ 生成動画は TikTok の下書き（受信箱）に届きます。',
         oauthError: '接続に失敗しました。Client Key/Secret と Callback URL の登録内容をご確認ください。',
       },
