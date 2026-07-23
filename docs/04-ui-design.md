@@ -1005,6 +1005,20 @@ CostMeter / AlertBadge / CommentBadge の 3 つは **どの画面でも常に視
 
 ---
 
+### 販促・コスト UI 追補（docs/05「追加画面」に対応）
+
+> 出版後の販促自動運用および生産拡張として後発で追加した画面/セクション。上記 S-001〜S-029 の欠番なし前提は維持し、本追補として記す（詳細仕様は docs/05・機能は docs/02 §1.12）。
+
+- **販促チャンネル自動運用ボード `/promotion/channel/[channel]`**: チャンネル切替タブ（x / instagram / tiktok / note / blog）・自動運用トグル・接続設定・接続テスト・投稿キュー（手動投稿/取消）。
+  - **TikTok 接続カード（アプリ内 OAuth）**: ①Client Key/Secret を保存 → ②表示された Callback URL（`{公開origin}/api/promotion/tiktok/callback`）をコピーして TikTok Developer portal に登録 → ③「TikTok と接続」ボタンで authorization_code を自動交換。接続状態は refreshToken 有無で **未設定 / 認可待ち / 接続済み** を表示（F-063）。
+  - **接続フォームの自動補完ガード**: 資格情報欄は **read-only-until-focus**（`autoComplete=new-password` + `data-lpignore`/`1p-ignore`）でパスワードマネージャの誤入力を防ぎ、フォーカスした欄のみ送信。トークン欄は未フォーカス時に **設定済みマスク値** を表示。
+  - **接続テスト（非破壊）**: 手段別プローブ（x=`GET /2/users/me` OAuth1署名 / tiktok=保存資格情報の形式検証 / instagram=Make Webhook / note・blog=webhook）。結果は即時バッジ表示（DB 非永続）。
+  - **投稿失敗の日本語表示**: `PostErrorNote` が `explainPromotionError()` の日本語見出し＋対処手順を表示し、生ログ（403 not permitted 等）は `<details>` に保持。
+- **コスト詳細ダッシュボード `/cost`（S-024）の「コスト改善提案」パネル**: `cost_optimizer`（週次）が起票した提案を一覧表示し、各提案を **承認/却下**（承認は安全・可逆な施策のみ実行）。**推定削減額** を併記（F-062）。
+- **テーマ生成の入力**: ジャンル選択肢を **29 種** に拡張（`packages/contracts/src/genres.ts` 由来、日本語ラベル表示）。S-006〜S-008 のジャンル指定に反映（F-001拡張）。
+
+---
+
 ## 5. コンポーネントカタログ（横断利用 UI 部品）
 
 | コンポーネント | 用途 | 入力 | 出力 / 振る舞い | 利用画面 |

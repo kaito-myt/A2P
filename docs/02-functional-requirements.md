@@ -125,7 +125,22 @@
 | F-049 | AI 出力への修正コメント記録 | N/A (UI) | P0 | Phase 1 |
 | F-050 | 修正コメントの一括適用（ユーザートリガー） | Writer / Editor / Thumbnail Designer | P0 | Phase 1 |
 
-合計機能数: **52**（F-001〜F-050, F-051, F-052）。
+### 1.12 販促・SNS 自動運用 / 生産の拡張（docs/05 販促付録・docs/07 準拠）
+
+> 出版後の販促自動運用および生産パイプラインの拡張として後発で実装済み。ID は **docs/05「販促付録 F-052〜F-063」** の採番に従う（§1 本文の F 採番とは別系列。詳細仕様は docs/05・役割一覧は docs/07）。
+
+| ID | 機能名 | 関連エージェント | 優先度 | フェーズ |
+|---|---|---|---|---|
+| F-001拡張 | テーマ生成のジャンルを 3→29 種に拡張（`packages/contracts/src/genres.ts` が単一真実源、エージェントには日本語ラベル `genreLabel` を注入） | Marketer | P1 | Phase 1 |
+| F-007拡張 | カバー画像生成の既定モデルを `gpt-image-2` に切替（env `OPENAI_IMAGE_MODEL` で上書き可、日本語描画品質向上） | Thumbnail Designer | P1 | Phase 1 |
+| F-058 | IG 販促画像をデザイン販促クリエイティブに刷新（実表紙＋帯コピー見出し＋KU 無料バッジ＋CTA、`composePromoCreative`） | N/A (Output) | P1 | Phase 2 |
+| F-061 | SNS 投稿の日次自動見直し（`content_optimizer` が戦略chの直近 scheduled 投稿を非破壊で推敲、`promotion.review.daily` cron） | content_optimizer | P1 | Phase 2 |
+| F-061前提 | 投稿失敗の人間可読化（`explainPromotionError` が生エラーを日本語見出し＋対処手順に翻訳、生ログは details 保持） | N/A (UI) | P1 | Phase 2 |
+| F-062 | 週次コスト分析＋承認実行（`cost_optimizer` が直近30日を役割×モデルで集計し改善案＋推定削減額、安全・可逆な施策のみ承認実行、`cost.optimize.weekly` cron） | cost_optimizer | P1 | Phase 2 |
+| F-063 | TikTok 投稿（Content Posting API 直叩き、多エージェント台本＋動画レンダ、アプリ内 OAuth 接続、下書き投稿） | tiktok_scenario/creator/editor/proofreader/marketer | P1 | Phase 2 |
+| F-052/F-058 | 接続フォームの自動補完ガード（資格情報欄 read-only-until-focus）＋接続テストを手段別（x / tiktok / instagram / webhook）に整理（`probeChannelAuth`） | N/A (UI) | P1 | Phase 2 |
+
+合計機能数: **52**（F-001〜F-050, F-051, F-052）＋販促付録 F-052〜F-063（docs/05 採番）。
 
 ---
 
