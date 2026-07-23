@@ -42,6 +42,13 @@ export interface ChannelSettingView {
   tiktokAppCredsSaved?: boolean;
   /** TikTok: OAuth 認可が完了しているか (refreshToken あり=投稿可能)。 */
   tiktokAuthorized?: boolean;
+  /** TikTok 投稿設定 (公開範囲・インタラクション許可)。config_json.tiktok。 */
+  tiktokPostSettings?: {
+    privacy_level: string;
+    allow_comment: boolean;
+    allow_duet: boolean;
+    allow_stitch: boolean;
+  };
 }
 
 /** F-057 — SNS アカウント運用戦略の serialized 形。 */

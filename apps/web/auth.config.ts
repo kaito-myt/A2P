@@ -37,6 +37,12 @@ export const authConfig: NextAuthConfig = {
         return true;
       }
 
+      // 法務ページ (/legal/*) は公開必須 — プライバシーポリシー/利用規約は
+      // TikTok 等の外部審査で URL 提出に使うため、未認証で閲覧可。
+      if (pathname === '/legal' || pathname.startsWith('/legal/')) {
+        return true;
+      }
+
       const isLoginPage = pathname === '/login';
       if (isLoginPage) {
         // 既にログイン済みでログイン画面に来たらダッシュボードへ

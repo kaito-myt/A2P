@@ -230,6 +230,63 @@ export async function saveTikTokAppCredentials(
   return { ok: true, data: { saved: true } };
 }
 
+const TIKTOK_PRIVACY_LEVELS = new Set([
+  'PUBLIC_TO_EVERYONE',
+  'MUTUAL_FOLLOW_FRIENDS',
+  'FOLLOWER_OF_CREATOR',
+  'SELF_ONLY',
+]);
+
+/**
+ * TikTok 投稿設定 (公開範囲・コメント/デュエット/ステッチ許可) を保存する。
+ * Direct Post のコンプライアンス UX 要件を満たすための設定。config_json.tiktok に格納。
+ */
+export async function saveTikTokPostSettings(
+  input: unknown,
+): Promise<ActionResult<{ saved: true }>> {
+  let session: Awaited<ReturnType<typeof getSessionOrThrow>>;
+  try {
+    session = await getSessionOrThrow();
+  } catch (err) {
+    return authFail(err);
+  }
+  const p = input as {
+    privacy_level?: unknown;
+    allow_comment?: unknown;
+    allow_duet?: unknown;
+    allow_stitch?: unknown;
+  };
+  const privacy = typeof p?.privacy_level === 'string' && TIKTOK_PRIVACY_LEVELS.has(p.privacy_level) ? p.privacy_level : 'PUBLIC_TO_EVERYONE';
+  const tiktok = {
+    privacy_level: privacy,
+    allow_comment: p?.allow_comment !== false,
+    allow_duet: p?.allow_duet !== false,
+    allow_stitch: p?.allow_stitch !== false,
+  };
+  try {
+    const existing = await prisma.promotionChannelSetting.findUnique({ where: { channel: 'tiktok' }, select: { config_json: true } });
+    const config = { ...((existing?.config_json as Record<string, unknown> | null) ?? {}), tiktok };
+    await prisma.promotionChannelSetting.upsert({
+      where: { channel: 'tiktok' },
+      create: { channel: 'tiktok', auto_enabled: false, config_json: config },
+      update: { config_json: config },
+    });
+    await prisma.auditLog.create({
+      data: {
+        actor_id: session.user.id,
+        action: 'promotion.channel.tiktok.post_settings.save',
+        target_kind: 'promotion_channel',
+        target_id: 'tiktok',
+        after_json: tiktok,
+      },
+    });
+  } catch (err) {
+    return authFail(err);
+  }
+  revalidatePath('/promotion/channel/tiktok');
+  return { ok: true, data: { saved: true } };
+}
+
 export async function publishPostNow(input: unknown) {
   let deps: PromotionChannelsDeps;
   try {

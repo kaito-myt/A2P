@@ -122,8 +122,17 @@ export function createTikTokPublisherPort(deps: TikTokPublisherDeps = {}): Publi
         // 3. 投稿方式の決定。公開投稿(Direct Post)は video.publish スコープ＋アプリ審査が前提。
         //    directPost が有効でも、creator_info が PUBLIC_TO_EVERYONE を許可する場合のみ公開投稿し、
         //    未審査(SELF_ONLY のみ)なら安全側の下書き(inbox)へフォールバックする。
+        // TikTok 投稿設定 (config_json.tiktok)。公開範囲・コメント/デュエット/ステッチ許可。
+        const tk = ((input.config.extra?.tiktok as Record<string, unknown> | undefined) ?? {}) as {
+          privacy_level?: string;
+          allow_comment?: boolean;
+          allow_duet?: boolean;
+          allow_stitch?: boolean;
+        };
+        const desiredPrivacy = typeof tk.privacy_level === 'string' && tk.privacy_level ? tk.privacy_level : PUBLIC_PRIVACY;
+
         const wantDirect = deps.directPost ?? process.env.TIKTOK_DIRECT_POST === '1';
-        let usePublic = false;
+        let useDirect = false;
         if (wantDirect) {
           try {
             const ciRes = await doFetch(CREATOR_INFO_URL, {
@@ -131,23 +140,33 @@ export function createTikTokPublisherPort(deps: TikTokPublisherDeps = {}): Publi
               headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
             });
             const ci = (await ciRes.json()) as { data?: { privacy_level_options?: string[] } };
-            usePublic = Array.isArray(ci.data?.privacy_level_options) && ci.data!.privacy_level_options!.includes(PUBLIC_PRIVACY);
-            if (!usePublic) {
-              log.info({ options: ci.data?.privacy_level_options }, 'tiktok direct post requested but PUBLIC not allowed (unaudited) — falling back to inbox draft');
+            const options = Array.isArray(ci.data?.privacy_level_options) ? ci.data!.privacy_level_options! : [];
+            // 選択した公開範囲が TikTok 側で許可されている場合のみ Direct Post。
+            // 未審査だと PUBLIC は options に含まれず、安全側の下書き(inbox)へフォールバックする。
+            useDirect = options.includes(desiredPrivacy);
+            if (!useDirect) {
+              log.info({ options, desiredPrivacy }, 'tiktok direct post: desired privacy not allowed (likely unaudited) — falling back to inbox draft');
             }
           } catch (e) {
             log.warn({ err: e }, 'tiktok creator_info query failed — falling back to inbox draft');
           }
         }
 
-        // init（公開=Direct Post / それ以外=inbox 下書き）
-        const initUrl = usePublic ? DIRECT_POST_INIT_URL : INBOX_INIT_URL;
+        // init（Direct Post=指定の公開範囲で投稿 / それ以外=inbox 下書き）
+        const initUrl = useDirect ? DIRECT_POST_INIT_URL : INBOX_INIT_URL;
         const initBody: Record<string, unknown> = {
           source_info: { source: 'FILE_UPLOAD', video_size: size, chunk_size: size, total_chunk_count: 1 },
         };
-        if (usePublic) {
+        if (useDirect) {
           const title = (input.title || input.body || '').slice(0, TITLE_MAX);
-          initBody.post_info = { title, privacy_level: PUBLIC_PRIVACY };
+          initBody.post_info = {
+            title,
+            privacy_level: desiredPrivacy,
+            // 既定はすべて許可。設定で false のときのみ無効化 (TikTok の disable_* 意味論に合わせる)。
+            disable_comment: tk.allow_comment === false,
+            disable_duet: tk.allow_duet === false,
+            disable_stitch: tk.allow_stitch === false,
+          };
         }
         const initRes = await doFetch(initUrl, {
           method: 'POST',
@@ -161,7 +180,7 @@ export function createTikTokPublisherPort(deps: TikTokPublisherDeps = {}): Publi
           const code = ij.error?.code ?? '';
           const msg = ij.error?.message ?? JSON.stringify(ij).slice(0, 200);
           const reason = /token|auth|scope|permission/i.test(`${code} ${msg}`) ? 'auth' : 'unknown';
-          return { ok: false, reason, message: `TikTok init failed (${usePublic ? 'direct' : 'inbox'}): ${code} ${msg}`.trim() };
+          return { ok: false, reason, message: `TikTok init failed (${useDirect ? 'direct' : 'inbox'}): ${code} ${msg}`.trim() };
         }
 
         // 4. 動画バイトを PUT（単一チャンク）
@@ -179,7 +198,7 @@ export function createTikTokPublisherPort(deps: TikTokPublisherDeps = {}): Publi
           return { ok: false, reason: 'unknown', message: `TikTok upload failed: ${putRes.status} ${t.slice(0, 160)}` };
         }
 
-        log.info({ publishId, size, mode: usePublic ? 'direct_public' : 'inbox_draft' }, 'tiktok video uploaded');
+        log.info({ publishId, size, mode: useDirect ? `direct:${desiredPrivacy}` : 'inbox_draft' }, 'tiktok video uploaded');
         // 公開投稿(direct)は TikTok 側で非同期に公開される。下書き(inbox)は受信箱に届く。
         // いずれも確定 URL は同期取得できないため externalUrl は null（status/fetch で追跡可能）。
         return { ok: true, externalUrl: null };

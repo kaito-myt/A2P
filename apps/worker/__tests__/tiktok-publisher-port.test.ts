@@ -100,6 +100,29 @@ describe('createTikTokPublisherPort', () => {
     expect(body.post_info.privacy_level).toBe('PUBLIC_TO_EVERYONE');
   });
 
+  it('config_json.tiktok の公開範囲・コメント許可を post_info に反映する', async () => {
+    const fetchImpl = vi.fn(async (url: string, _init?: { method?: string; body?: string }) => {
+      if (url.includes('/oauth/token/')) return jsonRes({ access_token: 'at1', refresh_token: 'rt_old', expires_in: 86400 });
+      if (url.includes('video.mp4')) return mk({ bytes: new Uint8Array([1, 2, 3, 4]).buffer });
+      if (url.includes('/creator_info/query/')) return jsonRes({ data: { privacy_level_options: ['PUBLIC_TO_EVERYONE', 'FOLLOWER_OF_CREATOR', 'SELF_ONLY'] } });
+      if (url.includes('/publish/video/init/')) return jsonRes({ data: { publish_id: 'pub4', upload_url: 'https://upload.tiktok/pub' } });
+      if (url.includes('upload.tiktok')) return mk({ status: 201 });
+      throw new Error('unexpected url ' + url);
+    });
+    const port = createTikTokPublisherPort({ fetchImpl: fetchImpl as never, persistCreds: vi.fn(), directPost: true });
+    const res = await port.publish(
+      baseInput({
+        config: { token: creds, handle: '@x', extra: { tiktok: { privacy_level: 'FOLLOWER_OF_CREATOR', allow_comment: false, allow_duet: true } } },
+      }),
+    );
+    expect(res.ok).toBe(true);
+    const directCall = fetchImpl.mock.calls.find((c) => String(c[0]).includes('/publish/video/init/'))!;
+    const body = JSON.parse((directCall[1] as { body: string }).body);
+    expect(body.post_info.privacy_level).toBe('FOLLOWER_OF_CREATOR');
+    expect(body.post_info.disable_comment).toBe(true); // allow_comment=false
+    expect(body.post_info.disable_duet).toBe(false); // allow_duet=true
+  });
+
   it('directPost 有効でも未審査(PUBLIC不可)→安全側の下書き(inbox)にフォールバック', async () => {
     const fetchImpl = vi.fn(async (url: string) => {
       if (url.includes('/oauth/token/')) return jsonRes({ access_token: 'at1', refresh_token: 'rt_old', expires_in: 86400 });

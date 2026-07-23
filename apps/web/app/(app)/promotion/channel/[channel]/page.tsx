@@ -24,6 +24,25 @@ export const dynamic = 'force-dynamic';
 
 const m = messages.promotionChannels;
 
+/** config_json.tiktok を安全に読み出す (既定=公開・全許可)。 */
+function readTikTokPostSettings(configJson: unknown): {
+  privacy_level: string;
+  allow_comment: boolean;
+  allow_duet: boolean;
+  allow_stitch: boolean;
+} {
+  const tk =
+    configJson && typeof configJson === 'object'
+      ? ((configJson as Record<string, unknown>).tiktok as Record<string, unknown> | undefined)
+      : undefined;
+  return {
+    privacy_level: typeof tk?.privacy_level === 'string' ? tk.privacy_level : 'PUBLIC_TO_EVERYONE',
+    allow_comment: tk?.allow_comment !== false,
+    allow_duet: tk?.allow_duet !== false,
+    allow_stitch: tk?.allow_stitch !== false,
+  };
+}
+
 interface PageProps {
   params: Promise<{ channel: string }>;
 }
@@ -92,7 +111,13 @@ export default async function PromotionChannelPage({ params }: PageProps) {
     // TikTok は OAuth 認可完了で接続済み。IG/note は webhook。X 等は token_enc。
     connected:
       ch === 'tiktok' ? tiktokAuthorized : Boolean(settingRow?.token_enc) || Boolean(webhookUrl),
-    ...(ch === 'tiktok' ? { tiktokAppCredsSaved, tiktokAuthorized } : {}),
+    ...(ch === 'tiktok'
+      ? {
+          tiktokAppCredsSaved,
+          tiktokAuthorized,
+          tiktokPostSettings: readTikTokPostSettings(settingRow?.config_json),
+        }
+      : {}),
   };
 
   const strategy: ChannelStrategyView = {

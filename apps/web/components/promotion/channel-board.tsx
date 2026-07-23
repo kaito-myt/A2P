@@ -18,6 +18,7 @@ import {
   generateChannelVideo,
   publishPostNow,
   saveTikTokAppCredentials,
+  saveTikTokPostSettings,
   setChannelAuto,
   setChannelConnection,
   testChannelConnection,
@@ -600,6 +601,79 @@ function TikTokConnect({ setting, inputCls }: { setting: ChannelSettingView; inp
   );
 }
 
+/**
+ * TikTok 投稿設定カード（公開範囲・インタラクション許可）。
+ * Direct Post のコンプライアンス UX 要件（公開範囲を明示的に選ぶ）を満たす。
+ */
+function TikTokPostSettings({ setting, inputCls }: { setting: ChannelSettingView; inputCls: string }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const s = setting.tiktokPostSettings ?? {
+    privacy_level: 'PUBLIC_TO_EVERYONE',
+    allow_comment: true,
+    allow_duet: true,
+    allow_stitch: true,
+  };
+  const [privacy, setPrivacy] = useState(s.privacy_level);
+  const [allowComment, setAllowComment] = useState(s.allow_comment);
+  const [allowDuet, setAllowDuet] = useState(s.allow_duet);
+  const [allowStitch, setAllowStitch] = useState(s.allow_stitch);
+  const [msg, setMsg] = useState<string | null>(null);
+  const tp = m.connSection.tiktokPost;
+
+  function save() {
+    setMsg(null);
+    start(async () => {
+      const res = await saveTikTokPostSettings({
+        privacy_level: privacy,
+        allow_comment: allowComment,
+        allow_duet: allowDuet,
+        allow_stitch: allowStitch,
+      });
+      setMsg(res.ok ? tp.saved : res.error?.message ?? m.actionMsg.error);
+      if (res.ok) router.refresh();
+    });
+  }
+
+  const Toggle = ({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) => (
+    <label className="flex items-center gap-2 text-button-sm text-charcoal-82">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 rounded border-border-warm" />
+      {label}
+    </label>
+  );
+
+  return (
+    <div className="flex flex-col gap-space-snug rounded-default border border-border-warm/70 bg-cream p-space-snug">
+      <span className="text-button-sm font-medium text-charcoal-82">{tp.title}</span>
+      <p className="text-caption text-muted">{tp.note}</p>
+      <label className="flex flex-col gap-1">
+        <span className="text-caption text-charcoal-82">{tp.privacyLabel}</span>
+        <select className={inputCls} value={privacy} onChange={(e) => setPrivacy(e.target.value)}>
+          <option value="PUBLIC_TO_EVERYONE">{tp.privacyPublic}</option>
+          <option value="MUTUAL_FOLLOW_FRIENDS">{tp.privacyFriends}</option>
+          <option value="FOLLOWER_OF_CREATOR">{tp.privacyFollowers}</option>
+          <option value="SELF_ONLY">{tp.privacySelf}</option>
+        </select>
+      </label>
+      <div className="flex flex-col gap-1">
+        <Toggle label={tp.allowComment} checked={allowComment} onChange={setAllowComment} />
+        <Toggle label={tp.allowDuet} checked={allowDuet} onChange={setAllowDuet} />
+        <Toggle label={tp.allowStitch} checked={allowStitch} onChange={setAllowStitch} />
+      </div>
+      <button
+        type="button"
+        onClick={save}
+        disabled={pending}
+        className="inline-flex w-fit items-center rounded-card bg-charcoal px-3 py-1.5 text-button-sm text-cream-light hover:opacity-80 disabled:opacity-50"
+      >
+        {tp.save}
+      </button>
+      <span className="text-caption text-muted">{tp.auditHint}</span>
+      {msg && <span className="text-caption text-success">{msg}</span>}
+    </div>
+  );
+}
+
 function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -731,6 +805,7 @@ function ConnectionCard({ setting }: { setting: ChannelSettingView }) {
         </div>
       )}
       {isTikTok && <TikTokConnect setting={setting} inputCls={inputCls} />}
+      {isTikTok && <TikTokPostSettings setting={setting} inputCls={inputCls} />}
       <label className="flex flex-col gap-1">
         <span className="text-button-sm text-charcoal-82">{m.connSection.handleLabel}</span>
         <input
