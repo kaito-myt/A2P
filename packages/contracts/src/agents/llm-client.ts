@@ -52,6 +52,8 @@ export type AgentRole =
   | 'content_optimizer'
   // F-062 — 週次のコスト改善提案担当（コスト分析→改善案＋影響＋実行アクション）。
   | 'cost_optimizer'
+  // F-064 — 研究駆動の販促プレイブック担当（web_search でバズ投稿を分析→投稿戦略を生成）。
+  | 'promo_strategist'
   // F-060 — TikTok 動画の多エージェント台本パイプライン。
   | 'tiktok_scenario'
   | 'tiktok_creator'

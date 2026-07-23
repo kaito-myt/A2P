@@ -104,6 +104,7 @@ export function buildOptimizerUserMessage(
     '',
     input.concept ? `【アカウントのコンセプト】\n${input.concept}` : '',
     input.tone_of_voice ? `【トーン&マナー】\n${input.tone_of_voice}` : '',
+    input.playbook_guidance ? `【研究に基づく販促プレイブック(これに沿って改善)】\n${input.playbook_guidance}` : '',
     `【定番ハッシュタグ(参考・本文には足さない)】\n${tags}`,
     '',
     '【直近の投稿(傾向把握用。丸写ししない)】',

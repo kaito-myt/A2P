@@ -283,6 +283,9 @@ model PromotionChannelSetting {
   banner_key           String?
   // 戦略を最後に生成/更新した時刻。
   strategy_updated_at  DateTime?
+  // F-064 研究駆動の販促プレイブック(PromoPlaybook)。web_search リサーチの結果。
+  playbook_json        Json?
+  playbook_updated_at  DateTime?
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
 

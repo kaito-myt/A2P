@@ -220,6 +220,12 @@ export {
 } from './content-optimizer/index.js';
 
 export {
+  generatePromoPlaybook,
+  buildStrategistUserMessage,
+  type PromoStrategistDeps,
+} from './promo-strategist/index.js';
+
+export {
   analyzeCost,
   buildCostOptimizerUserMessage,
   type CostOptimizerDeps,

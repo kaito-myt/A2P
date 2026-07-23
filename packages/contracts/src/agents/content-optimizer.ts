@@ -45,6 +45,8 @@ export const ContentOptimizerInputSchema = z.object({
   drafts: z.array(OptimizerDraftSchema).min(1),
   /** 外部シグナル（任意）。 */
   signals: OptimizerSignalsSchema.optional(),
+  /** F-064 研究駆動プレイブックの実践指針（任意・そのまま注入する短い文字列）。 */
+  playbook_guidance: z.string().default(''),
 });
 export type ContentOptimizerInput = z.infer<typeof ContentOptimizerInputSchema>;
 

@@ -125,6 +125,10 @@ import {
   promotionReviewDailyTask,
 } from './tasks/promotion-review-daily.js';
 import {
+  PROMOTION_PLAYBOOK_REFRESH_TASK_NAME,
+  promotionPlaybookRefreshTask,
+} from './tasks/promotion-playbook-refresh.js';
+import {
   COST_OPTIMIZE_WEEKLY_TASK_NAME,
   costOptimizeWeeklyTask,
 } from './tasks/cost-optimize-weekly.js';
@@ -218,6 +222,7 @@ export function buildTaskList(): TaskList {
     [PROMOTION_STRATEGY_GENERATE_TASK_NAME]: promotionStrategyGenerateTask,
     [PROMOTION_CONTENT_GENERATE_TASK_NAME]: promotionContentGenerateTask,
     [PROMOTION_REVIEW_DAILY_TASK_NAME]: promotionReviewDailyTask,
+    [PROMOTION_PLAYBOOK_REFRESH_TASK_NAME]: promotionPlaybookRefreshTask,
     [COST_OPTIMIZE_WEEKLY_TASK_NAME]: costOptimizeWeeklyTask,
     [PROMOTION_VIDEO_GENERATE_TASK_NAME]: promotionVideoGenerateTask,
     [PROMOTION_POST_PUBLISH_TASK_NAME]: promotionPostPublishTask,

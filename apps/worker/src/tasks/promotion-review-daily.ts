@@ -7,8 +7,16 @@ import type {
   ContentOptimizerInput,
   ContentOptimizerOutput,
 } from '@a2p/contracts/agents/content-optimizer';
+import { PromoPlaybookSchema, playbookToGuidance } from '@a2p/contracts/agents/promo-strategist';
 import { createLogger, type Logger } from '@a2p/contracts/logger';
 import { prisma as defaultPrisma } from '@a2p/db';
+
+/** 保存済み playbook_json を安全にガイダンス文字列へ畳む（壊れていれば空）。 */
+function playbookGuidanceFrom(raw: unknown): string {
+  if (!raw) return '';
+  const parsed = PromoPlaybookSchema.safeParse(raw);
+  return parsed.success ? playbookToGuidance(parsed.data) : '';
+}
 
 /**
  * `promotion.review.daily` タスク (F-061)
@@ -40,8 +48,8 @@ interface ReviewPrisma {
   promotionChannelSetting: {
     findMany: (args: {
       where: { strategy_json: { not: null }; channel?: string };
-      select: { channel: true; strategy_json: true };
-    }) => Promise<Array<{ channel: string; strategy_json: unknown }>>;
+      select: { channel: true; strategy_json: true; playbook_json: true };
+    }) => Promise<Array<{ channel: string; strategy_json: unknown; playbook_json: unknown }>>;
   };
   promotionPost: {
     findMany: (args: {
@@ -95,7 +103,7 @@ export async function runPromotionReviewDaily(
 
   const settings = await prisma.promotionChannelSetting.findMany({
     where: { strategy_json: { not: null }, ...(args.channel ? { channel: args.channel } : {}) },
-    select: { channel: true, strategy_json: true },
+    select: { channel: true, strategy_json: true, playbook_json: true },
   });
 
   let reviewed = 0;
@@ -137,6 +145,7 @@ export async function runPromotionReviewDaily(
         hashtag_core: p.hashtag_strategy?.core ?? [],
         recent_posted: recent,
         drafts: upcoming.map((d) => ({ id: d.id, kind: d.kind, body: d.body })),
+        playbook_guidance: playbookGuidanceFrom(setting.playbook_json),
       });
     } catch (err) {
       log.warn({ task: PROMOTION_REVIEW_DAILY_TASK_NAME, channel: setting.channel, err }, 'optimize failed — skip channel');

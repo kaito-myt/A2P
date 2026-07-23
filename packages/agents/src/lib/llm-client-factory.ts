@@ -67,7 +67,7 @@ export async function createAgentClient(
 
   const apiKey = await fetchKey(assignment.provider);
 
-  const WEB_SEARCH_ROLES = new Set<AgentRole>(['marketer', 'cover_art_direction']);
+  const WEB_SEARCH_ROLES = new Set<AgentRole>(['marketer', 'cover_art_direction', 'promo_strategist']);
   const useAgentSdk = WEB_SEARCH_ROLES.has(role) && assignment.provider === 'anthropic';
   const raw: LLMClient = useAgentSdk
     ? new AgentSdkClient({ model: assignment.model, apiKey })

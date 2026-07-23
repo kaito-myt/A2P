@@ -142,6 +142,17 @@ export {
 } from './content-optimizer.js';
 
 export {
+  PromoStrategistInputSchema,
+  PromoPlaybookSchema,
+  HookFormulaSchema,
+  PromoStrategistOutputSchema,
+  playbookToGuidance,
+  type PromoStrategistInput,
+  type PromoPlaybook,
+  type PromoStrategistOutput,
+} from './promo-strategist.js';
+
+export {
   CostByRoleModelSchema,
   CurrentAssignmentSchema,
   CatalogPriceSchema,
