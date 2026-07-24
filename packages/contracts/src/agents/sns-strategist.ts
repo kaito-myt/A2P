@@ -137,3 +137,32 @@ export const AccountStrategyProfileSchema = z.preprocess(
   }),
 );
 export type AccountStrategyProfile = z.infer<typeof AccountStrategyProfileSchema>;
+
+/**
+ * 読者ロールモデル(ペルソナ)の説明文を戦略プロフィール(＋任意で書籍の想定読者)から
+ * 合成する純関数。content_optimizer がこの人物になりきって投稿を評価する。
+ * 戦略の concept / tone_of_voice / content_pillars / bio と、書籍の target_reader を素材にする。
+ */
+export function buildAudiencePersona(
+  profile: Partial<Pick<AccountStrategyProfile, 'concept' | 'tone_of_voice' | 'bio' | 'content_pillars'>> | null | undefined,
+  opts?: { bookTargetReader?: string | null },
+): string {
+  const lines: string[] = [];
+  const reader = opts?.bookTargetReader?.trim();
+  if (reader) lines.push(`- 想定読者像: ${reader}`);
+  if (profile?.concept?.trim()) lines.push(`- このアカウントに惹かれる理由(コンセプト): ${profile.concept.trim()}`);
+  if (profile?.bio?.trim()) lines.push(`- フォロー時に見えるプロフィール: ${profile.bio.trim()}`);
+  const pillars = (profile?.content_pillars ?? [])
+    .map((p) => (typeof p === 'string' ? p : p?.name))
+    .filter((s): s is string => !!s && s.trim().length > 0);
+  if (pillars.length) lines.push(`- 関心のあるテーマ: ${pillars.join(' / ')}`);
+  if (profile?.tone_of_voice?.trim()) lines.push(`- 好む語り口/雰囲気: ${profile.tone_of_voice.trim()}`);
+  if (lines.length === 0) {
+    return 'このジャンルの一般的な読者。SNS を流し見しており、役に立つ・面白い・自分ごとに感じる投稿だけに手を止める。';
+  }
+  return [
+    'あなたはこのアカウントのターゲット読者(フォロワー候補)本人です。次の人物になりきってください:',
+    ...lines,
+    '- SNS はスキマ時間に流し見。宣伝くさい/テンプレ/誇張は即スルーする。役立つ・共感・意外性のある投稿だけ保存やフォローをする。',
+  ].join('\n');
+}

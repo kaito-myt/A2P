@@ -52,8 +52,8 @@ describe('runPromotionReviewDaily', () => {
     });
     const optimize = vi.fn(async () => ({
       revisions: [
-        { id: 'p1', changed: true, revised_body: '改善された本文A（フック付き）', reason: 'フック追加' },
-        { id: 'p2', changed: false, revised_body: '据え置き本文B', reason: '' },
+        { id: 'p1', changed: true, revised_body: '改善された本文A（フック付き）', reason: 'フック追加' , score: 80, on_strategy: true, persona_reaction: '' },
+        { id: 'p2', changed: false, revised_body: '据え置き本文B', reason: '' , score: 80, on_strategy: true, persona_reaction: '' },
       ],
     }));
     const res = await runPromotionReviewDaily({}, { prisma: prisma as never, optimize, now: () => new Date('2026-07-22T00:00:00Z') });
@@ -67,7 +67,7 @@ describe('runPromotionReviewDaily', () => {
       upcoming: [{ id: 'promo1', kind: 'promo', body: `新刊です ${url}` }],
     });
     const optimize = vi.fn(async () => ({
-      revisions: [{ id: 'promo1', changed: true, revised_body: 'URLを消してしまった本文', reason: 'x' }],
+      revisions: [{ id: 'promo1', changed: true, revised_body: 'URLを消してしまった本文', reason: 'x' , score: 80, on_strategy: true, persona_reaction: '' }],
     }));
     const res = await runPromotionReviewDaily({}, { prisma: prisma as never, optimize, now: () => new Date('2026-07-22T00:00:00Z') });
     expect(res.updated).toBe(0);
@@ -80,7 +80,7 @@ describe('runPromotionReviewDaily', () => {
       upcoming: [{ id: 'promo2', kind: 'promo', body: `新刊です ${url}` }],
     });
     const optimize = vi.fn(async () => ({
-      revisions: [{ id: 'promo2', changed: true, revised_body: `【新刊】読めば変わる。${url}`, reason: 'x' }],
+      revisions: [{ id: 'promo2', changed: true, revised_body: `【新刊】読めば変わる。${url}`, reason: 'x' , score: 80, on_strategy: true, persona_reaction: '' }],
     }));
     const res = await runPromotionReviewDaily({}, { prisma: prisma as never, optimize, now: () => new Date('2026-07-22T00:00:00Z') });
     expect(res.updated).toBe(1);
@@ -96,8 +96,8 @@ describe('runPromotionReviewDaily', () => {
     });
     const optimize = vi.fn(async () => ({
       revisions: [
-        { id: 'v1', changed: true, revised_body: '良い本文。\n\nid=v2 の投稿と内容が近いので公開タイミングの分散をご検討ください。', reason: '' },
-        { id: 'v2', changed: true, revised_body: '普通に改善された本文', reason: '' },
+        { id: 'v1', changed: true, revised_body: '良い本文。\n\nid=v2 の投稿と内容が近いので公開タイミングの分散をご検討ください。', reason: '' , score: 80, on_strategy: true, persona_reaction: '' },
+        { id: 'v2', changed: true, revised_body: '普通に改善された本文', reason: '' , score: 80, on_strategy: true, persona_reaction: '' },
       ],
     }));
     const res = await runPromotionReviewDaily({}, { prisma: prisma as never, optimize, now: () => new Date('2026-07-22T00:00:00Z') });

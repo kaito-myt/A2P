@@ -34,7 +34,7 @@ describe('runPromotionPostsGenerate', () => {
     const deleteMany = vi.fn(async () => ({ count: 0 }));
     const prisma = {
       promotionPlan: { findUnique: vi.fn(async () => ({ plan_json: PLAN })) },
-      book: { findUnique: vi.fn(async () => ({ asin: null, theme: { genre: 'practical' } })) },
+      book: { findUnique: vi.fn(async () => ({ asin: null, theme: { genre: 'practical', target_reader: null } })) },
       promotionAccount: { findMany: vi.fn(async () => []) },
       promotionPost: { deleteMany, createMany },
     };
@@ -66,7 +66,7 @@ describe('runPromotionPostsGenerate', () => {
     const deleteMany = vi.fn(async () => ({ count: 3 }));
     const prisma = {
       promotionPlan: { findUnique: vi.fn(async () => ({ plan_json: PLAN })) },
-      book: { findUnique: vi.fn(async () => ({ asin: null, theme: { genre: 'practical' } })) },
+      book: { findUnique: vi.fn(async () => ({ asin: null, theme: { genre: 'practical', target_reader: null } })) },
       promotionAccount: { findMany: vi.fn(async () => []) },
       promotionPost: { deleteMany, createMany: vi.fn(async (a: { data: unknown[] }) => ({ count: a.data.length })) },
     };
@@ -78,7 +78,7 @@ describe('runPromotionPostsGenerate', () => {
   it('プランが無ければ何もしない', async () => {
     const prisma = {
       promotionPlan: { findUnique: vi.fn(async () => null) },
-      book: { findUnique: vi.fn(async () => ({ asin: null, theme: { genre: 'practical' } })) },
+      book: { findUnique: vi.fn(async () => ({ asin: null, theme: { genre: 'practical', target_reader: null } })) },
       promotionAccount: { findMany: vi.fn(async () => []) },
       promotionPost: { deleteMany: vi.fn(), createMany: vi.fn() },
     };
@@ -91,7 +91,7 @@ describe('runPromotionPostsGenerate', () => {
     const createMany = vi.fn(async (args: { data: unknown[] }) => ({ count: args.data.length }));
     const prisma = {
       promotionPlan: { findUnique: vi.fn(async () => ({ plan_json: PLAN })) },
-      book: { findUnique: vi.fn(async () => ({ asin: null, theme: { genre: 'practical' } })) },
+      book: { findUnique: vi.fn(async () => ({ asin: null, theme: { genre: 'practical', target_reader: null } })) },
       promotionAccount: { findMany: vi.fn(async () => []) },
       promotionChannelSetting: {
         findMany: vi.fn(async () => [
@@ -111,7 +111,7 @@ describe('runPromotionPostsGenerate', () => {
     const createMany = vi.fn(async (args: { data: unknown[] }) => ({ count: args.data.length }));
     const prisma = {
       promotionPlan: { findUnique: vi.fn(async () => ({ plan_json: PLAN })) },
-      book: { findUnique: vi.fn(async () => ({ asin: null, theme: { genre: 'practical' } })) },
+      book: { findUnique: vi.fn(async () => ({ asin: null, theme: { genre: 'practical', target_reader: null } })) },
       promotionAccount: {
         findMany: vi.fn(async () => [{ id: 'x-acct', channel: 'x', niche: 'practical 実用' }]),
       },

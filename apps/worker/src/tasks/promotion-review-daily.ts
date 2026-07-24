@@ -2,7 +2,9 @@ import type { JobHelpers, Task } from 'graphile-worker';
 import { z } from 'zod';
 
 import { optimizeScheduledPosts as defaultOptimize } from '@a2p/agents';
-import { AccountStrategyProfileSchema } from '@a2p/contracts/agents';
+import { AccountStrategyProfileSchema, buildAudiencePersona } from '@a2p/contracts/agents';
+
+import { pillarStrings } from './promotion-post/persona-review.js';
 import type {
   ContentOptimizerInput,
   ContentOptimizerOutput,
@@ -64,7 +66,7 @@ interface ReviewPrisma {
     }) => Promise<Array<{ id: string; kind: string; body: string } | { body: string }>>;
     update: (args: {
       where: { id: string };
-      data: { body: string; updated_at?: Date };
+      data: { body?: string; updated_at?: Date; quality_score?: number | null; review_reason?: string | null };
     }) => Promise<unknown>;
   };
 }
@@ -142,6 +144,8 @@ export async function runPromotionReviewDaily(
         channel: setting.channel,
         concept: p.concept ?? '',
         tone_of_voice: p.tone_of_voice ?? '',
+        content_pillars: pillarStrings(p),
+        persona: buildAudiencePersona(p),
         hashtag_core: p.hashtag_strategy?.core ?? [],
         recent_posted: recent,
         drafts: upcoming.map((d) => ({ id: d.id, kind: d.kind, body: d.body })),
@@ -180,7 +184,15 @@ export async function runPromotionReviewDaily(
         }
       }
 
-      await prisma.promotionPost.update({ where: { id: rev.id }, data: { body: newBody, updated_at: now() } });
+      await prisma.promotionPost.update({
+        where: { id: rev.id },
+        data: {
+          body: newBody,
+          updated_at: now(),
+          quality_score: Number.isFinite(rev.score) ? Math.round(rev.score) : null,
+          review_reason: (rev.persona_reaction || rev.reason || '').trim() || null,
+        },
+      });
       updated += 1;
     }
 

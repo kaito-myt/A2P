@@ -94,16 +94,29 @@ export function buildOptimizerUserMessage(
     ? input.signals.engagement_notes.map((n) => `- ${n}`).join('\n')
     : '(未取得)';
 
+  const pillars = input.content_pillars.length
+    ? input.content_pillars.map((p) => `- ${p}`).join('\n')
+    : '(未設定)';
+  const persona = input.persona.trim()
+    ? input.persona.trim()
+    : 'このジャンルの一般的な読者。流し見しており、役立つ/共感/意外性のある投稿だけに手を止める。';
+
   const drafts = input.drafts
     .map((d, i) => `[${i + 1}] id=${d.id} kind=${d.kind}\n${d.body}`)
     .join('\n\n');
 
   return [
-    `あなたは「${channelLabel}」の予定投稿を、公開前に見直して改善する編集者です。`,
-    'エンゲージメント(反応/保存/フォロー)と、最終的な本の売上につながるよう、各投稿の本文を推敲します。',
+    `あなたは「${channelLabel}」の予定投稿を、公開前に「読者ロールモデル(ペルソナ)」として評価し、`,
+    'マーケターが作ったアカウント戦略に沿うように改善する編集者です。',
+    'まずペルソナ本人としてこの投稿を読み(スクロールを止めるか?保存/フォローしたいか?宣伝くさくないか?)、',
+    'その反応をもとに、戦略(コンセプト/トーン/柱)に沿った投稿へ書き直します。',
     '',
-    input.concept ? `【アカウントのコンセプト】\n${input.concept}` : '',
-    input.tone_of_voice ? `【トーン&マナー】\n${input.tone_of_voice}` : '',
+    '【読者ロールモデル(ペルソナ) — この人物になりきって評価する】',
+    persona,
+    '',
+    input.concept ? `【アカウントのコンセプト(必ず沿わせる)】\n${input.concept}` : '',
+    input.tone_of_voice ? `【トーン&マナー(この語り口で)】\n${input.tone_of_voice}` : '',
+    `【発信の柱(このテーマ性から外れない)】\n${pillars}`,
     input.playbook_guidance ? `【研究に基づく販促プレイブック(これに沿って改善)】\n${input.playbook_guidance}` : '',
     `【定番ハッシュタグ(参考・本文には足さない)】\n${tags}`,
     '',
@@ -114,22 +127,26 @@ export function buildOptimizerUserMessage(
     `トレンドのハッシュタグ候補: ${trending}`,
     `直近の反応メモ:\n${engagement}`,
     '',
-    '【見直し対象(この投稿群を改善する)】',
+    '【見直し対象(この投稿群を評価・改善する)】',
     drafts,
     '',
-    '改善方針:',
+    '評価と改善の方針:',
+    '- ペルソナとして率直な反応を persona_reaction に書く(なぜ止まる/スルーするか)。公開されない。',
+    '- 戦略(コンセプト/トーン/柱)への適合を on_strategy(true/false)で判定。ズレていれば必ず戦略側へ寄せる。',
     '- 冒頭1行でスクロールを止めるフック(問い/意外な事実/ベネフィット)を効かせる。',
     '- 具体的で、保存/共有したくなる情報にする。誇張・煽り・テンプレ感は避け、誠実に。',
     "- kind='promo'(販促)は、本の魅力と『KU会員は無料』等の導線・URL を必ず保持する(URLは消さない・改変しない)。",
     "- kind='value'(育成)は宣伝を入れない。ハッシュタグは本文に足さない(後段で付与)。",
     '- 文字数はチャンネルに適した長さに収める(X は日本語で概ね120字以内)。',
-    '- 元が十分良ければ無理に変えず changed=false とし、revised_body には元の本文をそのまま返す。',
+    '- score(0-100): 改善後の投稿の総合品質(ペルソナの反応の良さ×戦略適合×具体性)。80以上を目指す。',
+    '- 元が十分良ければ無理に変えず changed=false とし、revised_body には元の本文をそのまま返す(その場合も score は付ける)。',
     '',
     '重要: revised_body は「そのまま公開される投稿本文」だけにする。',
     '- 他の投稿への言及・id・「重複」「公開タイミングの分散」等の運用上のメモや提案を本文に混ぜない。',
-    '- そうした気づきは reason にだけ書く（reason は公開されない）。',
+    '- そうした気づきは reason / persona_reaction にだけ書く（どちらも公開されない）。',
     '',
-    '出力は JSON のみ。スキーマ: {"revisions":[{"id":string,"changed":boolean,"revised_body":string,"reason":string}]}。',
+    '出力は JSON のみ。スキーマ:',
+    '{"revisions":[{"id":string,"changed":boolean,"revised_body":string,"reason":string,"score":number,"on_strategy":boolean,"persona_reaction":string}]}。',
     '各 draft の id を必ず1件ずつ含めること。',
   ]
     .filter((l) => l !== '')

@@ -112,6 +112,7 @@ export {
   PostingCadenceSchema,
   HashtagStrategySchema,
   AccountStrategyProfileSchema,
+  buildAudiencePersona,
   type SnsCatalogSnapshot,
   type SnsStrategistInput,
   type ContentPillar,

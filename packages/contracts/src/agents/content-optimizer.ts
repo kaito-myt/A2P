@@ -37,6 +37,13 @@ export const ContentOptimizerInputSchema = z.object({
   concept: z.string().default(''),
   /** トーン&マナー。 */
   tone_of_voice: z.string().default(''),
+  /** アカウント戦略のコンテンツ柱（name: description の短い文字列群）。 */
+  content_pillars: z.array(z.string()).default([]),
+  /**
+   * 読者ロールモデル（ペルソナ）。この人物になりきって投稿を評価・フィードバックする。
+   * 戦略(コンセプト/トーン/柱)＋書籍の想定読者から生成する。
+   */
+  persona: z.string().default(''),
   /** 定番ハッシュタグ（戦略の core）。 */
   hashtag_core: z.array(z.string()).default([]),
   /** 直近の投稿済み本文（傾向把握用の例示、売り込みの参考にはしない）。 */
@@ -59,6 +66,12 @@ export const OptimizerRevisionSchema = z.object({
   revised_body: z.string().min(1),
   /** 変更理由（無くても可）。 */
   reason: z.string().default(''),
+  /** ペルソナ視点＋戦略適合の総合品質スコア(0-100)。改善後の本文に対する評価。 */
+  score: z.number().min(0).max(100).default(0),
+  /** 戦略(コンセプト/トーン/柱)に沿っているか。 */
+  on_strategy: z.boolean().default(true),
+  /** 読者ロールモデル(ペルソナ)の反応・フィードバック（公開されない・改善根拠）。 */
+  persona_reaction: z.string().default(''),
 });
 export type OptimizerRevision = z.infer<typeof OptimizerRevisionSchema>;
 
@@ -78,6 +91,9 @@ function normalizeOutput(v: unknown): unknown {
             changed: rr.changed ?? rr.is_changed ?? (rr.revised_body !== undefined || rr.body !== undefined),
             revised_body: rr.revised_body ?? rr.body ?? rr.text ?? rr.content,
             reason: rr.reason ?? rr.note ?? '',
+            score: rr.score ?? rr.quality_score ?? rr.quality ?? 0,
+            on_strategy: rr.on_strategy ?? rr.onStrategy ?? rr.on_brand ?? true,
+            persona_reaction: rr.persona_reaction ?? rr.personaReaction ?? rr.persona_feedback ?? rr.reader_reaction ?? '',
           };
         }),
       };

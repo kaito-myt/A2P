@@ -365,6 +365,9 @@ model PromotionPost {
   external_url  String? // 投稿成功後の公開 URL
   error         String? // 投稿失敗時のメッセージ
   posted_at     DateTime?
+  // 販促品質: content_optimizer(ペルソナ×戦略)による総合品質スコア(0-100)と改善根拠。
+  quality_score Int? // 生成/日次見直し時に付与
+  review_reason String? @db.Text // ペルソナ反応・改善理由(非公開・監査用)
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
 
