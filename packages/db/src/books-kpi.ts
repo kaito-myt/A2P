@@ -113,7 +113,8 @@ export async function getBooksKpiList(
   // Build dynamic conditions for the WHERE clause on `books`.
   // We use template literal with explicit casts — Prisma $queryRaw uses
   // pg's parameterized query protocol, so $N placeholders are safe.
-  const conditions: string[] = ['b.status NOT IN (\'cancelled\')'];
+  // cancelled(生成中止) と retracted(Amazon取り下げ) は売上 KPI 集計から除外する。
+  const conditions: string[] = ["b.status NOT IN ('cancelled', 'retracted')"];
   const params: unknown[] = [];
 
   let p = 1;

@@ -28,6 +28,7 @@ export type BookStatus =
   | 'needs_human_review'
   | 'failed'
   | 'cancelled'
+  | 'retracted'
   | 'paused_cost';
 
 const KNOWN_BOOK_STATUSES = new Set<string>([
@@ -42,6 +43,7 @@ const KNOWN_BOOK_STATUSES = new Set<string>([
   'needs_human_review',
   'failed',
   'cancelled',
+  'retracted',
   'paused_cost',
 ]);
 

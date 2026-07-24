@@ -1375,6 +1375,7 @@ export const messages = {
       needs_human_review: '要レビュー',
       failed: '失敗',
       cancelled: '取消',
+      retracted: '取り下げ済',
       paused_cost: 'コスト停止',
     },
     costStatus: {
