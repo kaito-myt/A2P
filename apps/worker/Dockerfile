@@ -56,6 +56,7 @@ COPY packages/db/package.json packages/db/package.json
 COPY packages/storage/package.json packages/storage/package.json
 COPY packages/notify/package.json packages/notify/package.json
 COPY packages/crypto/package.json packages/crypto/package.json
+COPY packages/kdp-report/package.json packages/kdp-report/package.json
 COPY packages/ui/package.json packages/ui/package.json
 COPY packages/output/image/package.json packages/output/image/package.json
 COPY packages/output/pdf/package.json packages/output/pdf/package.json
