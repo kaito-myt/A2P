@@ -77,12 +77,12 @@ export const GENRE_AGNOSTIC_ROLES: ReadonlySet<PromptRole> = new Set([
 
 /**
  * AI 生成開示文（巻末挿入用）の初期文言。
- * NOTE: KDP の「AI Content」ポリシー最新版に合わせ、運営者が S-027 で
- *       更新する想定（docs/05 OQ-D-07 / docs/01 §7.1）。
- *       seed では仮文言で投入し、本番運用前に運営者が確認・差し替える。
+ * 既定は空 = 本文には AI 開示文を入れない（読者離脱防止・運営者要望）。KDP への AI
+ * 開示は入稿フォームの「AI生成コンテンツ」設問で行う運用とする。運営者が S-027 で
+ * 文言を設定した場合のみ、Editor が最終章末尾に 1 回だけ挿入する
+ * （docs/05 OQ-D-07 / docs/01 §7.1）。
  */
-export const DEFAULT_AI_DISCLOSURE_TEXT =
-  '本書の本文は生成 AI を活用して作成し、著者が編集・監修したコンテンツです。Amazon KDP のコンテンツガイドラインに従い、AI 生成コンテンツであることを明示します。';
+export const DEFAULT_AI_DISCLOSURE_TEXT = '';
 
 export interface AppSettingsSeed {
   id: 'singleton';

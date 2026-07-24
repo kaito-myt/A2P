@@ -468,6 +468,26 @@ describe('editBook — R-05 AI 開示文 安全装置', () => {
 
     expect(result.ai_disclosure_appended).toBe(true);
   });
+
+  it('ai_disclosure_text が空 → 本文に開示文を入れない (LLM が付けても除去・appended=false)', async () => {
+    const input = baseInput({ aiDisclosureText: '' });
+    // LLM が最終章末尾に開示文を付けて返しても、空設定なら step8 で除去し step9 で再挿入しない。
+    const text = buildLlmResponse(input, { disclosure: true, appendedFlag: true });
+    const fakeClient = makeFakeClient(text);
+    const promptRepo = makePromptRepo([defaultPromptRow()]);
+
+    const result = await editBook(input, {
+      createAgentClient: vi.fn(async () => fakeClient),
+      promptLoaderDeps: { prisma: promptRepo },
+    });
+
+    expect(result.ai_disclosure_appended).toBe(false);
+    expect(result.ai_disclosure_text).toBe('');
+    const last = result.chapters[result.chapters.length - 1]!;
+    expect(last.body_md.replace(/\s+/g, '')).not.toContain(
+      DEFAULT_AI_DISCLOSURE.replace(/\s+/g, ''),
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import {
   formatJpy,
   formatStars,
   formatCostSalesRatio,
+  formatKenp,
   type SalesKpiSummary,
 } from '@/lib/sales-kpi-view';
 
@@ -21,7 +22,7 @@ const m = messages.salesKpi.kpi;
 export function SalesKpiStripe({ summary }: SalesKpiStripeProps) {
   return (
     <div
-      className="grid grid-cols-1 gap-space-snug sm:grid-cols-2 lg:grid-cols-5"
+      className="grid grid-cols-1 gap-space-snug sm:grid-cols-2 lg:grid-cols-6"
       data-testid="sales-kpi-stripe"
     >
       <KpiCard
@@ -38,6 +39,11 @@ export function SalesKpiStripe({ summary }: SalesKpiStripeProps) {
         label={m.avgRoyaltyLabel}
         value={formatJpy(summary.avg_royalty_per_book_jpy)}
         testId="kpi-avg-royalty"
+      />
+      <KpiCard
+        label="KENP読了(累計)"
+        value={formatKenp(summary.total_kenp_read)}
+        testId="kpi-total-kenp"
       />
       <KpiCard
         label={m.avgStarsLabel}

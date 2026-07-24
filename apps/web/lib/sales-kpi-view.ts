@@ -38,6 +38,8 @@ export interface BookKpiRowSerialized {
   asin: string | null;
   monthly_royalty_jpy: number;
   cumulative_royalty_jpy: number;
+  monthly_kenp_read: number;
+  cumulative_kenp_read: number;
   latest_bsr: number | null;
   avg_stars: number | null;
   quality_score: number | null;
@@ -88,6 +90,8 @@ export function serializeBookKpiRow(
     asin: row.asin,
     monthly_royalty_jpy: row.monthly_royalty_jpy,
     cumulative_royalty_jpy: row.cumulative_royalty_jpy,
+    monthly_kenp_read: row.monthly_kenp_read,
+    cumulative_kenp_read: row.cumulative_kenp_read,
     latest_bsr: row.latest_bsr,
     avg_stars: row.avg_stars,
     quality_score: row.quality_score,
@@ -122,6 +126,10 @@ export function formatCostSalesRatio(ratio: number | null): string {
   // From the KPI definition: cost/sales = cost_jpy / royalty_jpy = 1/ratio
   const pct = ratio > 0 ? (1 / ratio) * 100 : 0;
   return `${Math.round(pct * 10) / 10}%`;
+}
+
+export function formatKenp(pages: number): string {
+  return `${Math.round(pages).toLocaleString('ja-JP')}p`;
 }
 
 export function formatBsr(bsr: number | null): string {

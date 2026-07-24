@@ -230,22 +230,27 @@ export async function editBook(
   }));
 
   // 9. R-05 安全装置: 最終章 body_md 末尾に正規の AI 開示文を 1 回だけ付与する。
+  //    ただし開示文が空 (運営者が S-027 で無効化) の場合は挿入しない。KDP への AI
+  //    開示は入稿フォームの「AI生成コンテンツ」設問で行う運用とし、本文には入れない
+  //    (読者離脱防止・運営者要望)。step 8 で LLM が付けた開示文は既に除去済み。
   const lastIdx = stripped.length - 1;
   const lastChapter = stripped[lastIdx]!;
   let finalChapters: EditorChapterOutput[] = stripped;
+  let appended = false;
 
-  if (!containsDisclosure(lastChapter.body_md, aiText)) {
+  if (aiText !== '' && !containsDisclosure(lastChapter.body_md, aiText)) {
     const fixedLast: EditorChapterOutput = {
       ...lastChapter,
       body_md: `${lastChapter.body_md.trimEnd()}\n\n${aiText}`,
     };
     finalChapters = [...stripped];
     finalChapters[lastIdx] = fixedLast;
+    appended = true;
   }
 
   const result: EditorOutput = {
     chapters: finalChapters,
-    ai_disclosure_appended: true,
+    ai_disclosure_appended: appended,
     ai_disclosure_text: aiText,
   };
   return result;
@@ -441,10 +446,21 @@ function buildUserMessage(input: EditorInput): string {
     '',
     '【校閲対象の全章 (JSON 配列)】',
     JSON.stringify(input.chapters, null, 2),
-    '',
-    '【巻末に必ず挿入する AI 生成開示文 (R-05 / KDP コンテンツガイドライン遵守)】',
-    input.aiDisclosureText,
   );
+
+  const hasDisclosure = input.aiDisclosureText.trim() !== '';
+  if (hasDisclosure) {
+    lines.push(
+      '',
+      '【巻末に必ず挿入する AI 生成開示文 (R-05 / KDP コンテンツガイドライン遵守)】',
+      input.aiDisclosureText,
+    );
+  } else {
+    lines.push(
+      '',
+      '【AI 生成開示文】本文中に AI 生成に関する開示文・注記は一切挿入しないこと。',
+    );
+  }
 
   if (input.feedback && input.feedback.length > 0) {
     lines.push(

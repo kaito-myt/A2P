@@ -119,10 +119,10 @@ describe('buildAppSettingsSeed', () => {
     expect(s.monthly_cost_red_jpy).toBe(50000);
   });
 
-  it('seeds ai_disclosure_text with the documented placeholder', () => {
+  it('seeds ai_disclosure_text as empty by default (本文には AI 開示文を入れない運用)', () => {
     const s = buildAppSettingsSeed({});
     expect(s.ai_disclosure_text).toBe(DEFAULT_AI_DISCLOSURE_TEXT);
-    expect(s.ai_disclosure_text).toMatch(/AI/);
+    expect(DEFAULT_AI_DISCLOSURE_TEXT).toBe('');
   });
 
   it('uses MAIL_TO from env when set, otherwise fallback', () => {

@@ -144,6 +144,8 @@ describe('serializeBookKpiRow', () => {
       asin: 'B09XXXXXX',
       monthly_royalty_jpy: 3000,
       cumulative_royalty_jpy: 12000,
+      monthly_kenp_read: 500,
+      cumulative_kenp_read: 2000,
       latest_bsr: 5000,
       avg_stars: 4.3,
       quality_score: 82,

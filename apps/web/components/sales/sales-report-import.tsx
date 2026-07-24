@@ -85,12 +85,23 @@ export function SalesReportImport({ accounts }: { accounts: AccountOption[] }) {
       return;
     }
     startTransition(async () => {
-      const res = await commitSalesReport({ account_id: accountId, year_month: preview.yearMonth, rows });
+      const res = await commitSalesReport({
+        account_id: accountId,
+        year_month: preview.yearMonth,
+        report_kind: preview.reportKind,
+        rows,
+      });
       if (!res.ok) {
         setError(res.error.message);
         return;
       }
-      setInfo(`${res.data.upserted} 冊分を取り込みました${res.data.skippedUnknownAsin ? `（未突合 ${res.data.skippedUnknownAsin} 件スキップ）` : ''}`);
+      const kindLabel = preview.reportKind === 'estimate' ? '見込み' : '確定';
+      const extras: string[] = [];
+      if (res.data.skippedUnknownAsin) extras.push(`未突合 ${res.data.skippedUnknownAsin} 件`);
+      if (res.data.skippedConfirmed) extras.push(`確定値優先で見送り ${res.data.skippedConfirmed} 件`);
+      setInfo(
+        `${res.data.upserted} 冊分を${kindLabel}として取り込みました${extras.length ? `（${extras.join(' / ')}）` : ''}`,
+      );
       setPreview(null);
       if (fileRef.current) fileRef.current.value = '';
       router.refresh();
@@ -127,8 +138,8 @@ export function SalesReportImport({ accounts }: { accounts: AccountOption[] }) {
               <div>
                 <h3 className="text-card-title text-foreground">KDP 売上レポート取込</h3>
                 <p className="mt-1 text-caption text-muted">
-                  KDP レポートページで「ロイヤリティ/販売」レポート (.xlsx/.csv) をダウンロードし、
-                  対象年月を選んでアップロードしてください。ASIN で書籍と突合します。
+                  「レポート＞明細＞<b>月別ロイヤリティ</b>」= 確定値、「<b>ロイヤリティ推定</b>」= 当月見込み。
+                  どちらの xlsx でも取り込めます。対象年月を選んでアップロードしてください（ASIN で書籍と突合）。
                 </p>
               </div>
               <button
@@ -203,18 +214,44 @@ export function SalesReportImport({ accounts }: { accounts: AccountOption[] }) {
 
             {preview && (
               <div className="mt-space-relaxed flex flex-col gap-space-snug" data-testid="sales-import-preview">
-                <div className="flex flex-wrap gap-x-space-relaxed gap-y-1 text-caption text-charcoal-82">
+                <div className="flex flex-wrap items-center gap-x-space-relaxed gap-y-1 text-caption text-charcoal-82">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-caption font-medium ${
+                      preview.reportKind === 'estimate'
+                        ? 'bg-warning/15 text-warning'
+                        : 'bg-success/15 text-success'
+                    }`}
+                    data-testid="sales-import-kind"
+                  >
+                    {preview.reportKind === 'estimate' ? '当月見込み' : '確定値'}
+                  </span>
+                  <span>対象 {preview.yearMonth}</span>
                   <span>突合 {preview.matchedCount} 冊</span>
                   <span>未突合 {preview.unknownAsinCount} 件</span>
                   <span>合計ロイヤリティ ¥{preview.totals.royalty_jpy.toLocaleString('ja-JP')}</span>
                   <span>販売 {preview.totals.units_sold.toLocaleString('ja-JP')} 部</span>
                   <span>KENP {preview.totals.kenp_read.toLocaleString('ja-JP')} ページ</span>
+                  {preview.allocatedKenpRoyaltyJpy > 0 && (
+                    <span className="text-muted">
+                      うち KENP見込み ¥{preview.allocatedKenpRoyaltyJpy.toLocaleString('ja-JP')}（按分）
+                    </span>
+                  )}
                   {Object.keys(preview.unconvertedCurrencies).length > 0 && (
                     <span className="text-warning">
                       未換算通貨: {Object.entries(preview.unconvertedCurrencies).map(([c, n]) => `${c}×${n}`).join(', ')}
                     </span>
                   )}
                 </div>
+                {preview.monthsInFile.length > 1 && (
+                  <p className="text-caption text-muted">
+                    このファイルには複数月が含まれます（{preview.monthsInFile.join(', ')}）。取り込むのは対象年月 {preview.yearMonth} 分のみです。
+                  </p>
+                )}
+                {preview.reportKind === 'estimate' && preview.totals.kenp_read > 0 && preview.allocatedKenpRoyaltyJpy === 0 && (
+                  <p className="text-caption text-warning">
+                    当月の KENP ロイヤリティ単価は月中は未確定のため、KENP分は ¥0 と表示されます（翌月に確定値レポートで取り込み直してください）。
+                  </p>
+                )}
 
                 <div className="max-h-80 overflow-auto rounded-card border border-border-warm">
                   <table className="w-full text-caption">

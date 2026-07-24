@@ -23,6 +23,7 @@ import {
   formatStars,
   formatBsr,
   formatQuality,
+  formatKenp,
   type BookKpiRowSerialized,
 } from '@/lib/sales-kpi-view';
 
@@ -124,6 +125,13 @@ export function BooksKpiTable({ books }: BooksKpiTableProps) {
                 onSort={handleSort}
               />
               <SortTh
+                label="KENP読了"
+                colKey="cumulative_kenp_read"
+                activeKey={sortKey}
+                dir={sortDir}
+                onSort={handleSort}
+              />
+              <SortTh
                 label={m.colBsr}
                 colKey="latest_bsr"
                 activeKey={sortKey}
@@ -213,6 +221,16 @@ export function BooksKpiTable({ books }: BooksKpiTableProps) {
                 {/* Cumulative royalty */}
                 <td className="whitespace-nowrap px-space-relaxed py-space-snug text-right tabular-nums text-charcoal">
                   {formatJpy(book.cumulative_royalty_jpy)}
+                </td>
+
+                {/* KENP read (累計) — 月次があれば副表示 */}
+                <td className="whitespace-nowrap px-space-relaxed py-space-snug text-right tabular-nums text-muted">
+                  {formatKenp(book.cumulative_kenp_read)}
+                  {book.monthly_kenp_read > 0 && (
+                    <span className="ml-1 text-caption text-muted/70">
+                      (今期 {formatKenp(book.monthly_kenp_read)})
+                    </span>
+                  )}
                 </td>
 
                 {/* BSR */}

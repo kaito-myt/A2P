@@ -75,7 +75,9 @@ export const EditorInputSchema = z.object({
    * AI 開示文 (`AppSettings.ai_disclosure_text`)。呼出側 (worker) が DB から読み出して渡す。
    * Editor は受け取った文字列を巻末挿入する責務を負う。
    */
-  aiDisclosureText: z.string().min(1).max(500),
+  // 空文字 = 本文に AI 開示文を挿入しない (運営者が S-027 で無効化)。KDP への開示は
+  // 入稿フォームで行う運用。非空なら Editor が巻末に 1 回だけ挿入する。
+  aiDisclosureText: z.string().max(500).default(''),
   /** F-050 修正コメント反映 — Writer chapter と同じ priority 別構造化形式。 */
   feedback: z.array(RevisionFeedbackItemSchema).default([]),
 });

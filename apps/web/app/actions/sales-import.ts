@@ -4,11 +4,14 @@
  * KDP 売上レポート取込 Server Actions (docs/09 §3, T-KS-04)。
  *
  * - previewSalesReport(FormData): アップロードされた xlsx/csv をパース・正規化し、
- *   ASIN→書籍の突合結果 + 合計 + 警告を返す (DB 未反映のプレビュー)。
+ *   対象月・ASIN→書籍の突合結果 + 合計 + 警告を返す (DB 未反映のプレビュー)。
  * - commitSalesReport(JSON): プレビューで確認した正規化行を sales_records に upsert し、
  *   sales_fetch_runs に手動取込履歴を残す。
  *
- * ジャンル拡張やスクレイプに依存せず、KDP のダウンロードレポートから確実に売上を取り込む。
+ * 2 種の KDP レポートに対応:
+ *  - 「月別ロイヤリティ明細」= 確定値 (source='manual_upload')
+ *  - 「ロイヤリティ推定」    = 当月見込み (source='manual_estimate')
+ * 見込みは確定値を上書きしない (確定 > 見込みの優先度)。
  */
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -17,11 +20,17 @@ import { fail, ok, isA2PError, type ActionResult } from '@a2p/contracts';
 import { prisma } from '@a2p/db';
 
 import { getSessionOrThrow } from '@/lib/auth-helpers';
-import { parseKdpReportWorkbook } from '@/lib/kdp-sales/parse';
+import { parseKdpReportWorkbook, type KdpReportKind } from '@/lib/kdp-sales/parse';
 import { normalizeKdpRows, type NormalizedSalesRow } from '@/lib/kdp-sales/normalize';
 
 const YM_RE = /^\d{4}-\d{2}$/;
 const MAX_FILE_BYTES = 15 * 1024 * 1024; // 15MB
+
+/** 確定 = 月別ロイヤリティ明細、見込み = ロイヤリティ推定。 */
+const SOURCE_CONFIRMED = 'manual_upload';
+const SOURCE_ESTIMATE = 'manual_estimate';
+/** 見込みで上書きしてよい既存 source (= 上書き禁止の確定系を列挙し、それ以外は許可)。 */
+const CONFIRMED_SOURCES = new Set([SOURCE_CONFIRMED]);
 
 export interface SalesImportPreviewRow extends NormalizedSalesRow {
   /** 突合できた書籍 (無ければ null = 未知 ASIN) */
@@ -32,12 +41,17 @@ export interface SalesImportPreviewRow extends NormalizedSalesRow {
 
 export interface SalesImportPreview {
   yearMonth: string;
+  reportKind: KdpReportKind;
   rows: SalesImportPreviewRow[];
   totals: { royalty_jpy: number; units_sold: number; kenp_read: number };
   matchedCount: number;
   unknownAsinCount: number;
   /** 円換算できなかった通貨 → 行数 */
   unconvertedCurrencies: Record<string, number>;
+  /** ファイルに含まれる月 (YYYY-MM) 一覧 */
+  monthsInFile: string[];
+  /** KENP ロイヤリティを概要合計から按分計上した総額 (見込みレポート時のみ >0) */
+  allocatedKenpRoyaltyJpy: number;
   sheetsSeen: string[];
   sheetsParsed: string[];
   detectedHeaders: string[];
@@ -95,7 +109,20 @@ export async function previewSalesReport(
   }
 
   const fxUsdJpy = await getFxUsdJpy();
-  const norm = normalizeKdpRows(parsed.rows, { fxToJpy: { USD: fxUsdJpy } });
+  const norm = normalizeKdpRows(parsed.rows, {
+    fxToJpy: { USD: fxUsdJpy },
+    targetMonth: yearMonth,
+    monthlySummaries: parsed.monthlySummaries,
+  });
+
+  // 選択した月がファイルに無い場合は、含まれる月を案内する。
+  if (norm.rows.length === 0) {
+    const list = parsed.months.length > 0 ? parsed.months.join(', ') : '(不明)';
+    return fail(
+      'validation',
+      `選択した対象年月 (${yearMonth}) のデータがレポートにありません。ファイルに含まれる月: ${list}`,
+    );
+  }
 
   const asins = norm.rows.map((r) => r.asin);
   const books = await prisma.book.findMany({
@@ -117,11 +144,14 @@ export async function previewSalesReport(
 
   return ok({
     yearMonth,
+    reportKind: parsed.reportKind,
     rows,
     totals: norm.totals,
     matchedCount,
     unknownAsinCount: rows.length - matchedCount,
     unconvertedCurrencies: norm.unconvertedCurrencies,
+    monthsInFile: parsed.months,
+    allocatedKenpRoyaltyJpy: norm.allocatedKenpRoyaltyJpy,
     sheetsSeen: parsed.sheetsSeen,
     sheetsParsed: parsed.sheetsParsed,
     detectedHeaders: parsed.detectedHeaders,
@@ -132,6 +162,7 @@ export async function previewSalesReport(
 const CommitSchema = z.object({
   account_id: z.string().min(1),
   year_month: z.string().regex(YM_RE),
+  report_kind: z.enum(['confirmed', 'estimate']).default('confirmed'),
   rows: z
     .array(
       z.object({
@@ -148,6 +179,8 @@ const CommitSchema = z.object({
 export interface SalesImportCommitResult {
   upserted: number;
   skippedUnknownAsin: number;
+  /** 確定値が既にあり、見込みでの上書きを見送った件数 */
+  skippedConfirmed: number;
   runId: string;
 }
 
@@ -165,7 +198,8 @@ export async function commitSalesReport(
   if (!parsed.success) {
     return fail('validation', '取込データが不正です', parsed.error.flatten());
   }
-  const { account_id, year_month, rows } = parsed.data;
+  const { account_id, year_month, report_kind, rows } = parsed.data;
+  const source = report_kind === 'estimate' ? SOURCE_ESTIMATE : SOURCE_CONFIRMED;
 
   // 手動取込の実行履歴を作成 (running → done)。
   const run = await prisma.salesFetchRun.create({
@@ -179,12 +213,29 @@ export async function commitSalesReport(
   });
   const bookByAsin = new Map(books.map((b) => [b.asin, b.id]));
 
+  // 既存レコードの source を引いて、見込みが確定を上書きしないようにする。
+  const bookIds = Array.from(bookByAsin.values());
+  const existing = await prisma.salesRecord.findMany({
+    where: { book_id: { in: bookIds }, year_month },
+    select: { book_id: true, source: true },
+  });
+  const existingSource = new Map(existing.map((e) => [e.book_id, e.source]));
+
   let upserted = 0;
   let skipped = 0;
+  let skippedConfirmed = 0;
   for (const r of rows) {
     const bookId = bookByAsin.get(r.asin);
     if (!bookId) {
       skipped++;
+      continue;
+    }
+    // 見込み取込は、確定値が既にある月を上書きしない。
+    if (
+      report_kind === 'estimate' &&
+      CONFIRMED_SOURCES.has(existingSource.get(bookId) ?? '')
+    ) {
+      skippedConfirmed++;
       continue;
     }
     try {
@@ -196,13 +247,13 @@ export async function commitSalesReport(
           royalty_jpy: r.royalty_jpy,
           units_sold: r.units_sold,
           kenp_read: r.kenp_read,
-          source: 'manual_upload',
+          source,
         },
         update: {
           royalty_jpy: r.royalty_jpy,
           units_sold: r.units_sold,
           kenp_read: r.kenp_read,
-          source: 'manual_upload',
+          source,
         },
       });
       upserted++;
@@ -212,16 +263,20 @@ export async function commitSalesReport(
     }
   }
 
+  const notes: string[] = [];
+  if (skipped > 0) notes.push(`未突合 ASIN ${skipped} 件をスキップ`);
+  if (skippedConfirmed > 0) notes.push(`確定値がある ${skippedConfirmed} 件は見込み上書きを見送り`);
+
   await prisma.salesFetchRun.update({
     where: { id: run.id },
     data: {
       status: 'done',
       records_upserted: upserted,
       finished_at: new Date(),
-      ...(skipped > 0 ? { error_message: `未突合 ASIN ${skipped} 件をスキップ` } : {}),
+      ...(notes.length > 0 ? { error_message: notes.join(' / ') } : {}),
     },
   });
 
   revalidatePath('/sales');
-  return ok({ upserted, skippedUnknownAsin: skipped, runId: run.id });
+  return ok({ upserted, skippedUnknownAsin: skipped, skippedConfirmed, runId: run.id });
 }

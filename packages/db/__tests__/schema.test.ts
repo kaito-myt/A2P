@@ -8,13 +8,23 @@ const dbRoot = join(here, '..');
 const schemaPath = join(dbRoot, 'schema.prisma');
 const migrationsDir = join(dbRoot, 'migrations');
 
-// docs/05 §3 + T-02-13 (ApiCredential) + T-12-01 (SalesFetchRun) で定義された 32 model 全てがスキーマに存在することを担保する。
+// docs/05 §3 をベースに、以降のフェーズで追加された model (販促/組織/バトルテスト等) を
+// 含む全 model がスキーマに存在することを担保する。schema.prisma の model 宣言と同期させる。
 const EXPECTED_MODELS = [
   'User',
   'Account',
   'PublishingPlan',
   'ThemeCandidate',
+  'AuthorName',
+  'LabelName',
   'Book',
+  'PromotionPlan',
+  'BakeoffRun',
+  'BakeoffResult',
+  'PromotionChannelSetting',
+  'PromotionAccount',
+  'BlogPost',
+  'PromotionPost',
   'Outline',
   'Chapter',
   'ChapterRevision',
@@ -40,20 +50,24 @@ const EXPECTED_MODELS = [
   'RevisionComment',
   'RevisionRun',
   'BookLock',
-  'AppSettings',
   'ApiCredential',
+  'CostImprovementProposal',
+  'AppSettings',
+  'OrgObjective',
+  'OrgTask',
+  'OrgPlaybook',
 ] as const;
 
 describe('schema.prisma', () => {
   const schema = readFileSync(schemaPath, 'utf8');
 
-  it('contains all 32 docs/05 §3 models', () => {
+  it('contains all declared models', () => {
     for (const model of EXPECTED_MODELS) {
       expect(schema).toMatch(new RegExp(`^model\\s+${model}\\b`, 'm'));
     }
   });
 
-  it('declares 32 models exactly', () => {
+  it('declares exactly the expected number of models', () => {
     const matches = schema.match(/^model\s+\w+/gm) ?? [];
     expect(matches.length).toBe(EXPECTED_MODELS.length);
   });
