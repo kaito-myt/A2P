@@ -1,0 +1,30 @@
+# `railway up` のアップロード対象から除外する (.dockerignore は upload には効かない)。
+# これが無いと node_modules / .next / docs(ワイヤーフレームPNGで100MB超) までアップロードされ、
+# railway up が "operation timed out" で失敗する。worker イメージのビルドには不要なものを外す。
+
+# 依存・ビルド成果物 (コンテナ内で再インストール/再ビルドされる)
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+packages/db/generated
+
+# テスト・カバレッジ・E2E 成果物 (worker ビルドに不要)
+**/coverage
+**/.vitest
+tests
+test-results
+playwright-report
+
+# 設計ドキュメント (100MB超のワイヤーフレームPNGを含み、upload をタイムアウトさせる)
+docs
+
+# VCS / ログ / 一時ファイル / 秘密情報
+.git
+**/*.log
+**/tmp
+.env
+.env.*
+!.env.example
+Xキー情報
+TikTokキー情報
