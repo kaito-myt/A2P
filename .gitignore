@@ -39,3 +39,8 @@ packages/db/generated/
 # X API secrets (never commit)
 Xキー情報
 *キー情報
+
+# KDP 自動取得 セッション/キャプチャ (秘密情報)
+scripts/.kdp-session.json
+scripts/.kdp-captures/
+kdp-session.json

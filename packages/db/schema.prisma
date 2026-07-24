@@ -43,6 +43,9 @@ model Account {
   genre_policy_json   Json
   kdp_credentials_enc String? // AES-256-GCM 暗号文 (Phase 3 用、Phase 1 は null)
   kdp_2fa_secret_enc  String? // TOTP シークレット（任意保管）
+  // 自動取得(Phase2)用: Playwright storageState(ログイン済Cookie等)の暗号文。
+  // 運営者が一度手動ログインしてキャプチャ→ワーカーが再利用(bot検知/2FA回避)。
+  kdp_session_state_enc String? @db.Text
   status              String   @default("active") // active | archived
   created_at          DateTime @default(now())
   updated_at          DateTime @updatedAt
