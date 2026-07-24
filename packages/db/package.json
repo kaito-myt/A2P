@@ -9,6 +9,7 @@
     ".": "./index.ts",
     "./cost-aggregation": "./src/cost-aggregation.ts",
     "./books-kpi": "./src/books-kpi.ts",
+    "./book-cull": "./src/book-cull.ts",
     "./ab-comparison": "./src/ab-comparison.ts"
   },
   "scripts": {

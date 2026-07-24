@@ -7,6 +7,7 @@ import { BATCH_PLAN_DISPATCHER_TASK_NAME } from './tasks/batch-plan-dispatcher.j
 import { CATALOG_FETCH_TASK_NAME } from './tasks/catalog-fetch.js';
 import { FX_FETCH_TASK_NAME } from './tasks/fx-fetch.js';
 import { SALES_FETCH_DISPATCHER_TASK_NAME } from './tasks/sales-fetch-dispatcher.js';
+import { BOOK_CULL_DETECT_TASK_NAME } from './tasks/book-cull-detect.js';
 import { PROMOTION_DISPATCH_TASK_NAME } from './tasks/promotion-dispatch.js';
 import { PROMOTION_REVIEW_DAILY_TASK_NAME } from './tasks/promotion-review-daily.js';
 import { COST_OPTIMIZE_WEEKLY_TASK_NAME } from './tasks/cost-optimize-weekly.js';
@@ -109,6 +110,16 @@ export const SALES_FETCH_DISPATCH_CRON_ITEM: CronItem = {
   task: SALES_FETCH_DISPATCHER_TASK_NAME,
   match: resolveSalesFetchCron(),
   identifier: 'sales-fetch-dispatch-daily',
+};
+
+/** 低品質本間引き検出の既定 cron (月 06:00 JST = UTC 日 21:00)。 */
+export const BOOK_CULL_CRON_DEFAULT = '0 21 * * 1';
+
+/** `book.cull.detect` の CronItem 定義 (AppSettings.book_cull_enabled=true のときのみ使用)。 */
+export const BOOK_CULL_CRON_ITEM: CronItem = {
+  task: BOOK_CULL_DETECT_TASK_NAME,
+  match: BOOK_CULL_CRON_DEFAULT,
+  identifier: 'book-cull-detect-weekly',
 };
 
 /**
@@ -237,6 +248,10 @@ export interface CronRuntimeSettings {
   cost_auto_analyze_enabled?: boolean;
   /** F-062: 週次コスト分析 cron (省略時は既定 火 05:00 JST)。 */
   cost_analyze_cron?: string | null;
+  /** 低品質本の週次間引き検出を cron 有効化するか。 */
+  book_cull_enabled?: boolean;
+  /** 低品質本間引き検出 cron (省略時は既定 月 06:00 JST)。 */
+  book_cull_cron?: string | null;
   /** docs/06: CEO ティック (org.plan) を日次 cron で自動起動するか。 */
   org_auto_plan_enabled?: boolean;
   /** docs/06: org.plan cron (省略時は既定 05:00 JST)。 */
@@ -288,6 +303,14 @@ export function buildCronItemsWithSettings(settings: CronRuntimeSettings): CronI
         ? settings.promo_dispatch_cron.trim()
         : PROMOTION_DISPATCH_CRON_DEFAULT;
     items.push({ ...PROMOTION_DISPATCH_CRON_ITEM, match: cronMatch });
+  }
+
+  if (settings.book_cull_enabled) {
+    const cronMatch =
+      typeof settings.book_cull_cron === 'string' && settings.book_cull_cron.trim().length > 0
+        ? settings.book_cull_cron.trim()
+        : BOOK_CULL_CRON_DEFAULT;
+    items.push({ ...BOOK_CULL_CRON_ITEM, match: cronMatch });
   }
 
   if (settings.promo_daily_review_enabled) {

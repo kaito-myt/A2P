@@ -171,6 +171,11 @@ model Book {
   model_assignment_snapshot Json
   has_pending_comments      Boolean   @default(false)
   has_blocking_comments     Boolean   @default(false) // F-049: must コメントが 1 件以上
+  // 低品質本の定期間引き (売上低迷ベース・レビュー承認式)。
+  // null | candidate(要レビュー) | approved(承認→取り下げ待ち) | rejected(残す) | taken_down(取り下げ済)
+  cull_status               String?
+  cull_detected_at          DateTime?
+  cull_reason               String?   @db.Text // 抽出時の指標スナップショット(公開日数/KENP/売上等)
   created_at                DateTime  @default(now())
   updated_at                DateTime  @updatedAt
   done_at                   DateTime?
@@ -997,6 +1002,12 @@ model AppSettings {
   // F-062: 週次でコスト改善提案を生成する機能のマスタスイッチ。
   cost_auto_analyze_enabled       Boolean  @default(false)
   cost_analyze_cron               String   @default("0 20 * * 1") // 毎週月曜 05:00 JST にコスト分析
+  // 低品質本の定期間引き (売上低迷ベース・レビュー承認式)。週次で候補抽出→運営者承認→取り下げ(出版停止+削除)。
+  book_cull_enabled               Boolean  @default(false)
+  book_cull_cron                  String   @default("0 21 * * 1") // 毎週月曜 06:00 JST に候補抽出
+  book_cull_min_age_days          Int      @default(60) // 公開後この日数を経過した本のみ対象
+  book_cull_max_kenp              Int      @default(300) // 累計KENPがこれ以下 かつ
+  book_cull_max_royalty_jpy       Int      @default(100) // 累計ロイヤリティがこれ以下 → 低迷=候補
   kdp_submit_timeout_minutes      Int      @default(10)
   kdp_submit_retry_count          Int      @default(2)
   job_log_retention_days          Int      @default(90)

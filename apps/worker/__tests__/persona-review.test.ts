@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 import { reviewDraftsWithPersona, pillarStrings } from '../src/tasks/promotion-post/persona-review.js';
 import type { AccountStrategyProfile } from '@a2p/contracts/agents';
+import type { ContentOptimizerInput } from '@a2p/contracts/agents/content-optimizer';
 
 function profile(overrides: Partial<AccountStrategyProfile> = {}): AccountStrategyProfile {
   return {
@@ -28,7 +29,7 @@ describe('pillarStrings', () => {
 
 describe('reviewDraftsWithPersona', () => {
   it('optimize が改善を返せば採用し、score/reason を記録する', async () => {
-    const optimize = vi.fn(async () => ({
+    const optimize = vi.fn(async (_input: ContentOptimizerInput) => ({
       revisions: [{ id: 'd1', changed: true, revised_body: '改善版', reason: 'r', score: 88, on_strategy: true, persona_reaction: '刺さる' }],
     }));
     const res = await reviewDraftsWithPersona({

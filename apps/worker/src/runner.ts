@@ -104,6 +104,8 @@ import {
   revisionBookApplyTask,
 } from './tasks/revision-book-apply.js';
 import { SALES_FETCH_TASK_NAME, salesFetchTask } from './tasks/sales-fetch.js';
+import { BOOK_CULL_DETECT_TASK_NAME, bookCullDetectTask } from './tasks/book-cull-detect.js';
+import { KDP_BOOK_TAKEDOWN_TASK_NAME, kdpBookTakedownTask } from './tasks/kdp-book-takedown.js';
 import {
   SALES_FETCH_DISPATCHER_TASK_NAME,
   salesFetchDispatcherTask,
@@ -218,6 +220,8 @@ export function buildTaskList(): TaskList {
     [FX_FETCH_TASK_NAME]: fxFetchTask,
     [SALES_FETCH_TASK_NAME]: salesFetchTask,
     [SALES_FETCH_DISPATCHER_TASK_NAME]: salesFetchDispatcherTask,
+    [BOOK_CULL_DETECT_TASK_NAME]: bookCullDetectTask,
+    [KDP_BOOK_TAKEDOWN_TASK_NAME]: kdpBookTakedownTask,
     [PROMOTION_POSTS_GENERATE_TASK_NAME]: promotionPostsGenerateTask,
     [PROMOTION_STRATEGY_GENERATE_TASK_NAME]: promotionStrategyGenerateTask,
     [PROMOTION_CONTENT_GENERATE_TASK_NAME]: promotionContentGenerateTask,
@@ -328,6 +332,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
     promo_review_cron: null,
     cost_auto_analyze_enabled: false,
     cost_analyze_cron: null,
+    book_cull_enabled: false,
+    book_cull_cron: null,
     org_auto_plan_enabled: false,
     org_plan_cron: null,
     org_auto_execute_enabled: false,
@@ -351,6 +357,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
         promo_review_cron: true,
         cost_auto_analyze_enabled: true,
         cost_analyze_cron: true,
+        book_cull_enabled: true,
+        book_cull_cron: true,
         org_auto_plan_enabled: true,
         org_plan_cron: true,
         org_auto_execute_enabled: true,
@@ -379,6 +387,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
       promo_review_cron: row.promo_review_cron,
       cost_auto_analyze_enabled: row.cost_auto_analyze_enabled,
       cost_analyze_cron: row.cost_analyze_cron,
+      book_cull_enabled: row.book_cull_enabled,
+      book_cull_cron: row.book_cull_cron,
       org_auto_plan_enabled: row.org_auto_plan_enabled,
       org_plan_cron: row.org_plan_cron,
       org_auto_execute_enabled: row.org_auto_execute_enabled,
