@@ -158,3 +158,37 @@ Phase 1/2 とも、パース後は同じ正規化コア `packages/db` or `@a2p/c
 - KDP は API が無く KENP は月次確定のため、当月は見込み、確定後に確定値で上書きする運用。
 - 売上 KPI に **KENP 読了ページ**を追加（サマリ「KENP読了(累計)」＋書籍別テーブル「KENP読了」列、今期併記）。
   見込み取込でも KENP ページは可視化される。
+
+## 9. 自動取得 Phase 2 実装 (2026-07-24) — セッション再利用
+
+Amazon はヘッドレス自動ログインを bot 検知でブロックしがちなため、**セッション再利用**方式を採用。
+
+### 9.1 セッション取得 (初回・運営者が1回)
+- `scripts/kdp-capture-session.mjs`: ヘッドフル Chromium で運営者が普段どおりログイン
+  (Google 経由でも可)＋レポートを1回DL。ログイン状態(Playwright storageState)を
+  `scripts/.kdp-session.json` に自動保存(数秒ごと・Enter不要・永続プロファイル)。
+- 保存したセッションを AES-256-GCM で暗号化して `accounts.kdp_session_state_enc` に格納
+  (鍵 `KDP_CRED_KEY`)。認証トークン `at-acbjp`/`x-acbjp` 等は 365〜400 日有効。
+
+### 9.2 レポート DL (ワーカー・DOM操作不要)
+実 KDP で判明した2段 GET を `context.request`(セッションCookie付き)で叩く:
+1. `GET kdpreports.amazon.co.jp/download/report/pmr/ja_JP/pmrReport.xslx?selectedMonth=YYYY-MM&reportType=KDP_PMR`
+   → JSON `{ requested, available, url:<S3署名URL> }`
+2. `GET <S3署名URL>` → xlsx バイナリ
+- `selectedMonth` で任意月を直接指定できる。S3 URL は48h有効・都度生成。
+- セッション切れ判定: サインイン誘導/HTML/401,403 → `reason='session_expired'` を返し、
+  運営者へ再キャプチャを促す。report 生成待ちは数回リトライ。
+
+### 9.3 取込 (`runSalesFetch`)
+- 復号セッション → `downloadReport` → `@a2p/kdp-report` で対象月を正規化 → ASIN 突合 →
+  `sales_records` upsert(`source='auto'`, royalty/units/kenp)。
+- **手動確定(`source='manual_upload'`)は自動で上書きしない**(運営者の手動取込を保護)。
+
+### 9.4 スケジュール
+- `sales.fetch.dispatch` cron(既定 02:00 JST)を `AppSettings.sales_auto_fetch_enabled=true`
+  で有効化。JST基準で **前月(確定KENPロイヤリティの取込直し)＋当月(速報)** を日次 enqueue。
+- 当月は KENP 単価が Amazon 未確定のため KENP 金額は ¥0(ページ数は入る)。翌月に確定値へ上書き。
+
+### 9.5 共有パッケージ
+- `@a2p/kdp-report`(parse/normalize + xlsx)。web(手動アップロード)と worker(自動取得)で共有。
+  web の `lib/kdp-sales/{parse,normalize}.ts` は互換シム(再エクスポート)。

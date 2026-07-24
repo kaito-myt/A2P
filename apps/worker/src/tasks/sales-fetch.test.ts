@@ -136,8 +136,8 @@ describe('runSalesFetch (auto-fetch Phase2)', () => {
     expect(String(f!.data.error_message)).toContain('セッション期限切れ');
   });
 
-  it('手動確定(manual_upload)は自動で上書きしない', async () => {
-    const { db, upserts, runUpdates } = makeMockPrisma({ existingSource: { [KNOWN_BOOK_ID]: 'manual_upload' } });
+  it('手入力(manual)は自動で上書きしない', async () => {
+    const { db, upserts, runUpdates } = makeMockPrisma({ existingSource: { [KNOWN_BOOK_ID]: 'manual' } });
     const res = await runSalesFetch({
       payload: { account_id: ACCOUNT_ID, year_month: YEAR_MONTH },
       browserPort: createFixtureBrowserPort(makePmrXlsx()),
@@ -148,6 +148,19 @@ describe('runSalesFetch (auto-fetch Phase2)', () => {
     expect(res.recordsUpserted).toBe(0);
     expect(upserts).toHaveLength(0);
     expect(runUpdates.find((u) => u.data.status === 'done')).toBeTruthy();
+  });
+
+  it('レポート手動取込(manual_upload)は自動が上書きする', async () => {
+    const { db, upserts } = makeMockPrisma({ existingSource: { [KNOWN_BOOK_ID]: 'manual_upload' } });
+    const res = await runSalesFetch({
+      payload: { account_id: ACCOUNT_ID, year_month: YEAR_MONTH },
+      browserPort: createFixtureBrowserPort(makePmrXlsx()),
+      prisma: db,
+      logger: silentLogger,
+    });
+    expect(res.ok).toBe(true);
+    expect(res.recordsUpserted).toBe(1);
+    expect(upserts[0]!.update.source).toBe('auto');
   });
 
   it('未突合ASINは0件でも done', async () => {

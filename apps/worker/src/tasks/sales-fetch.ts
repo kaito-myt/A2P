@@ -20,8 +20,12 @@ import type { BrowserPort } from './sales-fetch/browser-port.js';
 
 export const SALES_FETCH_TASK_NAME = 'sales.fetch';
 
-/** 確定手動取込。自動取得はこれを上書きしない。 */
-const PROTECTED_SOURCES = new Set(['manual_upload']);
+/**
+ * 自動取得が上書きしない source。
+ * - 'manual'        : 運営者が /sales/manual で手入力した数値 → 保護する。
+ * - 'manual_upload' : レポート手動取込 = 自動取得と同じ権威データ源なので上書きOK(保護しない)。
+ */
+const PROTECTED_SOURCES = new Set(['manual']);
 
 // ---------------------------------------------------------------------------
 // 公開型
