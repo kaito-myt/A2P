@@ -1,50 +1,47 @@
 /**
- * KDP 実ブラウザ操作 (Playwright) — BrowserPort の本番実装 [F-038 / Phase 3 SP-14]。
+ * KDP レポート取得 (Playwright) — BrowserPort の本番実装 [F-038 / Phase2 自動取得]。
  *
- * Amazon KDP にログインし、指定年月の売上/ロイヤリティレポートページの HTML を取得する。
- * playwright の import は **本ファイルに閉じる** (browser-port.ts は Playwright 非依存の契約のまま)。
+ * 保存済みセッション(storageState)で Playwright コンテキストを作り、月別ロイヤリティ
+ * (PMR)レポートの DL エンドポイントを **2 段 GET** で叩いて xlsx を取得する。
+ * DOM 操作は行わない (実 KDP で検証済みの安定経路)。playwright の import は本ファイルに閉じる。
  *
- * 2FA:
- *  - credentials.totp_secret があれば otplib で TOTP を生成して自動入力する。
- *  - totp_secret が無く 2FA チャレンジが出た場合は { ok:false, reason:'2fa_required' } を返す
- *    (呼出側 runSalesFetch が Kdp2FaCode を作り運営者コード入力待ちにする)。
- *
- * セレクタは Amazon のサインインUIに合わせた best-effort。実アカウントでの調整は
- * env (KDP_SIGNIN_URL / KDP_REPORT_URL_TEMPLATE) と本ファイルで行う。
+ * セッション切れ判定: DL エンドポイントが JSON を返さない / サインインへ誘導 /
+ * 4xx を返す場合は reason='session_expired' を返し、呼出側が運営者へ再取得を促す。
  */
-import { authenticator } from 'otplib';
-
 import { createLogger } from '@a2p/contracts/logger';
 
 import type {
   BrowserPort,
-  FetchReportHtmlArgs,
-  FetchReportHtmlResult,
+  DownloadReportArgs,
+  DownloadReportResult,
 } from './browser-port.js';
 
 const log = createLogger('worker.sales-fetch.playwright');
 
-const SIGNIN_URL = process.env.KDP_SIGNIN_URL ?? 'https://kdp.amazon.co.jp/';
-/** {ym} を YYYY-MM に置換して使うレポートページ URL テンプレート。 */
-const REPORT_URL_TEMPLATE =
-  process.env.KDP_REPORT_URL_TEMPLATE ?? 'https://kdp.amazon.co.jp/ja_JP/reports-new';
 const DEFAULT_TIMEOUT_MS = 60_000;
+const REPORTS_HOST = process.env.KDP_REPORTS_HOST ?? 'https://kdpreports.amazon.co.jp';
+/** {ym} を YYYY-MM に置換して使う PMR ダウンロードエンドポイント。 */
+const PMR_DOWNLOAD_PATH = '/download/report/pmr/ja_JP/pmrReport.xslx?selectedMonth={ym}&reportType=KDP_PMR';
+const UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
-/** コンテナ (Railway) 上の Chromium 起動に必要な引数。 */
-const LAUNCH_ARGS = [
-  '--no-sandbox',
-  '--disable-setuid-sandbox',
-  '--disable-dev-shm-usage',
-  '--disable-gpu',
-];
+/** コンテナ (Railway) 上の Chromium 起動引数。 */
+const LAUNCH_ARGS = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'];
 
 export function createPlaywrightBrowserPort(): BrowserPort {
-  return { fetchReportHtml };
+  return { downloadReport };
 }
 
-async function fetchReportHtml(args: FetchReportHtmlArgs): Promise<FetchReportHtmlResult> {
+async function downloadReport(args: DownloadReportArgs): Promise<DownloadReportResult> {
   const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  // playwright は動的 import (Chromium 不在環境でモジュールロード時に落ちないように)。
+
+  let storageState: unknown;
+  try {
+    storageState = JSON.parse(args.sessionState);
+  } catch {
+    return { ok: false, reason: 'session_expired', message: 'stored session is not valid JSON' };
+  }
+
   let chromium: typeof import('playwright').chromium;
   try {
     ({ chromium } = await import('playwright'));
@@ -55,100 +52,83 @@ async function fetchReportHtml(args: FetchReportHtmlArgs): Promise<FetchReportHt
   const browser = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
   try {
     const context = await browser.newContext({
+      // storageState 型は Playwright の StorageState (復号済み JSON をそのまま渡す)。
+      // 型注釈は type-only import なので "playwright を import しない" ルールに抵触しない。
+      storageState: storageState as Awaited<
+        ReturnType<import('playwright').BrowserContext['storageState']>
+      >,
       locale: 'ja-JP',
-      userAgent:
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-      viewport: { width: 1366, height: 900 },
-    });
-    const page = await context.newPage();
-    page.setDefaultTimeout(timeoutMs);
-
-    // --- 1. サインインページへ ---
-    await page.goto(SIGNIN_URL, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
-    // 着地ページを必ず記録 (セレクタ調整の起点)。
-    await saveDebugArtifacts(page, args.yearMonth, 'landing').catch(() => {});
-
-    // KDP トップに「サインイン」導線がある場合は踏む (既にサインインフォームなら空振り)。
-    await clickIfPresent(page, 'a#signin, a[href*="/ap/signin"], #a-autoid-0-announce', 3_000);
-    await page.waitForLoadState('domcontentloaded', { timeout: timeoutMs }).catch(() => {});
-    await saveDebugArtifacts(page, args.yearMonth, 'after-signin-click').catch(() => {});
-
-    // --- 2. Email 入力 ---
-    const emailInput = 'input[type="email"], input#ap_email';
-    const emailVisible = await isVisible(page, emailInput, 8_000);
-    if (emailVisible) {
-      await page.fill(emailInput, args.credentials.email);
-      await clickIfPresent(page, 'input#continue, #continue, input[type="submit"]', 3_000);
-      await page.waitForLoadState('domcontentloaded', { timeout: timeoutMs }).catch(() => {});
-    }
-    await saveDebugArtifacts(page, args.yearMonth, 'after-email').catch(() => {});
-
-    // --- 3. Password 入力 ---
-    const pwInput = 'input[type="password"], input#ap_password';
-    if (!(await isVisible(page, pwInput, 10_000))) {
-      // 実ページを記録して失敗理由を後から診断できるようにする。
-      await saveDebugArtifacts(page, args.yearMonth, 'no-password').catch(() => {});
-      return {
-        ok: false,
-        reason: 'login_failed',
-        message: `password field not found (url=${page.url()}, emailFieldSeen=${emailVisible})`,
-      };
-    }
-    await page.fill(pwInput, args.credentials.password);
-    // 「ログイン状態を保持」があればチェック
-    await checkIfPresent(page, 'input[name="rememberMe"]');
-    await clickIfPresent(page, 'input#signInSubmit, #signInSubmit, #auth-signin-button', 3_000);
-
-    await page.waitForLoadState('domcontentloaded', { timeout: timeoutMs }).catch(() => {});
-
-    // --- 4. 2FA チャレンジ判定 ---
-    const otpInput = 'input#auth-mfa-otpcode, input[name="otpCode"], input#ap_otp';
-    if (await isVisible(page, otpInput, 5_000)) {
-      if (!args.credentials.totp_secret) {
-        return { ok: false, reason: '2fa_required', message: '2FA challenge (no TOTP secret configured)' };
-      }
-      const code = generateTotp(args.credentials.totp_secret);
-      if (!code) {
-        return { ok: false, reason: '2fa_required', message: 'failed to generate TOTP code' };
-      }
-      await page.fill(otpInput, code);
-      await checkIfPresent(page, 'input#auth-mfa-remember-device');
-      await clickIfPresent(page, 'input#auth-signin-button, #auth-signin-button, input#signInSubmit', 3_000);
-      await page.waitForLoadState('domcontentloaded', { timeout: timeoutMs }).catch(() => {});
-    }
-
-    // --- 5. ログイン成否の簡易判定 ---
-    // まだ password / otp フォームが残っている = 失敗。
-    if (await isVisible(page, pwInput, 2_000)) {
-      const errText = await textIfPresent(page, '#auth-error-message-box, .a-alert-content');
-      await saveDebugArtifacts(page, args.yearMonth, 'login-failed').catch(() => {});
-      return { ok: false, reason: 'login_failed', message: errText || 'still on sign-in page after submit' };
-    }
-    if (await isVisible(page, otpInput, 1_500)) {
-      return { ok: false, reason: '2fa_required', message: '2FA still required after TOTP attempt' };
-    }
-
-    // --- 6. レポートページへ ---
-    const reportUrl = REPORT_URL_TEMPLATE.replace('{ym}', args.yearMonth);
-    await page.goto(reportUrl, { waitUntil: 'networkidle', timeout: timeoutMs }).catch(async () => {
-      await page.waitForLoadState('domcontentloaded', { timeout: timeoutMs }).catch(() => {});
+      userAgent: UA,
+      acceptDownloads: true,
     });
 
-    // レポートテーブルの描画を少し待つ (SPA レンダリング)。
-    await page.waitForTimeout(4_000);
+    const endpoint = REPORTS_HOST + PMR_DOWNLOAD_PATH.replace('{ym}', args.yearMonth);
 
-    const html = await page.content();
-    log.info(
-      { yearMonth: args.yearMonth, url: page.url(), htmlBytes: html.length },
-      'fetched KDP report page html',
-    );
-    // 実ページ構造を後から確認してセレクタ調整するためのデバッグ証跡 (screenshot + html) を R2 に保存。
-    await saveDebugArtifacts(page, args.yearMonth, 'report').catch(() => {});
-    return { ok: true, html, source: 'kdp_report_page' };
+    // --- 1 段目: DL エンドポイント → S3 署名 URL を含む JSON ---
+    // report 生成が間に合わない (available:false → S3 404) 場合に備え数回リトライ。
+    let s3Url: string | null = null;
+    let lastMsg = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await context.request.get(endpoint, { timeout: timeoutMs });
+      const status = res.status();
+      const ct = (res.headers()['content-type'] ?? '').toLowerCase();
+      const finalUrl = res.url();
+
+      // サインイン誘導 / HTML / 401,403 → セッション切れ。
+      if (status === 401 || status === 403 || /\/ap\/signin|\/signin/i.test(finalUrl)) {
+        return {
+          ok: false,
+          reason: 'session_expired',
+          message: `download endpoint returned auth challenge (status=${status}, url=${finalUrl})`,
+        };
+      }
+      if (!ct.includes('json')) {
+        const body = (await res.text().catch(() => '')).slice(0, 200);
+        if (/sign\s*-?in|ログイン|パスワード|ap_email/i.test(body)) {
+          return { ok: false, reason: 'session_expired', message: 'download endpoint returned a sign-in page' };
+        }
+        lastMsg = `unexpected content-type=${ct} status=${status}`;
+        await sleep(4000);
+        continue;
+      }
+
+      let json: unknown;
+      try {
+        json = JSON.parse(await res.text());
+      } catch {
+        lastMsg = 'download endpoint JSON parse failed';
+        await sleep(4000);
+        continue;
+      }
+      const url = extractUrl(json);
+      if (!url) {
+        lastMsg = `no url field in response (keys=${json && typeof json === 'object' ? Object.keys(json).join(',') : 'n/a'})`;
+        await sleep(4000);
+        continue;
+      }
+
+      // --- 2 段目: S3 署名 URL → xlsx バイナリ ---
+      const xlsxRes = await context.request.get(url, { timeout: timeoutMs });
+      if (xlsxRes.status() === 200) {
+        const buf = Buffer.from(await xlsxRes.body());
+        if (buf.length > 500) {
+          const filename = filenameFromUrl(url);
+          log.info({ yearMonth: args.yearMonth, bytes: buf.length, filename }, 'downloaded KDP PMR report');
+          return { ok: true, buffer: buf, filename };
+        }
+        lastMsg = `xlsx too small (${buf.length} bytes)`;
+      } else {
+        lastMsg = `s3 fetch status=${xlsxRes.status()}`;
+      }
+      s3Url = url;
+      await sleep(5000); // report 生成待ち
+    }
+
+    return { ok: false, reason: 'download_failed', message: lastMsg || (s3Url ? 'report not ready' : 'download failed') };
   } catch (err) {
     const msg = errMsg(err);
     const reason = /timeout/i.test(msg) ? 'timeout' : 'unknown';
-    log.warn({ err: msg }, 'playwright fetchReportHtml failed');
+    log.warn({ err: msg }, 'playwright downloadReport failed');
     return { ok: false, reason, message: msg };
   } finally {
     await browser.close().catch(() => {});
@@ -159,88 +139,34 @@ async function fetchReportHtml(args: FetchReportHtmlArgs): Promise<FetchReportHt
 // helpers
 // ---------------------------------------------------------------------------
 
-function generateTotp(secret: string): string | null {
+function extractUrl(json: unknown): string | null {
+  if (!json || typeof json !== 'object') return null;
+  const o = json as Record<string, unknown>;
+  const candidates = [o.url, o.downloadUrl, o.presignedUrl, o.location, o.s3Url, o.reportUrl];
+  for (const c of candidates) {
+    if (typeof c === 'string' && /^https?:\/\//.test(c)) return c;
+  }
+  const data = o.data as Record<string, unknown> | undefined;
+  if (data) {
+    for (const c of [data.url, data.downloadUrl]) {
+      if (typeof c === 'string' && /^https?:\/\//.test(c)) return c;
+    }
+  }
+  return null;
+}
+
+function filenameFromUrl(url: string): string | null {
   try {
-    return authenticator.generate(secret.replace(/\s+/g, ''));
+    const p = new URL(url).pathname;
+    const base = p.split('/').pop() ?? '';
+    return base || null;
   } catch {
     return null;
   }
 }
 
-async function isVisible(
-  page: import('playwright').Page,
-  selector: string,
-  timeoutMs: number,
-): Promise<boolean> {
-  try {
-    await page.waitForSelector(selector, { state: 'visible', timeout: timeoutMs });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function clickIfPresent(
-  page: import('playwright').Page,
-  selector: string,
-  timeoutMs: number,
-): Promise<void> {
-  try {
-    const el = await page.waitForSelector(selector, { state: 'visible', timeout: timeoutMs });
-    if (el) await el.click({ timeout: timeoutMs }).catch(() => {});
-  } catch {
-    /* not present — skip */
-  }
-}
-
-async function checkIfPresent(
-  page: import('playwright').Page,
-  selector: string,
-): Promise<void> {
-  try {
-    const el = await page.$(selector);
-    if (el) await el.check({ timeout: 2_000 }).catch(() => {});
-  } catch {
-    /* skip */
-  }
-}
-
-async function textIfPresent(
-  page: import('playwright').Page,
-  selector: string,
-): Promise<string | null> {
-  try {
-    const el = await page.$(selector);
-    if (!el) return null;
-    return ((await el.textContent()) ?? '').trim() || null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * 実ページのスクリーンショット + HTML を R2 (debug/sales-fetch/) に保存する。
- * セレクタ調整のための証跡。失敗しても本処理は止めない (呼び出し側で catch)。
- * 保存先キーは worker ログに出すので、実行後にログからキーを拾って R2 から取得できる。
- */
-async function saveDebugArtifacts(
-  page: import('playwright').Page,
-  yearMonth: string,
-  stage: string,
-): Promise<void> {
-  try {
-    const mod = await import('@a2p/storage');
-    const stamp = `${yearMonth}-${stage}-${Date.now()}`;
-    const pngKey = `debug/sales-fetch/${stamp}.png`;
-    const htmlKey = `debug/sales-fetch/${stamp}.html`;
-    const png = await page.screenshot({ fullPage: true });
-    const html = await page.content();
-    await mod.uploadBuffer(pngKey, png, 'image/png');
-    await mod.uploadBuffer(htmlKey, Buffer.from(html, 'utf-8'), 'text/html; charset=utf-8');
-    log.info({ stage, url: page.url(), pngKey, htmlKey }, 'saved sales-fetch debug artifacts to R2');
-  } catch (err) {
-    log.warn({ stage, err: errMsg(err) }, 'failed to save debug artifacts');
-  }
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 function errMsg(err: unknown): string {

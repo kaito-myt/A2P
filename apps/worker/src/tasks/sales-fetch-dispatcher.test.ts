@@ -80,7 +80,7 @@ describe('runSalesFetchDispatcher', () => {
   // -----------------------------------------------------------------------
   // 正常系: 全 active アカウント分を enqueue
   // -----------------------------------------------------------------------
-  it('active アカウント 3 件に対し sales.fetch を 3 件 enqueue する', async () => {
+  it('active アカウント 3 件 × 対象月(前月/当月) 2 で sales.fetch を 6 件 enqueue する', async () => {
     const accounts = [
       { id: 'acc-001' },
       { id: 'acc-002' },
@@ -97,24 +97,22 @@ describe('runSalesFetchDispatcher', () => {
     });
 
     expect(result.scannedAccounts).toBe(3);
-    expect(result.enqueuedJobs).toBe(3);
+    expect(result.enqueuedJobs).toBe(6); // 3 アカウント × 2 ヶ月
     expect(result.failedAccounts).toBe(0);
     expect(result.yearMonth).toBe(EXPECTED_YEAR_MONTH);
 
-    // addJob は 'sales.fetch' タスクに対してのみ呼ばれる
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(6);
     for (const call of calls) {
       expect(call.id).toBe('sales.fetch');
     }
 
-    // payload に account_id と year_month が含まれる
-    const payloadAccountIds = calls.map((c) => (c.payload as { account_id: string }).account_id);
-    expect(payloadAccountIds.sort()).toEqual(['acc-001', 'acc-002', 'acc-003'].sort());
+    // 各アカウントが 2 回 (前月/当月) 現れる
+    const payloadAccountIds = calls.map((c) => (c.payload as { account_id: string }).account_id).sort();
+    expect(payloadAccountIds).toEqual(['acc-001', 'acc-001', 'acc-002', 'acc-002', 'acc-003', 'acc-003']);
 
-    for (const call of calls) {
-      const payload = call.payload as { account_id: string; year_month: string };
-      expect(payload.year_month).toBe(EXPECTED_YEAR_MONTH);
-    }
+    // year_month は前月(2026-05) と 当月(2026-06)
+    const months = new Set(calls.map((c) => (c.payload as { year_month: string }).year_month));
+    expect([...months].sort()).toEqual(['2026-05', '2026-06']);
   });
 
   // -----------------------------------------------------------------------
@@ -142,9 +140,9 @@ describe('runSalesFetchDispatcher', () => {
     });
 
     expect(result.scannedAccounts).toBe(3);
-    expect(result.enqueuedJobs).toBe(2); // 2 件成功
-    expect(result.failedAccounts).toBe(1); // 1 件失敗
-    expect(callCount).toBe(3); // 全アカウントに試みた
+    expect(result.enqueuedJobs).toBe(4); // 2 アカウント成功 × 2 ヶ月
+    expect(result.failedAccounts).toBe(1); // acc-fail のみ (両月失敗)
+    expect(callCount).toBe(6); // 3 アカウント × 2 ヶ月すべて試行
   });
 
   // -----------------------------------------------------------------------

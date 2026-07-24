@@ -29,12 +29,14 @@
     "p-limit": "^6.1.0",
     "playwright": "^1.61.1",
     "undici": "^7.0.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@a2p/kdp-report": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
-    "vitest": "^2.1.5"
+    "vitest": "^2.1.5",
+    "xlsx": "^0.18.5"
   }
 }

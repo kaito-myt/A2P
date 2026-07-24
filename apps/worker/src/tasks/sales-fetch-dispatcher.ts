@@ -83,13 +83,19 @@ export async function runSalesFetchDispatcher(
 
   const now = deps.now?.() ?? new Date();
 
-  // 当月 year_month を YYYY-MM 形式で生成
-  const year = now.getUTCFullYear();
-  const month = String(now.getUTCMonth() + 1).padStart(2, '0');
-  const yearMonth = `${year}-${month}`;
+  // JST 基準で当月 + 前月を対象にする。
+  //  - 当月: KENP ページ/有料販売の速報を毎日更新。
+  //  - 前月: 月初に KENP ロイヤリティが確定するので、確定値を取り込み直す。
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const y = jst.getUTCFullYear();
+  const m = jst.getUTCMonth(); // 0-11
+  const yearMonth = `${y}-${String(m + 1).padStart(2, '0')}`;
+  const prev = m === 0 ? { y: y - 1, m: 12 } : { y, m };
+  const prevYearMonth = `${prev.y}-${String(prev.m).padStart(2, '0')}`;
+  const targetMonths = [prevYearMonth, yearMonth];
 
   log.info(
-    { task: SALES_FETCH_DISPATCHER_TASK_NAME, yearMonth },
+    { task: SALES_FETCH_DISPATCHER_TASK_NAME, targetMonths },
     'sales.fetch.dispatch tick start',
   );
 
@@ -107,28 +113,25 @@ export async function runSalesFetchDispatcher(
     return { scannedAccounts: 0, enqueuedJobs: 0, failedAccounts: 0, yearMonth };
   }
 
-  // 2. 各アカウントに sales.fetch をキュー投入
+  // 2. 各アカウント × 対象月 (前月/当月) に sales.fetch をキュー投入
   let enqueuedJobs = 0;
   let failedAccounts = 0;
 
   for (const account of accounts) {
-    try {
-      await addJob('sales.fetch', {
-        account_id: account.id,
-        year_month: yearMonth,
-      });
-      enqueuedJobs++;
-    } catch (err) {
-      log.warn(
-        {
-          task: SALES_FETCH_DISPATCHER_TASK_NAME,
-          account_id: account.id,
-          err,
-        },
-        'failed to enqueue sales.fetch — continuing with other accounts',
-      );
-      failedAccounts++;
+    let accountFailed = false;
+    for (const ym of targetMonths) {
+      try {
+        await addJob('sales.fetch', { account_id: account.id, year_month: ym });
+        enqueuedJobs++;
+      } catch (err) {
+        log.warn(
+          { task: SALES_FETCH_DISPATCHER_TASK_NAME, account_id: account.id, year_month: ym, err },
+          'failed to enqueue sales.fetch — continuing',
+        );
+        accountFailed = true;
+      }
     }
+    if (accountFailed) failedAccounts++;
   }
 
   log.info(

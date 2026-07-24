@@ -41,6 +41,9 @@ importers:
       '@a2p/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@a2p/kdp-report':
+        specifier: workspace:*
+        version: link:../../packages/kdp-report
       '@a2p/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -159,6 +162,9 @@ importers:
       '@a2p/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@a2p/kdp-report':
+        specifier: workspace:*
+        version: link:../../packages/kdp-report
       '@a2p/notify':
         specifier: workspace:*
         version: link:../../packages/notify
@@ -214,6 +220,9 @@ importers:
       vitest:
         specifier: ^2.1.5
         version: 2.1.9(@types/node@22.19.19)
+      xlsx:
+        specifier: ^0.18.5
+        version: 0.18.5
 
   packages/agents:
     dependencies:
@@ -323,6 +332,22 @@ importers:
       tsx:
         specifier: ^4.19.2
         version: 4.22.3
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.5
+        version: 2.1.9(@types/node@22.19.19)
+
+  packages/kdp-report:
+    dependencies:
+      xlsx:
+        specifier: ^0.18.5
+        version: 0.18.5
+    devDependencies:
+      '@types/node':
+        specifier: ^22.9.0
+        version: 22.19.19
       typescript:
         specifier: ^5.6.3
         version: 5.9.3
