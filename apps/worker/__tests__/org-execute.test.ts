@@ -250,8 +250,8 @@ describe('runOrgExecute — analyze_sales', () => {
     expect(doneUpdate.data.cost_jpy).toBeCloseTo(12.34);
     expect((doneUpdate.data.result_json as SalesAnalysisOutput).summary).toBe('先月比+66%');
 
-    // suggestions 2件 → proposed 改善ToDo 2件
-    const followUps = created.filter((c) => c.status === 'proposed');
+    // suggestions 2件 → approved 改善ToDo 2件（非人手 kind は dispatcher が自動着手）
+    const followUps = created.filter((c) => c.status === 'approved');
     expect(followUps).toHaveLength(2);
     expect(res.follow_ups_created).toBe(2);
     expect(followUps[0]!.kind).toBe('plan_book'); // production 既定
@@ -341,7 +341,7 @@ describe('runOrgExecute — P3 promotion', () => {
     expect(res.done).toBe(1);
     const done = updated.find((u) => u.id === 'p3')!;
     expect((done.data.result_json as PromoAnalysisOutput).summary).toBe('Xが効いている');
-    expect(created.filter((c) => c.status === 'proposed')).toHaveLength(1);
+    expect(created.filter((c) => c.status === 'approved')).toHaveLength(1);
   });
 });
 
@@ -417,7 +417,7 @@ describe('runOrgExecute — P3 finance cost_report', () => {
     expect(arg.snapshot.per_book.length).toBeGreaterThan(0);
     const done = updated.find((u) => u.id === 'f1')!;
     expect((done.data.result_json as { report: CostReportOutput }).report.summary).toBe('制作コスト過多');
-    expect(created.filter((c) => c.status === 'proposed')).toHaveLength(1);
+    expect(created.filter((c) => c.status === 'approved')).toHaveLength(1);
   });
 });
 

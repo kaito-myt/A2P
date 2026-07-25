@@ -16,6 +16,7 @@ import { getSessionOrThrow } from '@/lib/auth-helpers';
 import { enqueueJob } from '@/lib/graphile-client';
 import { messages } from '@/lib/messages';
 import { launchOrgModelBakeoffCore, type OrgBakeoffDeps } from '@/lib/org-bakeoff-core';
+import { canRetryOrgTask } from '@/lib/org-view';
 
 const ORG_PLAN_TASK = 'org.plan';
 const ORG_EXECUTE_TASK = 'org.execute.dispatch';
@@ -202,4 +203,39 @@ export async function completeOrgTask(input: unknown) {
 
 export async function cancelOrgTask(input: unknown) {
   return transitionTask(input, 'canceled');
+}
+
+/**
+ * blocked/needs_human で止まった全社ToDoを approved へ前進させる（自己改善ループの停滞解消）。
+ * blocked からの再実行は error をクリアし、次の org.execute.dispatch サイクルで再着手させる。
+ */
+export async function retryOrgTask(input: unknown): Promise<ActionResult<{ task_id: string; status: string }>> {
+  try {
+    await getSessionOrThrow();
+  } catch (err) {
+    if (isA2PError(err)) return err.toActionResult();
+    return fail('unknown', messages.org.board.actionError);
+  }
+
+  const parsed = TaskIdSchema.safeParse(input);
+  if (!parsed.success) return fail('validation', messages.org.board.actionError);
+  const { task_id } = parsed.data;
+
+  try {
+    const task = await prisma.orgTask.findUnique({ where: { id: task_id }, select: { id: true, status: true } });
+    if (!task) return fail('not_found', messages.org.board.actionError);
+    if (!canRetryOrgTask(task.status)) {
+      return fail('validation', messages.org.board.actionError);
+    }
+
+    await prisma.orgTask.update({
+      where: { id: task_id },
+      data: { status: 'approved', error: null },
+    });
+    revalidateOrg();
+    return ok({ task_id, status: 'approved' });
+  } catch (err) {
+    if (isA2PError(err)) return err.toActionResult();
+    return fail('unknown', messages.org.board.actionError);
+  }
 }

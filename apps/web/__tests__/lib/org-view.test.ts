@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  canRetryOrgTask,
   computeSpentByDivision,
   divisionTaskCounts,
   mapOrgTaskRow,
@@ -54,6 +55,21 @@ describe('computeSpentByDivision', () => {
     expect(spent.production).toBe(150);
     expect(spent.promotion).toBe(20);
     expect((spent as Record<string, number>).unknown).toBeUndefined();
+  });
+});
+
+describe('canRetryOrgTask', () => {
+  it('blocked / needs_human は再実行可能', () => {
+    expect(canRetryOrgTask('blocked')).toBe(true);
+    expect(canRetryOrgTask('needs_human')).toBe(true);
+  });
+
+  it('proposed / approved / done / canceled は再実行不可', () => {
+    expect(canRetryOrgTask('proposed')).toBe(false);
+    expect(canRetryOrgTask('approved')).toBe(false);
+    expect(canRetryOrgTask('in_progress')).toBe(false);
+    expect(canRetryOrgTask('done')).toBe(false);
+    expect(canRetryOrgTask('canceled')).toBe(false);
   });
 });
 

@@ -19,12 +19,14 @@ import {
 import { messages } from '@/lib/messages';
 import { RunPlanButton } from '@/components/org/run-plan-button';
 import { ModelBakeoffControl } from '@/components/org/model-bakeoff-control';
+import { OrgAutomationSettings } from '@/components/org/org-automation-settings';
 import {
   computeSpentByDivision,
   divisionTaskCounts,
   mapOrgTaskRow,
   type DbOrgTask,
 } from '@/lib/org-view';
+import { serializeOrgAutomation, ORG_AUTOMATION_DEFAULTS, type OrgAutomationView } from '@/lib/org-automation-core';
 
 export const metadata: Metadata = {
   title: `${messages.org.dashboard.pageTitle} | ${messages.brand.appName}`,
@@ -98,6 +100,25 @@ export default async function OrgDashboardPage() {
   const budgetLines = buildBudgetLines(allocation, spent);
   const counts = divisionTaskCounts(tasks);
 
+  const automationRow = await prisma.appSettings.findUnique({
+    where: { id: 'singleton' },
+    select: {
+      org_auto_plan_enabled: true,
+      org_plan_cron: true,
+      org_auto_execute_enabled: true,
+      org_execute_cron: true,
+      org_ops_watch_enabled: true,
+      org_ops_watch_cron: true,
+      org_finance_tick_enabled: true,
+      org_finance_tick_cron: true,
+      org_kdp_auto_publish_enabled: true,
+      org_kdp_screen_cron: true,
+    },
+  });
+  const automationInitial: OrgAutomationView = automationRow
+    ? serializeOrgAutomation(automationRow)
+    : ORG_AUTOMATION_DEFAULTS;
+
   return (
     <div className="flex flex-col gap-space-loose" data-testid="org-dashboard">
       <header className="flex flex-col gap-space-snug">
@@ -138,6 +159,8 @@ export default async function OrgDashboardPage() {
           )}
         </section>
       )}
+
+      <OrgAutomationSettings initial={automationInitial} />
 
       <ModelBakeoffControl />
 

@@ -138,6 +138,7 @@ export const messages = {
       empty: 'タスクがありません。経営ダッシュボードから CEO に立案させてください。',
       column: 'カラム',
       approve: '承認',
+      retry: '再実行',
       complete: '完了にする',
       cancel: '取消',
       humanBadge: '要人手',
@@ -2353,6 +2354,44 @@ export const messages = {
     coverHelp: 'ON にすると、品質判定に合格した表紙を自動採用し、出力（Word/PDF）へ進みます。',
     kdpLabel: 'KDP入稿を自動化',
     kdpHelp: 'ON にすると、完成した本をアシスト出版ツールの自動出版対象にします（実際の入稿は認証の都合上ローカル実行）。',
+    errors: {
+      validation: '入力内容を確認してください。',
+      unknown: '保存に失敗しました。時間をおいて再度お試しください。',
+    },
+  },
+  orgAutomation: {
+    title: '自律運用設定',
+    subtitle: '経営サイクルの各段階を自動実行するか設定します。ON にすると人手の起動操作なしで定期実行されます。',
+    saveButton: '保存',
+    saving: '保存中...',
+    saved: '保存しました',
+    cronLabel: '実行スケジュール (cron, UTC)',
+    cronErrorInvalid: '5 フィールドの cron 式を入力してください（例: 0 20 * * *）',
+    nextRunLabel: '次回実行 (推定)',
+    workerRestartNote:
+      'cron の変更は worker 再起動後に反映されます。ON/OFF の切替も worker 起動時に読み込まれるため、次回 worker 再起動（次回デプロイ）後から有効になります。',
+    rows: {
+      plan: {
+        label: 'CEO自動計画',
+        help: '毎日決まった時刻に CEO が全社状況を分析し、方針と本部別ToDoを自動起票します。',
+      },
+      execute: {
+        label: 'タスク自動実行',
+        help: '承認済みの全社ToDoを、担当者(AI)が定期的に自動実行します。停止中は全社ToDoボードから手動実行してください。',
+      },
+      opsWatch: {
+        label: '障害自己復旧',
+        help: '失敗/スタックしたジョブを検知し、復旧ToDo（自動再投入）または要調査ToDoを自動起票します。',
+      },
+      financeTick: {
+        label: '予算ガード',
+        help: '本部別コストを集計し、予算/月次上限の超過があれば予算ガードToDo（要人手）を自動起票します。',
+      },
+      kdpScreen: {
+        label: 'KDP事前審査',
+        help: 'KDP公開待ちの本を品質/価格/メタデータで事前審査し、合格した本を自動で公開クリアにします（実際の入稿は人手のままです）。',
+      },
+    },
     errors: {
       validation: '入力内容を確認してください。',
       unknown: '保存に失敗しました。時間をおいて再度お試しください。',

@@ -19,7 +19,7 @@ import {
   type Division,
 } from '@a2p/contracts/org';
 
-import { approveOrgTask, cancelOrgTask, completeOrgTask } from '@/app/actions/org';
+import { approveOrgTask, cancelOrgTask, completeOrgTask, retryOrgTask } from '@/app/actions/org';
 import { messages } from '@/lib/messages';
 import type { OrgTaskRow } from '@/lib/org-view';
 
@@ -182,6 +182,12 @@ function TaskCard({
         <div className="mt-1 flex flex-wrap gap-1.5">
           {task.status === 'proposed' && (
             <ActionBtn disabled={pending} onClick={() => onAct(approveOrgTask, task.id)}>{m.approve}</ActionBtn>
+          )}
+          {task.status === 'needs_human' && (
+            <ActionBtn disabled={pending} onClick={() => onAct(retryOrgTask, task.id)}>{m.approve}</ActionBtn>
+          )}
+          {task.status === 'blocked' && (
+            <ActionBtn disabled={pending} onClick={() => onAct(retryOrgTask, task.id)}>{m.retry}</ActionBtn>
           )}
           <ActionBtn disabled={pending} onClick={() => onAct(completeOrgTask, task.id)}>{m.complete}</ActionBtn>
           <ActionBtn disabled={pending} variant="ghost" onClick={() => onAct(cancelOrgTask, task.id)}>{m.cancel}</ActionBtn>

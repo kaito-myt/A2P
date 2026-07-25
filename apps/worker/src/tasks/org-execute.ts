@@ -30,6 +30,7 @@ import {
   DIVISION_DEFAULT_ASSIGNEE,
   depsSatisfied,
   priorityRank,
+  isHumanKind,
   type AnalysisSuggestion,
   type Division,
   type MetadataDraftOutput,
@@ -969,8 +970,10 @@ export async function runOrgExecute(payload: unknown, deps: OrgExecuteDeps = {})
         });
         result.done += 1;
 
-        // 連鎖起票（改善ToDo, proposed）。
+        // 連鎖起票（改善ToDo）。人手前提 kind は needs_human、それ以外は approved で
+        // dispatcher が次サイクルで自動着手する（org-plan.ts の起票規則と同じ）。
         for (const fu of handlerResult.follow_ups ?? []) {
+          const fuIsHuman = isHumanKind(fu.kind);
           await prisma.orgTask.create({
             data: {
               objective_id: task.objective_id,
@@ -978,11 +981,11 @@ export async function runOrgExecute(payload: unknown, deps: OrgExecuteDeps = {})
               division: fu.division,
               book_id: fu.book_id ?? null,
               owner_role: task.division === 'analytics' ? 'analytics_mgr' : 'ceo',
-              assignee_role: fu.assignee_role,
+              assignee_role: fuIsHuman ? 'human' : fu.assignee_role,
               kind: fu.kind,
               title: fu.title,
               instruction: fu.instruction,
-              status: 'proposed',
+              status: fuIsHuman ? 'needs_human' : 'approved',
               priority: 'should',
             },
           });

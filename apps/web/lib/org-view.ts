@@ -130,6 +130,14 @@ export interface DivisionCounts {
   total: number;
 }
 
+/**
+ * 自己改善ループの停滞解消: blocked/needs_human は 'approved' へ再実行可能。
+ * 実行 SA (retryOrgTask) と board の UI 表示分岐の双方が参照する単一の判定ロジック。
+ */
+export function canRetryOrgTask(status: string): boolean {
+  return status === 'blocked' || status === 'needs_human';
+}
+
 /** 本部別に「進行中 / 要人手 / 完了」を数える。 */
 export function divisionTaskCounts(tasks: readonly OrgTaskRow[]): Record<Division, DivisionCounts> {
   const out = {} as Record<Division, DivisionCounts>;

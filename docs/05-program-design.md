@@ -16,13 +16,17 @@
 > P4増分3: `evaluateKdpPublishReadiness`＋`org.kdp.screen`（AppSettings `org_kdp_auto_publish_enabled`(既定OFF)/閾値）。publish_kdp を品質/価格/メタで審査し result_json.kdp_readiness へ。ゲートONかつ合格のみ needs_human→approved(公開クリア)。実入稿(kdp.submit Playwright)は Phase 3 まで人手。
 > P4増分4: `org_playbook`(singleton)＋`computeWinningPatterns`。org.plan が実績(ジャンル×売上)から勝ちパターンを抽出→台帳蓄積＋CEOスナップショット(winning_patterns)へ供給。/org に「勝ちパターン」カード。
 > P4増分5: `computeBakeoffRecommendation`＋`ORG_BAKEOFF_ROLES`/`orgBakeoffSampleInput`。/org からロール選択で bakeoff 起動(`launchOrgModelBakeoff`)→`bakeoff.run`(org_optimize)完了→`org.bakeoff.recommend` が最良モデルを選定し `optimize_model`(needs_human)切替提案を起票。適用は人手(モデル割当変更は影響大)。既存 F-053 再利用。
+> P4増分6（自律運用の起動UI＋自己改善ループの停滞解消, 2026-07-25）:
+>   - `/org` に「自律運用設定」カード追加（`lib/org-automation-core.ts` の DI コア＋`updateOrgAutomation` SA）。5フラグ(`org_auto_plan_enabled`/`org_auto_execute_enabled`/`org_ops_watch_enabled`/`org_finance_tick_enabled`/`org_kdp_auto_publish_enabled`)とそれぞれの cron を DB 直接編集なしで ON/OFF・編集可能に。cron の反映は worker 起動時 `fetchAppSettingsForCron`(`apps/worker/src/runner.ts`) 読み込みのため **worker 再起動後**（UI にノート表示）。
+>   - `org.execute.dispatch` の連鎖起票（改善ToDo follow-up）を、`isHumanKind` が false の kind は `proposed` ではなく `approved` で起票するよう変更（`apps/worker/src/tasks/org-execute.ts`）。人手前提 kind は従来通り `needs_human`。これにより次サイクルの dispatcher が自動着手し、CEO立案を待たずに自己改善が回る。
+>   - 全社ToDoボード（`/org/tasks`）に、`blocked`→`approved`（「再実行」、error クリア）／`needs_human`→`approved`（「承認」）の前進操作を追加（`retryOrgTask` SA、`lib/org-view.ts` の `canRetryOrgTask`）。従来は `blocked`/`needs_human` を前進させる手段がボードになかった。
 >
 > P1（起票）＋P2（制作/出版/分析の実行）＋P3（販促/運用/経営の統合）追加物（本ドキュメントの各レジストリへの反映）:
 > - **DB**: `org_objectives` / `org_tasks`（+`token_usage.org_task_id`、`org_tasks.theme_id/account_id`、`app_settings.org_auto_plan_enabled/org_plan_cron/org_auto_execute_enabled/org_execute_cron/org_ops_watch_enabled/org_ops_watch_cron/org_finance_tick_enabled/org_finance_tick_cron`）
-> - **worker タスク**: `org.plan`（CEOティック。日次cron 既定05:00 JST）／`org.execute.dispatch`（承認済タスクの実行。15分毎cron）／`org.ops.watch`（運用の自己復旧監視。10分毎cron）／`org.finance.tick`（経営の予算ガード。毎時cron）。いずれも AppSettings フラグで条件付き有効化
+> - **worker タスク**: `org.plan`（CEOティック。日次cron 既定05:00 JST）／`org.execute.dispatch`（承認済タスクの実行。15分毎cron）／`org.ops.watch`（運用の自己復旧監視。10分毎cron）／`org.finance.tick`（経営の予算ガード。毎時cron）。いずれも AppSettings フラグで条件付き有効化。フラグ/cron は `/org` の「自律運用設定」カードから編集可能（P4増分6）
 > - **dispatch 対象 kind**: 制作 `plan_book`/`write`、出版 `prepare_metadata`/`set_price`、分析 `analyze_sales`/`research_market`/`report`、販促 `create_content`/`publish_post`/`analyze_promo`、運用 `recover_job`、経営 `cost_report`/`budget_review`。`enforce_limit`/`triage_error`/`publish_kdp`/`create_account`/`connect_account` は `needs_human`
 > - **エージェント役割**: `ceo` ＋ 6本部長 ＋ 担当者 `sales_analyst`/`market_analyst`/`metadata_worker`（P2）・`promo_analyst`/`cost_accountant`（P3）
-> - **画面**: `/org`（経営ダッシュボード）・`/org/tasks`（全社ToDoカンバン＋「承認済タスクを実行」「運用監視を実行」「予算ガードを実行」＋成果/コスト表示）
+> - **画面**: `/org`（経営ダッシュボード＋自律運用設定カード）・`/org/tasks`（全社ToDoカンバン＋「承認済タスクを実行」「運用監視を実行」「予算ガードを実行」＋成果/コスト表示＋`blocked`/`needs_human`の前進操作）
 
 ## 0. 本ドキュメントの読み方
 

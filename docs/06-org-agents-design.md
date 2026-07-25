@@ -6,7 +6,11 @@
 > 開発時の Claude Code サブエージェント（`.claude/agents`）とは別物。本ドキュメントでは
 > これらを **Org エージェント** と呼ぶ。
 >
-> ステータス: **P4 進行中（増分1〜5 実装済み 2026-07-13）**。増分5 で **モデル最適化（bakeoff）** を追加：
+> ステータス: **P4 進行中（増分1〜6 実装済み。増分6: 2026-07-25）**。増分6 で **自律運用の起動UI＋自己改善ループの
+> 停滞解消** を追加：5つの自律cronフラグ（CEO自動計画/タスク自動実行/障害自己復旧/予算ガード/KDP事前審査）を
+> `/org` の「自律運用設定」カードからON/OFF・cron編集可能に（従来はDB直接編集のみ）。加えて `org.execute.dispatch`
+> の連鎖起票（改善ToDo）を非人手kindは `approved` で自動着手させ、全社ToDoボードに `blocked`（再実行）／
+> `needs_human`（承認）を `approved` へ前進させる操作を追加した。増分5 で **モデル最適化（bakeoff）** を追加：
 > `/org` から org ロールを選び bakeoff 起動（現行＋カタログ候補×代表入力）→ 完了時に `org.bakeoff.recommend` が
 > 品質優先・コスト tiebreak で最良モデルを選定し、現行と異なれば `optimize_model`(needs_human) を**切替提案**として起票
 > （モデル割当変更は影響大のため**自動適用しない**）。以下は増分4: **勝ちパターン学習** を追加：
@@ -25,7 +29,8 @@
 > P4 残り（KDP条件付き自動公開=ゲート付き既定OFF・SNSエンゲージメント読取・bakeoffモデル最適化・
 > 勝ちパターン学習）は後続増分。
 >
-> 履歴: v1「販促のみ」→ v2 全社組織 → v2.1 **P1** → v2.2 **P2** → v2.3 **P3** → v2.4 **P4増分1** → v2.5（本書）**P4増分2**。
+> 履歴: v1「販促のみ」→ v2 全社組織 → v2.1 **P1** → v2.2 **P2** → v2.3 **P3** → v2.4 **P4増分1** → v2.5 **P4増分2**
+> → v2.6 **P4増分3〜5** → v2.7（本書）**P4増分6**。
 
 ## 実装状況（P1）
 
@@ -35,7 +40,7 @@
 | 共有型 | `@a2p/contracts/org`（本部/kind/状態/優先度、CEO・本部長 I/O スキーマ、ビューヘルパー）|
 | エージェント | `ceo`＋6本部長（`editorial_mgr`/`publish_mgr`/`analytics_mgr`/`promo_mgr`/`ops_mgr`/`finance_mgr`）。`packages/agents/src/org/{ceo,manager}.ts`。prompts/model_assignments 本番 seed 済（`apply-org-roles.ts`）|
 | worker | `org.plan`（CEOティック）`apps/worker/src/tasks/org-plan.ts`。`AppSettings.org_auto_plan_enabled=true` で日次cron条件付き有効化（既定 05:00 JST）＋ web から手動起動 |
-| web | `/org`（経営ダッシュボード）＋ `/org/tasks`（全社ToDoカンバン）＋ `actions/org.ts`（runOrgPlan/approve/complete/cancel）＋ サイドバー「経営（組織）」節 |
+| web | `/org`（経営ダッシュボード）＋ `/org/tasks`（全社ToDoカンバン）＋ `actions/org.ts`（runOrgPlan/approve/complete/cancel/retry）＋ サイドバー「経営（組織）」節 |
 | コスト | 全 Org 呼出は `withTokenLogging` の `orgTaskId` で `token_usage.org_task_id` に記録 |
 
 P1 で確定した運用: 本部長が起票したタスクは、人手前提 kind（create_account/connect_account/publish_kdp）→ `needs_human`、
@@ -179,6 +184,23 @@ P1 で確定した運用: 本部長が起票したタスクは、人手前提 ki
 
 **P4 の残り（後続増分・外部依存）:** 実 KDP 自動入稿（Phase 3 `kdp.submit` Playwright + 2FA push-and-wait）、
 SNSエンゲージメント読取（read-port → promo_analyst 接続）。
+
+### P4 増分6 — 自律運用の起動UI＋自己改善ループの停滞解消
+
+これまで増分1〜5 の 5 つの自律cronフラグ（`org_auto_plan_enabled`/`org_auto_execute_enabled`/
+`org_ops_watch_enabled`/`org_finance_tick_enabled`/`org_kdp_auto_publish_enabled`）は DB を直接編集しないと
+ON にできず、また `org.execute.dispatch` の連鎖起票（改善ToDo）が常に `proposed`（要人手クリック）で止まる、
+`blocked`/`needs_human` になったタスクをボードから前進させる手段がない、という3点で自律運転が実質止まっていた。
+本増分でこれを解消する。
+
+| 領域 | 実体 |
+| --- | --- |
+| web | `/org` に「自律運用設定」カード追加。`lib/org-automation-core.ts`（DI コア、zod検証＋cron形式検証）＋ `actions/org-automation.ts`（`updateOrgAutomation` SA）＋ `components/org/org-automation-settings.tsx`。5フラグ＋各cronをUIから編集可能（`audit_log` に `org_automation.update` を記録）|
+| worker | `org.execute.dispatch`（`org-execute.ts`）の連鎖起票を変更: `isHumanKind(kind)` が false の follow-up は `proposed` ではなく **`approved`** で起票（次の dispatch サイクルで自動着手）。人手前提 kind は従来通り `needs_human`＋`assignee_role='human'`（`org-plan.ts` の起票規則と統一）|
+| web | `/org/tasks` に前進操作を追加: `blocked`→`approved`（「再実行」、`error`をクリア）／`needs_human`→`approved`（「承認」）。`actions/org.ts` の `retryOrgTask`（`lib/org-view.ts` の `canRetryOrgTask` で対象状態を判定）|
+
+注意: cron 文字列の変更は worker 起動時に一度だけ `fetchAppSettingsForCron`（`apps/worker/src/runner.ts`）が読み
+`crontab.ts` を組み立てるため、**保存しただけでは反映されず worker 再起動（次回デプロイ）が必要**。UI にもその旨のノートを表示する。
 
 ---
 
