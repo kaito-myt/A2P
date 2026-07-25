@@ -24,6 +24,8 @@ import {
   type JobChangeNotifyPayload,
 } from '../lib/notify-job-change.js';
 import { ALERT_COST_CHECK_TASK_NAME } from './alert-cost-check.js';
+import { readPipelineAutopass, type PipelineAutopassPrisma } from './lib/pipeline-autopass.js';
+import { PIPELINE_BOOK_WRITER_CHAPTERS_DISPATCH_TASK_NAME } from './pipeline-book-writer-chapters-dispatch.js';
 
 /**
  * `pipeline.book.writer.outline` タスク (docs/05 §5.3.3, F-003)
@@ -97,6 +99,9 @@ export interface PipelineBookWriterOutlinePrisma {
         result_json?: unknown;
       };
     }) => Promise<unknown>;
+    create: (args: {
+      data: { kind: string; book_id: string; status: string; payload_json: unknown };
+    }) => Promise<{ id: string }>;
   };
   book: {
     findUnique: (args: {
@@ -115,6 +120,10 @@ export interface PipelineBookWriterOutlinePrisma {
       title: string;
       subtitle: string | null;
     } | null>;
+    update: (args: {
+      where: { id: string };
+      data: { status: string };
+    }) => Promise<{ id: string }>;
   };
   themeCandidate: {
     findUnique: (args: {
@@ -160,6 +169,14 @@ export interface PipelineBookWriterOutlinePrisma {
         approved_at: null;
       };
     }) => Promise<{ id: string; book_id: string }>;
+    update: (args: {
+      where: { id: string };
+      data: { status: string; approved_at: Date };
+    }) => Promise<{ id: string; book_id: string }>;
+  };
+  appSettings: PipelineAutopassPrisma['appSettings'];
+  auditLog: {
+    create: (args: { data: Record<string, unknown> }) => Promise<unknown>;
   };
 }
 
@@ -492,6 +509,77 @@ export async function runPipelineBookWriterOutline(
       },
       { prisma, logger: log },
     );
+
+    // 9. パイプライン設定: アウトライン承認を自動パス (autopass_outline_enabled)。
+    //    bulkApproveOutlinesCore (apps/web/lib/outlines-core.ts) と同じ遷移を単一 outline に
+    //    対して行う。失敗しても Outline は pending_review のまま残るため、運営者が手動承認
+    //    できる (安全側フォールバック — warn のみで本タスク自体は成功のまま完走させる)。
+    try {
+      const autopass = await readPipelineAutopass(prisma);
+      if (autopass.autopass_outline_enabled) {
+        await prisma.outline.update({
+          where: { id: upserted.id },
+          data: { status: 'approved', approved_at: now() },
+        });
+        await prisma.book.update({
+          where: { id: bookId },
+          data: { status: 'running' },
+        });
+        const dispatchJob = await prisma.job.create({
+          data: {
+            kind: PIPELINE_BOOK_WRITER_CHAPTERS_DISPATCH_TASK_NAME,
+            book_id: bookId,
+            status: 'queued',
+            payload_json: { book_id: bookId, outline_id: upserted.id },
+          },
+        });
+        await addJob(PIPELINE_BOOK_WRITER_CHAPTERS_DISPATCH_TASK_NAME, {
+          book_id: bookId,
+          job_id: dispatchJob.id,
+          outline_id: upserted.id,
+        });
+        await prisma.auditLog.create({
+          data: {
+            actor_id: null,
+            action: 'outlines.bulk_approve',
+            target_kind: 'outline',
+            target_id: upserted.id,
+            before_json: {
+              outline_id: upserted.id,
+              previous_status: 'pending_review',
+              trigger: 'autopass',
+            },
+            after_json: {
+              outline_ids: [upserted.id],
+              approved_count: 1,
+              jobs: [
+                {
+                  outline_id: upserted.id,
+                  book_id: bookId,
+                  job_id: dispatchJob.id,
+                  kind: PIPELINE_BOOK_WRITER_CHAPTERS_DISPATCH_TASK_NAME,
+                },
+              ],
+            },
+          },
+        });
+        log.info(
+          {
+            task: PIPELINE_BOOK_WRITER_OUTLINE_TASK_NAME,
+            jobId,
+            bookId,
+            outlineId: upserted.id,
+            dispatchJobId: dispatchJob.id,
+          },
+          'autopass: outline auto-approved — chapters dispatch enqueued',
+        );
+      }
+    } catch (autopassErr) {
+      log.warn(
+        { task: PIPELINE_BOOK_WRITER_OUTLINE_TASK_NAME, jobId, bookId, err: autopassErr },
+        'autopass outline approval failed — leaving outline pending_review for manual approval',
+      );
+    }
   } catch (err) {
     try {
       await prisma.job.update({

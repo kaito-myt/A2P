@@ -8,6 +8,7 @@ import { CATALOG_FETCH_TASK_NAME } from './tasks/catalog-fetch.js';
 import { FX_FETCH_TASK_NAME } from './tasks/fx-fetch.js';
 import { SALES_FETCH_DISPATCHER_TASK_NAME } from './tasks/sales-fetch-dispatcher.js';
 import { BOOK_CULL_DETECT_TASK_NAME } from './tasks/book-cull-detect.js';
+import { PIPELINE_THEME_AUTO_TASK_NAME } from './tasks/pipeline-theme-auto.js';
 import { PROMOTION_DISPATCH_TASK_NAME } from './tasks/promotion-dispatch.js';
 import { PROMOTION_REVIEW_DAILY_TASK_NAME } from './tasks/promotion-review-daily.js';
 import { COST_OPTIMIZE_WEEKLY_TASK_NAME } from './tasks/cost-optimize-weekly.js';
@@ -120,6 +121,19 @@ export const BOOK_CULL_CRON_ITEM: CronItem = {
   task: BOOK_CULL_DETECT_TASK_NAME,
   match: BOOK_CULL_CRON_DEFAULT,
   identifier: 'book-cull-detect-weekly',
+};
+
+/**
+ * パイプライン設定: テーマ自動生成の既定 cron (`0 22 * * *` UTC = 07:00 JST)。
+ * AppSettings.pipeline_theme_cron の既定値 (schema.prisma) と一致させる。
+ */
+export const PIPELINE_THEME_AUTO_CRON_DEFAULT = '0 22 * * *';
+
+/** `pipeline.theme.auto` の CronItem 定義 (AppSettings.autopass_theme_enabled=true のときのみ使用)。 */
+export const PIPELINE_THEME_AUTO_CRON_ITEM: CronItem = {
+  task: PIPELINE_THEME_AUTO_TASK_NAME,
+  match: PIPELINE_THEME_AUTO_CRON_DEFAULT,
+  identifier: 'pipeline-theme-auto-daily',
 };
 
 /**
@@ -272,6 +286,10 @@ export interface CronRuntimeSettings {
   org_kdp_auto_publish_enabled?: boolean;
   /** docs/06 P4 増分3: org.kdp.screen cron (省略時は既定 毎時30分)。 */
   org_kdp_screen_cron?: string | null;
+  /** パイプライン設定: テーマ自動生成 (pipeline.theme.auto) を cron 有効化するか（既定OFF）。 */
+  autopass_theme_enabled?: boolean;
+  /** パイプライン設定: pipeline.theme.auto cron (省略時は既定 07:00 JST)。 */
+  pipeline_theme_cron?: string | null;
 }
 
 /** 後方互換エイリアス (旧名)。 */
@@ -367,6 +385,14 @@ export function buildCronItemsWithSettings(settings: CronRuntimeSettings): CronI
         ? settings.org_kdp_screen_cron.trim()
         : ORG_KDP_SCREEN_CRON_DEFAULT;
     items.push({ ...ORG_KDP_SCREEN_CRON_ITEM, match: cronMatch });
+  }
+
+  if (settings.autopass_theme_enabled) {
+    const cronMatch =
+      typeof settings.pipeline_theme_cron === 'string' && settings.pipeline_theme_cron.trim().length > 0
+        ? settings.pipeline_theme_cron.trim()
+        : PIPELINE_THEME_AUTO_CRON_DEFAULT;
+    items.push({ ...PIPELINE_THEME_AUTO_CRON_ITEM, match: cronMatch });
   }
 
   return items;

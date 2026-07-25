@@ -91,6 +91,7 @@ interface ChapterRevisionRecord {
 interface AppSettingsRecord {
   id: string;
   ai_disclosure_text: string;
+  autopass_content_enabled?: boolean;
 }
 
 interface PrismaCaptures {
@@ -101,6 +102,7 @@ interface PrismaCaptures {
   revisionCreates: Array<{ data: Record<string, unknown> }>;
   chapterUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
   bookUpdates: Array<{ id: string; status?: string }>;
+  auditLogCreates: Array<{ data: Record<string, unknown> }>;
   txCalls: number;
   executeRawCalls: Array<{ sql: string; values: unknown[] }>;
 }
@@ -123,6 +125,8 @@ interface BuildPrismaArgs {
   revisionCreateThrow?: Error;
   /** Transaction 内の chapter.update を強制失敗. */
   chapterUpdateThrow?: Error;
+  /** autopass 経路の job.create/auditLog.create を強制失敗 (フォールバック検証用). */
+  autopassWriteThrow?: Error;
 }
 
 function buildPrisma(args: BuildPrismaArgs): {
@@ -142,6 +146,7 @@ function buildPrisma(args: BuildPrismaArgs): {
     revisionCreates: [],
     chapterUpdates: [],
     bookUpdates: [],
+    auditLogCreates: [],
     txCalls: 0,
     executeRawCalls: [],
   };
@@ -249,6 +254,7 @@ function buildPrisma(args: BuildPrismaArgs): {
         return {};
       },
       create: async ({ data }) => {
+        if (args.autopassWriteThrow) throw args.autopassWriteThrow;
         captures.jobCreates.push({
           data: data as unknown as Record<string, unknown>,
         });
@@ -317,7 +323,17 @@ function buildPrisma(args: BuildPrismaArgs): {
         if (args.appSettings === undefined) {
           return { ai_disclosure_text: '本書は生成 AI で作成されました。' };
         }
-        return { ai_disclosure_text: args.appSettings.ai_disclosure_text };
+        return {
+          ai_disclosure_text: args.appSettings.ai_disclosure_text,
+          autopass_content_enabled: args.appSettings.autopass_content_enabled ?? false,
+        };
+      },
+    },
+    auditLog: {
+      create: async ({ data }) => {
+        if (args.autopassWriteThrow) throw args.autopassWriteThrow;
+        captures.auditLogCreates.push({ data: data as unknown as Record<string, unknown> });
+        return {};
       },
     },
   };
@@ -1094,5 +1110,131 @@ describe('runPipelineBookEditor revision version semantics', () => {
     expect(rev2?.data).toMatchObject({ version: 1 });
     const upd2 = captures.chapterUpdates.find((u) => u.where.id === 'ch_2');
     expect(upd2?.data).toMatchObject({ version: 2 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// パイプライン設定: 本文承認自動パス (autopass_content_enabled)
+// ---------------------------------------------------------------------------
+
+describe('runPipelineBookEditor — autopass_content_enabled', () => {
+  it('OFF (既定): Book.status=content_review のまま、thumbnail.text は enqueue されない', async () => {
+    const { job, book, theme, chapters } = makeJobBookThemeChapters({ chapterCount: 7 });
+    const { prisma, captures } = buildPrisma({
+      jobs: [job],
+      books: [book],
+      themes: [theme],
+      chapters,
+      appSettings: {
+        id: 'singleton',
+        ai_disclosure_text: '本書は生成 AI で作成されました。',
+        autopass_content_enabled: false,
+      },
+    });
+    const { deps } = buildDeps(prisma);
+    const { addJob, calls: addJobCalls } = makeAddJob();
+
+    await runPipelineBookEditor({ book_id: 'book_1', job_id: 'job_editor_1' }, addJob, deps);
+
+    expect(captures.bookUpdates).toContainEqual({ id: 'book_1', status: 'content_review' });
+    expect(captures.jobCreates).toHaveLength(0);
+    expect(addJobCalls.some((c) => c.identifier === 'pipeline.book.thumbnail.text')).toBe(false);
+    expect(captures.auditLogCreates).toHaveLength(0);
+  });
+
+  it('ON: thumbnail.text enqueue + Book.status=running + audit_log', async () => {
+    const { job, book, theme, chapters } = makeJobBookThemeChapters({ chapterCount: 7 });
+    const { prisma, captures } = buildPrisma({
+      jobs: [job],
+      books: [book],
+      themes: [theme],
+      chapters,
+      appSettings: {
+        id: 'singleton',
+        ai_disclosure_text: '本書は生成 AI で作成されました。',
+        autopass_content_enabled: true,
+      },
+    });
+    const { deps } = buildDeps(prisma);
+    const { addJob, calls: addJobCalls } = makeAddJob();
+
+    await runPipelineBookEditor({ book_id: 'book_1', job_id: 'job_editor_1' }, addJob, deps);
+
+    expect(captures.bookUpdates).toContainEqual({ id: 'book_1', status: 'running' });
+    expect(captures.jobCreates).toHaveLength(1);
+    expect(captures.jobCreates[0]?.data).toMatchObject({
+      kind: 'pipeline.book.thumbnail.text',
+      book_id: 'book_1',
+      status: 'queued',
+    });
+    const thumbnailCall = addJobCalls.find((c) => c.identifier === 'pipeline.book.thumbnail.text');
+    expect(thumbnailCall).toBeDefined();
+    expect(thumbnailCall?.payload).toMatchObject({ book_id: 'book_1' });
+
+    expect(captures.auditLogCreates).toHaveLength(1);
+    expect(captures.auditLogCreates[0]?.data).toMatchObject({
+      actor_id: null,
+      action: 'book.content.approve',
+    });
+
+    const doneCall = captures.jobUpdates.find((c) => c.data.status === 'done');
+    expect(doneCall?.data).toMatchObject({
+      result_json: { thumbnail_text_job_id: expect.any(String) },
+    });
+  });
+
+  it('ON だが既存 thumbnail Job あり → 重複 enqueue しない (idempotent)', async () => {
+    const { job, book, theme, chapters } = makeJobBookThemeChapters({ chapterCount: 7 });
+    const { prisma, captures } = buildPrisma({
+      jobs: [job],
+      books: [book],
+      themes: [theme],
+      chapters,
+      appSettings: {
+        id: 'singleton',
+        ai_disclosure_text: '本書は生成 AI で作成されました。',
+        autopass_content_enabled: true,
+      },
+      existingThumbnailJob: { id: 'existing_thumb_job' },
+    });
+    const { deps } = buildDeps(prisma);
+    const { addJob, calls: addJobCalls } = makeAddJob();
+
+    await runPipelineBookEditor({ book_id: 'book_1', job_id: 'job_editor_1' }, addJob, deps);
+
+    expect(captures.jobCreates).toHaveLength(0);
+    expect(addJobCalls.some((c) => c.identifier === 'pipeline.book.thumbnail.text')).toBe(false);
+    expect(captures.bookUpdates).toContainEqual({ id: 'book_1', status: 'running' });
+  });
+
+  it('ON だが DB 書込失敗 → warn のみ、content_review にフォールバック', async () => {
+    const { job, book, theme, chapters } = makeJobBookThemeChapters({ chapterCount: 7 });
+    const boom = new Error('autopass write boom');
+    const { prisma, captures } = buildPrisma({
+      jobs: [job],
+      books: [book],
+      themes: [theme],
+      chapters,
+      appSettings: {
+        id: 'singleton',
+        ai_disclosure_text: '本書は生成 AI で作成されました。',
+        autopass_content_enabled: true,
+      },
+      autopassWriteThrow: boom,
+    });
+    const { deps, loggerCalls } = buildDeps(prisma);
+    const { addJob } = makeAddJob();
+
+    await expect(
+      runPipelineBookEditor({ book_id: 'book_1', job_id: 'job_editor_1' }, addJob, deps),
+    ).resolves.toBeUndefined();
+
+    expect(captures.bookUpdates).toContainEqual({ id: 'book_1', status: 'content_review' });
+    const doneCall = captures.jobUpdates.find((c) => c.data.status === 'done');
+    expect(doneCall).toBeDefined();
+    const warnCall = loggerCalls.find(
+      (c) => c.level === 'warn' && (c.msg as string).includes('autopass content approval failed'),
+    );
+    expect(warnCall).toBeDefined();
   });
 });

@@ -22,6 +22,7 @@ import {
 import { PIPELINE_BOOK_EDITOR_TASK_NAME } from './pipeline-book-editor.js';
 import { PIPELINE_BOOK_EXPORT_TASK_NAME } from './pipeline-book-export.js';
 import { PIPELINE_BOOK_WRITER_CHAPTER_TASK_NAME } from './pipeline-book-writer-chapter.js';
+import { readPipelineAutopass } from './lib/pipeline-autopass.js';
 
 /**
  * `pipeline.book.judge` タスク (docs/05 §5.3.8, F-008 / SP-10 T-10-03)
@@ -105,7 +106,7 @@ export interface PipelineBookJudgePrisma {
       data: {
         kind: string;
         book_id: string;
-        parent_job_id: string;
+        parent_job_id?: string;
         status: string;
         payload_json: unknown;
       };
@@ -210,6 +211,30 @@ export interface PipelineBookJudgePrisma {
         payload_json: unknown;
       };
     }) => Promise<{ id: string }>;
+  };
+  cover: {
+    findMany: (args: {
+      where: { book_id: string; status: string };
+      select: { id: true; book_id: true; status: true };
+      orderBy?: { created_at: 'asc' | 'desc' };
+    }) => Promise<Array<{ id: string; book_id: string; status: string }>>;
+    update: (args: {
+      where: { id: string };
+      data: { status: string };
+    }) => Promise<{ id: string }>;
+    updateMany: (args: {
+      where: { book_id: string; id: { notIn: string[] }; status: { not: string } };
+      data: { status: string };
+    }) => Promise<{ count: number }>;
+  };
+  appSettings: {
+    findUnique: (args: {
+      where: { id: string };
+      select: Record<string, boolean>;
+    }) => Promise<Record<string, unknown> | null>;
+  };
+  auditLog: {
+    create: (args: { data: Record<string, unknown> }) => Promise<unknown>;
   };
 }
 
@@ -496,6 +521,73 @@ export async function runPipelineBookJudge(
           },
           'score >= 80 — awaiting human cover adoption (status=thumbnail)',
         );
+
+        // パイプライン設定: サムネ(表紙)承認を自動パス (autopass_cover_enabled)。
+        // bulkAdoptCoversCore (apps/web/lib/covers-core.ts) と同じ遷移を単一書籍・単一
+        // カバーに対して行う。生成済カバーが無ければ (未生成/生成失敗) 従来通り
+        // thumbnail ゲートで停止する (fallback)。失敗しても warn のみで本タスクは完走する。
+        const autopass = await readPipelineAutopass(prisma);
+        if (autopass.autopass_cover_enabled) {
+          try {
+            const candidates = await prisma.cover.findMany({
+              where: { book_id: bookId, status: 'generated' },
+              select: { id: true, book_id: true, status: true },
+              orderBy: { created_at: 'asc' },
+            });
+            if (candidates.length > 0) {
+              const chosen = candidates[0]!;
+              await prisma.cover.update({
+                where: { id: chosen.id },
+                data: { status: 'adopted' },
+              });
+              await prisma.cover.updateMany({
+                where: { book_id: bookId, id: { notIn: [chosen.id] }, status: { not: 'rejected' } },
+                data: { status: 'rejected' },
+              });
+              const exportJob = await prisma.job.create({
+                data: {
+                  kind: PIPELINE_BOOK_EXPORT_TASK_NAME,
+                  book_id: bookId,
+                  status: 'queued',
+                  payload_json: { book_id: bookId },
+                },
+              });
+              await addJob(PIPELINE_BOOK_EXPORT_TASK_NAME, {
+                book_id: bookId,
+                job_id: exportJob.id,
+              });
+              await prisma.auditLog.create({
+                data: {
+                  actor_id: null,
+                  action: 'covers.bulk_adopt',
+                  target_kind: 'cover',
+                  target_id: chosen.id,
+                  before_json: { cover_id: chosen.id, previous_status: 'generated', trigger: 'autopass' },
+                  after_json: {
+                    adopted_cover_id: chosen.id,
+                    book_id: bookId,
+                    job_id: exportJob.id,
+                    kind: PIPELINE_BOOK_EXPORT_TASK_NAME,
+                  },
+                },
+              });
+              log.info(
+                { task: PIPELINE_BOOK_JUDGE_TASK_NAME, jobId, bookId, coverId: chosen.id, exportJobId: exportJob.id },
+                'autopass: cover auto-adopted — export enqueued',
+              );
+            } else {
+              log.info(
+                { task: PIPELINE_BOOK_JUDGE_TASK_NAME, jobId, bookId },
+                'autopass cover enabled but no generated cover found — falling back to manual thumbnail gate',
+              );
+            }
+          } catch (autopassErr) {
+            log.warn(
+              { task: PIPELINE_BOOK_JUDGE_TASK_NAME, jobId, bookId, err: autopassErr },
+              'autopass cover adoption failed — leaving book at thumbnail gate for manual adoption',
+            );
+          }
+        }
       }
 
       notifyPhase = 'judge_done';

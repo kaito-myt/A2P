@@ -80,11 +80,15 @@ interface OutlineRecord {
 interface PrismaCaptures {
   jobUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
   jobUpdateMany: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }>;
+  jobCreates: Array<{ data: Record<string, unknown> }>;
   outlineUpserts: Array<{
     where: { book_id: string };
     create: Record<string, unknown>;
     update: Record<string, unknown>;
   }>;
+  outlineUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
+  bookUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
+  auditLogCreates: Array<{ data: Record<string, unknown> }>;
   executeRawCalls: Array<{ sql: string; values: unknown[] }>;
 }
 
@@ -102,6 +106,10 @@ interface BuildPrismaArgs {
   executeRawThrow?: Error;
   /** outline.upsert が返す id seed (省略時 'outline_book_<book_id>'). */
   outlineIdSeed?: string;
+  /** AppSettings (パイプライン設定 autopass_*)。省略時は全 OFF 相当の空行. */
+  appSettings?: Record<string, unknown> | null;
+  /** outline.update / book.update / job.create / auditLog.create を強制失敗させる場合. */
+  autopassWriteThrow?: Error;
 }
 
 function buildPrisma(args: BuildPrismaArgs): {
@@ -112,12 +120,17 @@ function buildPrisma(args: BuildPrismaArgs): {
   const captures: PrismaCaptures = {
     jobUpdates: [],
     jobUpdateMany: [],
+    jobCreates: [],
     outlineUpserts: [],
+    outlineUpdates: [],
+    bookUpdates: [],
+    auditLogCreates: [],
     executeRawCalls: [],
   };
   const jobs = [...args.jobs];
   const outlines: OutlineRecord[] = [...(args.outlines ?? [])];
   let outlineCounter = 0;
+  let jobCreateCounter = 0;
 
   const prisma: PipelineBookWriterOutlinePrisma = {
     $executeRawUnsafe: async (sql, ...values) => {
@@ -155,6 +168,14 @@ function buildPrisma(args: BuildPrismaArgs): {
         }
         return {};
       },
+      create: async ({ data }) => {
+        if (args.autopassWriteThrow) throw args.autopassWriteThrow;
+        jobCreateCounter += 1;
+        const id = `dispatch_job_${jobCreateCounter}`;
+        captures.jobCreates.push({ data: data as unknown as Record<string, unknown> });
+        jobs.push({ id, status: data.status, book_id: data.book_id });
+        return { id };
+      },
     },
     book: {
       findUnique: async ({ where }) => {
@@ -168,6 +189,11 @@ function buildPrisma(args: BuildPrismaArgs): {
               subtitle: b.subtitle,
             }
           : null;
+      },
+      update: async ({ where, data }) => {
+        if (args.autopassWriteThrow) throw args.autopassWriteThrow;
+        captures.bookUpdates.push({ where, data: data as unknown as Record<string, unknown> });
+        return { id: where.id };
       },
     },
     themeCandidate: {
@@ -218,6 +244,26 @@ function buildPrisma(args: BuildPrismaArgs): {
         };
         outlines.push(rec);
         return { id, book_id: where.book_id };
+      },
+      update: async ({ where, data }) => {
+        if (args.autopassWriteThrow) throw args.autopassWriteThrow;
+        captures.outlineUpdates.push({ where, data: data as unknown as Record<string, unknown> });
+        const existing = outlines.find((o) => o.id === where.id);
+        if (existing) {
+          existing.status = data.status;
+          existing.approved_at = data.approved_at;
+        }
+        return { id: where.id, book_id: existing?.book_id ?? '' };
+      },
+    },
+    appSettings: {
+      findUnique: async () => (args.appSettings === undefined ? {} : args.appSettings),
+    },
+    auditLog: {
+      create: async ({ data }) => {
+        if (args.autopassWriteThrow) throw args.autopassWriteThrow;
+        captures.auditLogCreates.push({ data: data as unknown as Record<string, unknown> });
+        return {};
       },
     },
   };
@@ -894,6 +940,113 @@ describe('runPipelineBookWriterOutline error paths', () => {
     // warn ログが残る
     const warnCall = loggerCalls.find(
       (c) => c.level === 'warn' && (c.msg as string).includes('failed to release BookLock'),
+    );
+    expect(warnCall).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// パイプライン設定: アウトライン承認自動パス (autopass_outline_enabled)
+// ---------------------------------------------------------------------------
+
+describe('runPipelineBookWriterOutline — autopass_outline_enabled', () => {
+  it('OFF (既定): Outline は pending_review のまま、chapters dispatch は enqueue されない', async () => {
+    const { job, book, theme, kdpMeta } = makeJobBookThemeMeta();
+    const { prisma, captures, state } = buildPrisma({
+      jobs: [job],
+      books: [book],
+      themes: [theme],
+      kdpMetas: kdpMeta ? [kdpMeta] : [],
+      appSettings: { autopass_outline_enabled: false },
+    });
+    const { deps } = buildDeps(prisma);
+    const { addJob, calls: addJobCalls } = makeAddJob();
+
+    await runPipelineBookWriterOutline({ book_id: 'book_1', job_id: 'job_1' }, addJob, deps);
+
+    expect(state.outlines[0]?.status).toBe('pending_review');
+    expect(captures.bookUpdates).toHaveLength(0);
+    expect(captures.jobCreates).toHaveLength(0);
+    expect(
+      addJobCalls.some((c) => c.identifier === 'pipeline.book.writer.chapters.dispatch'),
+    ).toBe(false);
+    expect(captures.auditLogCreates).toHaveLength(0);
+  });
+
+  it('ON: Outline.status=approved + Book.status=running + chapters dispatch enqueue + audit_log', async () => {
+    const { job, book, theme, kdpMeta } = makeJobBookThemeMeta();
+    const { prisma, captures, state } = buildPrisma({
+      jobs: [job],
+      books: [book],
+      themes: [theme],
+      kdpMetas: kdpMeta ? [kdpMeta] : [],
+      appSettings: { autopass_outline_enabled: true },
+    });
+    const { deps } = buildDeps(prisma);
+    const { addJob, calls: addJobCalls } = makeAddJob();
+
+    await runPipelineBookWriterOutline({ book_id: 'book_1', job_id: 'job_1' }, addJob, deps);
+
+    // Outline は approved + approved_at セット
+    expect(state.outlines).toHaveLength(1);
+    expect(state.outlines[0]?.status).toBe('approved');
+    expect(captures.outlineUpdates).toHaveLength(1);
+    expect(captures.outlineUpdates[0]?.data).toMatchObject({ status: 'approved' });
+
+    // Book.status='running'
+    expect(captures.bookUpdates).toContainEqual({
+      where: { id: 'book_1' },
+      data: { status: 'running' },
+    });
+
+    // chapters dispatch Job INSERT + enqueue
+    expect(captures.jobCreates).toHaveLength(1);
+    expect(captures.jobCreates[0]?.data).toMatchObject({
+      kind: 'pipeline.book.writer.chapters.dispatch',
+      book_id: 'book_1',
+      status: 'queued',
+    });
+    const dispatchCall = addJobCalls.find(
+      (c) => c.identifier === 'pipeline.book.writer.chapters.dispatch',
+    );
+    expect(dispatchCall).toBeDefined();
+    expect(dispatchCall?.payload).toMatchObject({ book_id: 'book_1' });
+
+    // audit_log
+    expect(captures.auditLogCreates).toHaveLength(1);
+    expect(captures.auditLogCreates[0]?.data).toMatchObject({
+      actor_id: null,
+      action: 'outlines.bulk_approve',
+    });
+
+    // 本来の Job (writer.outline) は done のまま
+    const doneCall = captures.jobUpdates.find((c) => c.data.status === 'done');
+    expect(doneCall).toBeDefined();
+  });
+
+  it('ON だが DB 書込失敗 → warn のみ、Outline は pending_review のまま、本タスクは正常完了', async () => {
+    const { job, book, theme, kdpMeta } = makeJobBookThemeMeta();
+    const boom = new Error('autopass write boom');
+    const { prisma, captures, state } = buildPrisma({
+      jobs: [job],
+      books: [book],
+      themes: [theme],
+      kdpMetas: kdpMeta ? [kdpMeta] : [],
+      appSettings: { autopass_outline_enabled: true },
+      autopassWriteThrow: boom,
+    });
+    const { deps, loggerCalls } = buildDeps(prisma);
+    const { addJob } = makeAddJob();
+
+    await expect(
+      runPipelineBookWriterOutline({ book_id: 'book_1', job_id: 'job_1' }, addJob, deps),
+    ).resolves.toBeUndefined();
+
+    expect(state.outlines[0]?.status).toBe('pending_review');
+    const doneCall = captures.jobUpdates.find((c) => c.data.status === 'done');
+    expect(doneCall).toBeDefined();
+    const warnCall = loggerCalls.find(
+      (c) => c.level === 'warn' && (c.msg as string).includes('autopass outline approval failed'),
     );
     expect(warnCall).toBeDefined();
   });

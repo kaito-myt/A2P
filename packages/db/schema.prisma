@@ -1038,6 +1038,15 @@ model AppSettings {
   org_kdp_min_quality             Int      @default(70) // 公開に必要な最低品質スコア(0..100)
   org_kdp_min_price_jpy           Int      @default(250) // 許容価格帯の下限
   org_kdp_max_price_jpy           Int      @default(1250) // 許容価格帯の上限
+  // パイプライン設定 (S-pipeline-settings): 各工程を AI 判断で自動パスするか。ON=人手承認ゲートを自動通過。
+  autopass_theme_enabled          Boolean  @default(false) // テーマ選定を自動化 (日次で自動生成→自動採用→バッチ投入)
+  pipeline_themes_per_day         Int      @default(3)      // 1日に自動生成するテーマ数 (1..30)
+  pipeline_theme_direction        String   @default("") @db.Text // テーマの方向性(フリーテキスト)。空=おまかせ
+  pipeline_theme_cron             String   @default("0 22 * * *") // 07:00 JST 日次テーマ自動生成
+  autopass_outline_enabled        Boolean  @default(false) // アウトライン承認を自動パス
+  autopass_content_enabled        Boolean  @default(false) // 本文承認を自動パス
+  autopass_cover_enabled          Boolean  @default(false) // サムネ(表紙)承認を自動パス(合格時に自動採用→export)
+  autopass_kdp_enabled            Boolean  @default(false) // KDP入稿を自動化(アシスト出版ツール scripts/kdp-publish.mjs の実行対象とする)
   updated_at                      DateTime @updatedAt
 
   @@map("app_settings")

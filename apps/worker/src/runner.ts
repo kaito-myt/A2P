@@ -84,6 +84,10 @@ import {
   pipelineThemeGenerateTask,
 } from './tasks/pipeline-theme-generate.js';
 import {
+  PIPELINE_THEME_AUTO_TASK_NAME,
+  pipelineThemeAutoTask,
+} from './tasks/pipeline-theme-auto.js';
+import {
   PIPELINE_BOOK_THUMBNAIL_TEXT_TASK_NAME,
   pipelineBookThumbnailTextTask,
 } from './tasks/pipeline-book-thumbnail-text.js';
@@ -201,6 +205,7 @@ export function buildTaskList(): TaskList {
   return {
     [PIPELINE_BOOK_KICKOFF_TASK_NAME]: pipelineBookKickoffTask,
     [PIPELINE_THEME_GENERATE_TASK_NAME]: pipelineThemeGenerateTask,
+    [PIPELINE_THEME_AUTO_TASK_NAME]: pipelineThemeAutoTask,
     [PIPELINE_BOOK_MARKETER_TASK_NAME]: pipelineBookMarketerTask,
     [PIPELINE_BOOK_WRITER_OUTLINE_TASK_NAME]: pipelineBookWriterOutlineTask,
     [PIPELINE_BOOK_WRITER_CHAPTERS_DISPATCH_TASK_NAME]: pipelineBookWriterChaptersDispatchTask,
@@ -344,6 +349,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
     org_finance_tick_cron: null,
     org_kdp_auto_publish_enabled: false,
     org_kdp_screen_cron: null,
+    autopass_theme_enabled: false,
+    pipeline_theme_cron: null,
   };
   try {
     const row = await prisma.appSettings.findUnique({
@@ -369,6 +376,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
         org_finance_tick_cron: true,
         org_kdp_auto_publish_enabled: true,
         org_kdp_screen_cron: true,
+        autopass_theme_enabled: true,
+        pipeline_theme_cron: true,
       },
     });
     if (!row) {
@@ -399,6 +408,8 @@ async function fetchAppSettingsForCron(log: Logger): Promise<CronRuntimeSettings
       org_finance_tick_cron: row.org_finance_tick_cron,
       org_kdp_auto_publish_enabled: row.org_kdp_auto_publish_enabled,
       org_kdp_screen_cron: row.org_kdp_screen_cron,
+      autopass_theme_enabled: row.autopass_theme_enabled,
+      pipeline_theme_cron: row.pipeline_theme_cron,
     };
   } catch (err) {
     log.warn({ err }, 'failed to read AppSettings; auto-dispatch crons disabled (safe default)');

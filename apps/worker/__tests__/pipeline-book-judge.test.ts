@@ -86,6 +86,12 @@ interface AlertRecord {
   kind: string;
 }
 
+interface CoverRecord {
+  id: string;
+  book_id: string;
+  status: string;
+}
+
 interface PrismaCaptures {
   jobUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
   jobUpdateMany: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }>;
@@ -95,6 +101,9 @@ interface PrismaCaptures {
   alertCreates: Array<{ data: Record<string, unknown> }>;
   executeRawCalls: Array<{ sql: string; values: unknown[] }>;
   bookUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
+  coverUpdates: Array<{ where: { id: string }; data: Record<string, unknown> }>;
+  coverUpdateManys: Array<{ where: Record<string, unknown>; data: Record<string, unknown> }>;
+  auditLogCreates: Array<{ data: Record<string, unknown> }>;
 }
 
 interface BuildPrismaArgs {
@@ -102,14 +111,19 @@ interface BuildPrismaArgs {
   books: BookRecord[];
   themes: ThemeRecord[];
   chapters: ChapterRecord[];
+  covers?: CoverRecord[];
+  appSettings?: Record<string, unknown> | null;
   existingExportJob?: { id: string } | null;
   forceUpdateManyCount?: number;
   executeRawThrow?: Error;
+  /** autopass 経路の cover/job/auditLog 書込を強制失敗 (フォールバック検証用). */
+  autopassWriteThrow?: Error;
 }
 
 function buildPrisma(args: BuildPrismaArgs): {
   prisma: PipelineBookJudgePrisma;
   captures: PrismaCaptures;
+  state: { covers: CoverRecord[] };
 } {
   const captures: PrismaCaptures = {
     jobUpdates: [],
@@ -120,8 +134,12 @@ function buildPrisma(args: BuildPrismaArgs): {
     alertCreates: [],
     executeRawCalls: [],
     bookUpdates: [],
+    coverUpdates: [],
+    coverUpdateManys: [],
+    auditLogCreates: [],
   };
   const jobs = [...args.jobs];
+  const covers = [...(args.covers ?? [])];
   let jobCreateCounter = 0;
   let evalCounter = 0;
   let alertCounter = 0;
@@ -179,6 +197,7 @@ function buildPrisma(args: BuildPrismaArgs): {
         return {};
       },
       create: async ({ data }) => {
+        if (args.autopassWriteThrow) throw args.autopassWriteThrow;
         jobCreateCounter += 1;
         const id = `created_job_${jobCreateCounter}`;
         const record: JobRecord = {
@@ -273,9 +292,48 @@ function buildPrisma(args: BuildPrismaArgs): {
         return { id };
       },
     },
+    cover: {
+      findMany: async ({ where }) => {
+        return covers
+          .filter((c) => c.book_id === where.book_id && c.status === where.status)
+          .map((c) => ({ id: c.id, book_id: c.book_id, status: c.status }));
+      },
+      update: async ({ where, data }) => {
+        if (args.autopassWriteThrow) throw args.autopassWriteThrow;
+        captures.coverUpdates.push({ where, data: data as unknown as Record<string, unknown> });
+        const c = covers.find((x) => x.id === where.id);
+        if (c) c.status = data.status;
+        return { id: where.id };
+      },
+      updateMany: async ({ where, data }) => {
+        if (args.autopassWriteThrow) throw args.autopassWriteThrow;
+        captures.coverUpdateManys.push({
+          where: where as unknown as Record<string, unknown>,
+          data: data as unknown as Record<string, unknown>,
+        });
+        let count = 0;
+        for (const c of covers) {
+          if (c.book_id === where.book_id && !where.id.notIn.includes(c.id) && c.status !== where.status.not) {
+            c.status = data.status;
+            count += 1;
+          }
+        }
+        return { count };
+      },
+    },
+    appSettings: {
+      findUnique: async () => (args.appSettings === undefined ? {} : args.appSettings),
+    },
+    auditLog: {
+      create: async ({ data }) => {
+        if (args.autopassWriteThrow) throw args.autopassWriteThrow;
+        captures.auditLogCreates.push({ data: data as unknown as Record<string, unknown> });
+        return {};
+      },
+    },
   };
 
-  return { prisma, captures };
+  return { prisma, captures, state: { covers } };
 }
 
 function makeDefaultJudgeOutput(scoreTotal: number, useEditorPath = false): JudgeOutput {
@@ -713,5 +771,125 @@ describe('runPipelineBookJudge error paths', () => {
     await expect(runPipelineBookJudge(payload, addJob, deps)).rejects.toBeInstanceOf(NotFoundError);
     const failedCall = captures.jobUpdates.find((c) => c.data.status === 'failed');
     expect(failedCall).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// パイプライン設定: サムネ(表紙)承認自動パス (autopass_cover_enabled)
+// ---------------------------------------------------------------------------
+
+describe('runPipelineBookJudge — autopass_cover_enabled', () => {
+  it('OFF (既定): score>=80 でも Book.status=thumbnail のまま、export は enqueue されない', async () => {
+    const { job, book, theme, chapters, payload } = makeBaseData();
+    const judgeOutput = makeDefaultJudgeOutput(85);
+    const { prisma, captures } = buildPrisma({
+      jobs: [job],
+      books: [book],
+      themes: [theme],
+      chapters,
+      covers: [{ id: 'cover_1', book_id: 'book_1', status: 'generated' }],
+      appSettings: { autopass_cover_enabled: false },
+    });
+    const { deps } = buildDeps(prisma, judgeOutput);
+    const { addJob, calls: addJobCalls } = makeAddJob();
+
+    await runPipelineBookJudge(payload, addJob, deps);
+
+    expect(captures.bookUpdates.some((u) => u.data.status === 'thumbnail')).toBe(true);
+    expect(addJobCalls.some((c) => c.identifier === 'pipeline.book.export')).toBe(false);
+    expect(captures.coverUpdates).toHaveLength(0);
+    expect(captures.auditLogCreates).toHaveLength(0);
+  });
+
+  it('ON: 生成済カバーを自動採用 → export enqueue + 他カバー reject + audit_log', async () => {
+    const { job, book, theme, chapters, payload } = makeBaseData();
+    const judgeOutput = makeDefaultJudgeOutput(85);
+    const { prisma, captures, state } = buildPrisma({
+      jobs: [job],
+      books: [book],
+      themes: [theme],
+      chapters,
+      covers: [
+        { id: 'cover_1', book_id: 'book_1', status: 'generated' },
+        { id: 'cover_2', book_id: 'book_1', status: 'generated' },
+      ],
+      appSettings: { autopass_cover_enabled: true },
+    });
+    const { deps } = buildDeps(prisma, judgeOutput);
+    const { addJob, calls: addJobCalls } = makeAddJob();
+
+    await runPipelineBookJudge(payload, addJob, deps);
+
+    // 最初のカバーが adopted、もう一方は reject 対象 (updateMany 経由)
+    expect(captures.coverUpdates).toHaveLength(1);
+    expect(captures.coverUpdates[0]).toMatchObject({
+      where: { id: 'cover_1' },
+      data: { status: 'adopted' },
+    });
+    expect(state.covers.find((c) => c.id === 'cover_1')?.status).toBe('adopted');
+    expect(captures.coverUpdateManys).toHaveLength(1);
+    expect(state.covers.find((c) => c.id === 'cover_2')?.status).toBe('rejected');
+
+    // export enqueue
+    const exportJobCreate = captures.jobCreates.find((c) => c.data.kind === 'pipeline.book.export');
+    expect(exportJobCreate).toBeDefined();
+    const exportCall = addJobCalls.find((c) => c.identifier === 'pipeline.book.export');
+    expect(exportCall).toBeDefined();
+    expect(exportCall?.payload).toMatchObject({ book_id: 'book_1' });
+
+    // audit_log
+    expect(captures.auditLogCreates).toHaveLength(1);
+    expect(captures.auditLogCreates[0]?.data).toMatchObject({
+      actor_id: null,
+      action: 'covers.bulk_adopt',
+    });
+
+    // Book.status は依然 thumbnail セット (export 完了時に export task が進める)
+    expect(captures.bookUpdates.some((u) => u.data.status === 'thumbnail')).toBe(true);
+  });
+
+  it('ON だが生成済カバーが無い → 従来通り thumbnail ゲートで停止 (fallback)', async () => {
+    const { job, book, theme, chapters, payload } = makeBaseData();
+    const judgeOutput = makeDefaultJudgeOutput(85);
+    const { prisma, captures } = buildPrisma({
+      jobs: [job],
+      books: [book],
+      themes: [theme],
+      chapters,
+      covers: [],
+      appSettings: { autopass_cover_enabled: true },
+    });
+    const { deps } = buildDeps(prisma, judgeOutput);
+    const { addJob, calls: addJobCalls } = makeAddJob();
+
+    await runPipelineBookJudge(payload, addJob, deps);
+
+    expect(captures.coverUpdates).toHaveLength(0);
+    expect(addJobCalls.some((c) => c.identifier === 'pipeline.book.export')).toBe(false);
+    expect(captures.bookUpdates.some((u) => u.data.status === 'thumbnail')).toBe(true);
+  });
+
+  it('ON だが DB 書込失敗 → warn のみ、thumbnail ゲートのまま (fallback)', async () => {
+    const { job, book, theme, chapters, payload } = makeBaseData();
+    const judgeOutput = makeDefaultJudgeOutput(85);
+    const boom = new Error('autopass cover write boom');
+    const { prisma, captures } = buildPrisma({
+      jobs: [job],
+      books: [book],
+      themes: [theme],
+      chapters,
+      covers: [{ id: 'cover_1', book_id: 'book_1', status: 'generated' }],
+      appSettings: { autopass_cover_enabled: true },
+      autopassWriteThrow: boom,
+    });
+    const { deps } = buildDeps(prisma, judgeOutput);
+    const { addJob, calls: addJobCalls } = makeAddJob();
+
+    await expect(runPipelineBookJudge(payload, addJob, deps)).resolves.toBeUndefined();
+
+    expect(addJobCalls.some((c) => c.identifier === 'pipeline.book.export')).toBe(false);
+    expect(captures.bookUpdates.some((u) => u.data.status === 'thumbnail')).toBe(true);
+    const doneCall = captures.jobUpdates.find((c) => c.data.status === 'done');
+    expect(doneCall).toBeDefined();
   });
 });

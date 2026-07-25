@@ -3080,3 +3080,39 @@ ChatGPT ブラウザ版で高品質だった運営者の実証済みフォーマ
   シェルを `h-screen` 化し **サイドバーと本文を独立スクロール** (サイドバーは `.scrollbar-none` でバー非表示)。
 - 本番: Railway Hobby プラン (Trial上限解消)。worker Dockerfile に Chromium 同梱。
   env `KDP_CRED_KEY` (KDP認証情報の暗号化), `SALES_FETCH_BROWSER`, `KDP_SIGNIN_URL`/`KDP_REPORT_URL_TEMPLATE`。
+
+## パイプライン設定 (自動パスゲート) — worker 実装
+
+`app_settings` に追加した自動パス設定 (UI = `/pipeline/settings`, SA = `apps/web/lib/pipeline-settings-core.ts`)
+を worker 側で反映する。既定は全 OFF (人手承認ゲートは従来通り)。共有ヘルパ
+`apps/worker/src/tasks/lib/pipeline-autopass.ts` の `readPipelineAutopass(prisma)` が
+`app_settings` singleton から安全にフラグを読む (行が無い/クエリ失敗時は全 OFF にフォールバック)。
+
+- **`autopass_outline_enabled`**: `pipeline.book.writer.outline` が `Outline.status='pending_review'` を保存し
+  内部 Job を `done` にした直後、`bulkApproveOutlinesCore` (承認 SA) と同じ遷移
+  (`Outline.status='approved'` + `Book.status='running'` + `pipeline.book.writer.chapters.dispatch` Job
+  INSERT+enqueue + `audit_log(action='outlines.bulk_approve', actor_id=null)`) を行う。失敗時は warn のみで
+  `Outline` は `pending_review` のまま (安全側フォールバック、本タスク自体は成功扱い)。
+- **`autopass_content_enabled`**: `pipeline.book.editor` の本文承認ゲートで、`approveBookContent` SA と同じ遷移
+  (`pipeline.book.thumbnail.text` Job INSERT+enqueue、既存 Job があれば再利用して重複防止 + `Book.status='running'`
+  + `audit_log(action='book.content.approve')`) を行う。無効/失敗時は従来通り `Book.status='content_review'`。
+- **`autopass_cover_enabled`**: `pipeline.book.judge` が合格 (score_total>=80) した際、`bulkAdoptCoversCore` SA と
+  同じ遷移を単一書籍・単一カバーに対して行う: `status='generated'` のカバーを 1 件 (作成日時最古) 選び
+  `adopted`、同書籍の他カバーを `rejected`、`pipeline.book.export` Job INSERT+enqueue、
+  `audit_log(action='covers.bulk_adopt')`。**生成済カバーが 0 件なら自動採用せず従来通り `Book.status='thumbnail'`
+  で停止**(フォールバック)。
+- **`autopass_theme_enabled` + `pipeline_themes_per_day` / `pipeline_theme_direction` / `pipeline_theme_cron`**:
+  新規タスク **`pipeline.theme.auto`** (`apps/worker/src/tasks/pipeline-theme-auto.ts`)。有効な `Account`
+  (`status='active'`, 作成日昇順の先頭) を解決し、`pipeline.theme.generate` と同じ Marketer 呼出経路
+  (`generateMarketerThemes` → `ThemeCandidate.createMany`) を直接呼び出して観測用の内部 `Job` 行 (kind=
+  `pipeline.theme.generate`) を 1 件残す (二重生成を避けるため graphile-worker キューには載せない)。生成後、
+  `acceptThemesAndStageBatchCore` 相当 (pending→accepted) → `createBatchPlanCore` 相当の `BatchPlan`
+  (`status='scheduled', planned_at=now()`) + `BatchPlanItem` * N を INSERT する。**予測コスト計算
+  (`forecastBookCostJpy`) は apps/web 専用ロジックのため呼べず、自動バッチは `predicted_cost_jpy=0` 固定**
+  (実コストは既存の `alert.cost.check` が token_usage から追跡する)。既存の毎分 `batch_plan.dispatcher` が
+  `planned_at<=now` を拾って自動キックする。cron は `AppSettings.autopass_theme_enabled` +
+  `pipeline_theme_cron` (既定 `0 22 * * *` UTC = 07:00 JST) で `buildCronItemsWithSettings` に条件付き登録
+  (他の autopass cron と同じ `CronRuntimeSettings` プラミング)。
+- 全ゲートとも autopass 経路の DB 書込は try/catch で保護し、失敗時は warn ログのみで元タスク (writer.outline /
+  editor / judge) 自体は `done` のまま完走する — 高価な LLM 呼出 (アウトライン生成/校閲/採点) の再実行を
+  autopass 側の一時的な書込失敗で無駄にしないための設計判断。

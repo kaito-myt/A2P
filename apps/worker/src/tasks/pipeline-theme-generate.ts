@@ -312,8 +312,11 @@ async function fetchRecentAcceptedTitles(args: {
   return rows.map((r) => r.title);
 }
 
-/** Marketer の `ThemeCandidate` (camelCase) を DB schema 列 (snake_case) にマッピング。 */
-function mapCandidateToRow(args: {
+/**
+ * Marketer の `ThemeCandidate` (camelCase) を DB schema 列 (snake_case) にマッピング。
+ * pipeline-theme-auto.ts (F- パイプライン設定 テーマ自動生成) からも再利用する。
+ */
+export function mapCandidateToRow(args: {
   candidate: MarketerThemeCandidate;
   accountId: string;
   themeSessionId: string;

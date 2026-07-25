@@ -45,6 +45,7 @@ export const navSections: readonly NavSection[] = [
     key: 'pipeline',
     label: m.sectionPipeline,
     items: [
+      { key: 'pipeline-settings', label: m.itemPipelineSettings, href: '/pipeline/settings', enabled: true },
       { key: 'themes', label: m.itemThemes, href: '/themes', enabled: true },
       { key: 'batch', label: m.itemBatchPlan, href: '/batches', enabled: true },
       { key: 'outlines', label: m.itemOutlines, href: '/outlines', enabled: true },

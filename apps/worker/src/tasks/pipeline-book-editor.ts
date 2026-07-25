@@ -23,6 +23,7 @@ import {
   type JobChangeNotifyPayload,
 } from '../lib/notify-job-change.js';
 import { ALERT_COST_CHECK_TASK_NAME } from './alert-cost-check.js';
+import { readPipelineAutopass } from './lib/pipeline-autopass.js';
 import { PIPELINE_BOOK_THUMBNAIL_TEXT_TASK_NAME } from './pipeline-book-thumbnail-text.js';
 
 /**
@@ -141,7 +142,7 @@ export interface PipelineBookEditorPrisma {
       data: {
         kind: string;
         book_id: string;
-        parent_job_id: string;
+        parent_job_id?: string;
         status: string;
         payload_json: unknown;
       };
@@ -213,8 +214,11 @@ export interface PipelineBookEditorPrisma {
   appSettings: {
     findUnique: (args: {
       where: { id: string };
-      select: { ai_disclosure_text: true };
-    }) => Promise<{ ai_disclosure_text: string } | null>;
+      select: Record<string, boolean>;
+    }) => Promise<Record<string, unknown> | null>;
+  };
+  auditLog: {
+    create: (args: { data: Record<string, unknown> }) => Promise<unknown>;
   };
 }
 
@@ -391,7 +395,7 @@ export async function runPipelineBookEditor(
         details: { bookId, jobId },
       });
     }
-    const aiDisclosureText = (appSettings.ai_disclosure_text ?? '').trim();
+    const aiDisclosureText = ((appSettings.ai_disclosure_text as string | undefined) ?? '').trim();
     if (aiDisclosureText.length === 0) {
       throw new ValidationError(
         'AppSettings.ai_disclosure_text が空です (R-05 違反防止)',
@@ -474,15 +478,76 @@ export async function runPipelineBookEditor(
       revisionsCount += 1;
     }
 
-    // 7. 本文承認ゲート (人手): 校閲完了後は自動でサムネ生成へ進めず、
-    //    Book.status='content_review' (本文承認待ち) にして停止する。
-    //    運営者が書籍詳細で「本文を承認」すると thumbnail.text が enqueue され先へ進む
-    //    (approveBookContent SA)。
-    const thumbnailJobId: string | null = null;
-    await prisma.book.update({
-      where: { id: bookId },
-      data: { status: 'content_review', updated_at: now() },
-    });
+    // 7. 本文承認ゲート (人手 or 自動): 校閲完了後は原則 Book.status='content_review'
+    //    (本文承認待ち) にして停止する。運営者が書籍詳細で「本文を承認」すると
+    //    thumbnail.text が enqueue され先へ進む (approveBookContent SA)。
+    //    パイプライン設定で autopass_content_enabled=true の場合は、approveBookContent SA
+    //    と同じ遷移 (thumbnail.text enqueue + Book.status='running') を自動で行う。
+    //    失敗しても content_review にフォールバックし、運営者が手動承認できる。
+    let thumbnailJobId: string | null = null;
+    let gateBookStatus: 'content_review' | 'running' = 'content_review';
+    const autopass = await readPipelineAutopass(prisma);
+    if (autopass.autopass_content_enabled) {
+      try {
+        const existingThumbnailJob = await prisma.job.findFirst({
+          where: {
+            book_id: bookId,
+            kind: PIPELINE_BOOK_THUMBNAIL_TEXT_TASK_NAME,
+            status: { in: ['queued', 'running', 'done'] },
+          },
+          select: { id: true },
+        });
+        thumbnailJobId = existingThumbnailJob?.id ?? null;
+        if (!thumbnailJobId) {
+          const thumbnailJob = await prisma.job.create({
+            data: {
+              kind: PIPELINE_BOOK_THUMBNAIL_TEXT_TASK_NAME,
+              book_id: bookId,
+              status: 'queued',
+              payload_json: { book_id: bookId },
+            },
+          });
+          thumbnailJobId = thumbnailJob.id;
+          await addJob(PIPELINE_BOOK_THUMBNAIL_TEXT_TASK_NAME, {
+            book_id: bookId,
+            job_id: thumbnailJobId,
+          });
+        }
+        await prisma.auditLog.create({
+          data: {
+            actor_id: null,
+            action: 'book.content.approve',
+            target_kind: 'book',
+            target_id: bookId,
+            before_json: { status: 'content_review', trigger: 'autopass' },
+            after_json: { status: 'running', thumbnail_text_job_id: thumbnailJobId },
+          },
+        });
+        gateBookStatus = 'running';
+        log.info(
+          { task: PIPELINE_BOOK_EDITOR_TASK_NAME, jobId, bookId, thumbnailJobId },
+          'autopass: content auto-approved — thumbnail.text enqueued',
+        );
+      } catch (autopassErr) {
+        thumbnailJobId = null;
+        gateBookStatus = 'content_review';
+        log.warn(
+          { task: PIPELINE_BOOK_EDITOR_TASK_NAME, jobId, bookId, err: autopassErr },
+          'autopass content approval failed — falling back to manual content_review gate',
+        );
+      }
+    }
+    if (gateBookStatus === 'running') {
+      await prisma.book.update({
+        where: { id: bookId },
+        data: { status: 'running' },
+      });
+    } else {
+      await prisma.book.update({
+        where: { id: bookId },
+        data: { status: 'content_review', updated_at: now() },
+      });
+    }
 
     // 8. 内部 Job を done に遷移
     await prisma.job.update({
