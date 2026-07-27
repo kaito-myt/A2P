@@ -8,6 +8,7 @@ import { CATALOG_FETCH_TASK_NAME } from './tasks/catalog-fetch.js';
 import { FX_FETCH_TASK_NAME } from './tasks/fx-fetch.js';
 import { SALES_FETCH_DISPATCHER_TASK_NAME } from './tasks/sales-fetch-dispatcher.js';
 import { BOOK_CULL_DETECT_TASK_NAME } from './tasks/book-cull-detect.js';
+import { KDP_PUBLISH_STATUS_SYNC_TASK_NAME } from './tasks/kdp-publish-status-sync.js';
 import { PIPELINE_THEME_AUTO_TASK_NAME } from './tasks/pipeline-theme-auto.js';
 import { PROMOTION_DISPATCH_TASK_NAME } from './tasks/promotion-dispatch.js';
 import { PROMOTION_REVIEW_DAILY_TASK_NAME } from './tasks/promotion-review-daily.js';
@@ -84,6 +85,14 @@ export const ALERT_COST_CHECK_CRON = '0 * * * *';
  * archive.db.backup (`0 18 * * 6`) と同スケジュール — 日曜朝メンテナンスウィンドウ統一。
  */
 export const ARCHIVE_JOBS_CRON = '0 18 * * 6';
+
+/**
+ * KDP 出版ステータス自動同期 (`kdp.publish.status.sync`): 6 時間毎。
+ * `publish_status='submitted'` の本を KDP 本棚 READ-ONLY 巡回し LIVE 検知で `published` に昇格する
+ * (入稿は `scripts/kdp-publish.mjs` が担当するため submitted→published のギャップを埋める)。
+ * セッション再利用の READ-ONLY 操作のみで危険性が低いため AppSettings トグル無しの常時 ON とする。
+ */
+export const KDP_PUBLISH_STATUS_SYNC_CRON = '0 */6 * * *';
 
 /** env から catalog cron を取得 (既定 `0 19 * * *`)。 */
 export function resolveCatalogFetchCron(env: NodeJS.ProcessEnv = process.env): string {
@@ -435,6 +444,12 @@ export const CRON_ITEMS: CronItem[] = [
     task: ARCHIVE_JOBS_TASK_NAME,
     match: ARCHIVE_JOBS_CRON,
     identifier: 'archive-jobs-weekly',
+  },
+  // KDP 出版ステータス自動同期 (submitted→published, docs/05 §5.3.19): 6 時間毎
+  {
+    task: KDP_PUBLISH_STATUS_SYNC_TASK_NAME,
+    match: KDP_PUBLISH_STATUS_SYNC_CRON,
+    identifier: 'kdp-publish-status-sync-6h',
   },
   // sales.fetch.dispatch は AppSettings.sales_auto_fetch_enabled に応じて
   // buildCronItemsWithSettings() で条件付き追加する (SP-12 T-12-05)。

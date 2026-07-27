@@ -33,6 +33,10 @@ import {
 import { CATALOG_FETCH_TASK_NAME, catalogFetchTask } from './tasks/catalog-fetch.js';
 import { FX_FETCH_TASK_NAME, fxFetchTask } from './tasks/fx-fetch.js';
 import { KDP_ASIN_FETCH_TASK_NAME, kdpAsinFetchTask } from './tasks/kdp-asin-fetch.js';
+import {
+  KDP_PUBLISH_STATUS_SYNC_TASK_NAME,
+  kdpPublishStatusSyncTask,
+} from './tasks/kdp-publish-status-sync.js';
 import { KDP_SUBMIT_TASK_NAME, kdpSubmitTask } from './tasks/kdp-submit.js';
 import { LOCKS_SWEEP_TASK_NAME, locksSweepTask } from './tasks/locks-sweep.js';
 import {
@@ -239,6 +243,7 @@ export function buildTaskList(): TaskList {
     [BAKEOFF_RUN_TASK_NAME]: bakeoffRunTask,
     [KDP_SUBMIT_TASK_NAME]: kdpSubmitTask,
     [KDP_ASIN_FETCH_TASK_NAME]: kdpAsinFetchTask,
+    [KDP_PUBLISH_STATUS_SYNC_TASK_NAME]: kdpPublishStatusSyncTask,
     [ALERT_COST_CHECK_TASK_NAME]: alertCostCheckTask,
     [ARCHIVE_JOBS_TASK_NAME]: archiveJobsTask,
     [ARCHIVE_DB_BACKUP_TASK_NAME]: archiveDbBackupTask,

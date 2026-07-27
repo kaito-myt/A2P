@@ -10,7 +10,15 @@
  */
 import { createLogger } from '@a2p/contracts/logger';
 
-import type { BookshelfPort, TakedownBookArgs, TakedownBookResult, TakedownStep } from './bookshelf-port.js';
+import type {
+  BookshelfPort,
+  KdpBookStatus,
+  ReadBookStatusArgs,
+  ReadBookStatusResult,
+  TakedownBookArgs,
+  TakedownBookResult,
+  TakedownStep,
+} from './bookshelf-port.js';
 
 const log = createLogger('worker.book-cull.playwright');
 const BOOKSHELF_URL = process.env.KDP_BOOKSHELF_URL ?? 'https://kdp.amazon.co.jp/ja_JP/bookshelf';
@@ -19,7 +27,20 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 const LAUNCH_ARGS = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'];
 
 export function createPlaywrightBookshelfPort(): BookshelfPort {
-  return { takedownBook };
+  return { takedownBook, readBookStatus };
+}
+
+/**
+ * KDP 本棚の行テキストから状態ラベルを 5 値に正規化する(純関数、単体テスト対象)。
+ * 未知のラベル(行が見つからない/文言変更等)は安全側で 'not_found' にフォールバックする。
+ */
+export function mapStatusLabel(text: string): KdpBookStatus {
+  const t = (text ?? '').trim();
+  if (/ブロック|Blocked/i.test(t)) return 'blocked';
+  if (/レビュー中|In[\s_-]?Review/i.test(t)) return 'in_review';
+  if (/下書き|Draft/i.test(t)) return 'draft';
+  if (/販売中|\bLive\b/i.test(t)) return 'live';
+  return 'not_found';
 }
 
 async function takedownBook(args: TakedownBookArgs): Promise<TakedownBookResult> {
@@ -143,6 +164,85 @@ async function takedownBook(args: TakedownBookArgs): Promise<TakedownBookResult>
   } finally {
     await browser.close().catch(() => {});
   }
+}
+
+/**
+ * `kdp.publish.status.sync` 用 READ-ONLY ステータス取得。
+ * ログイン/出版/取り下げ等の状態変更操作は一切行わない(検索して状態を読むだけ)。
+ */
+async function readBookStatus(args: ReadBookStatusArgs): Promise<ReadBookStatusResult> {
+  const timeoutMs = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const query = args.asin ?? args.title;
+  if (!query) return { ok: false, reason: 'action_failed', message: 'asin/title both missing' };
+
+  let storageState: unknown;
+  try {
+    storageState = JSON.parse(args.sessionState);
+  } catch {
+    return { ok: false, reason: 'session_expired', message: 'stored session is not valid JSON' };
+  }
+
+  let chromium: typeof import('playwright').chromium;
+  try {
+    ({ chromium } = await import('playwright'));
+  } catch (err) {
+    return { ok: false, reason: 'unknown', message: `playwright unavailable: ${errMsg(err)}` };
+  }
+
+  const browser = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
+  try {
+    const context = await browser.newContext({
+      storageState: storageState as Awaited<ReturnType<import('playwright').BrowserContext['storageState']>>,
+      locale: 'ja-JP',
+      userAgent: UA,
+      viewport: { width: 1500, height: 1000 },
+    });
+    const page = await context.newPage();
+    page.setDefaultTimeout(timeoutMs);
+
+    await page.goto(BOOKSHELF_URL, { waitUntil: 'domcontentloaded', timeout: timeoutMs }).catch(() => {});
+    await page.waitForTimeout(6000);
+    if (/\/ap\/signin|\/signin/i.test(page.url())) {
+      return { ok: false, reason: 'session_expired', message: `sign-in redirect (${page.url()})` };
+    }
+
+    const sb = await page.$('input[type="search"], input[aria-label*="検索"], input[placeholder*="検索"]');
+    if (!sb) return { ok: false, reason: 'action_failed', message: 'search box not found' };
+    await sb.fill(query);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(6000);
+
+    const content = await page.content();
+    if (!content.includes(query)) return { ok: true, status: 'not_found' };
+
+    const dots = await page.$$('button[id$="-other-actions-announce"]');
+    if (dots.length === 0) return { ok: true, status: 'not_found' };
+    // ASIN 完全一致検索なら通常 1 件。複数ヒットしても最初の 1 件を対象にする(READ-ONLY のため誤爆リスクなし)。
+    const rowText = await extractRowText(page, dots[0]!);
+    return { ok: true, status: mapStatusLabel(rowText) };
+  } catch (err) {
+    const msg = errMsg(err);
+    log.warn({ err: msg, query }, 'readBookStatus failed');
+    return { ok: false, reason: 'unknown', message: msg };
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
+/** dots(その他操作)ボタンの祖先を辿り、ある程度まとまったテキストを持つ行コンテナのテキストを取る。 */
+async function extractRowText(
+  page: import('playwright').Page,
+  dots: import('playwright').ElementHandle<SVGElement | HTMLElement>,
+): Promise<string> {
+  return page.evaluate((el: Element) => {
+    let node: Element | null = el;
+    for (let i = 0; i < 6 && node; i++) {
+      const text = node.textContent ?? '';
+      if (text.trim().length > 20) return text;
+      node = node.parentElement;
+    }
+    return el.textContent ?? '';
+  }, dots);
 }
 
 async function saveShot(page: import('playwright').Page, asin: string, stage: string): Promise<void> {

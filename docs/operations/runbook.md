@@ -78,7 +78,7 @@ pnpm --filter @a2p/db seed
 - [ ] Web の `/` がロード → ログイン画面表示
 - [ ] `AUTH_USERNAME` / 平文パスワードでログイン成功
 - [ ] ダッシュボードが描画 (CostMeter / JobTicker が値を返す)
-- [ ] Worker ログに `graphile-worker` 起動 + cron 登録 (6 件) が出力
+- [ ] Worker ログに `graphile-worker` 起動 + cron 登録 (7 件) が出力
 - [ ] S-027 (API 認証情報) から LLM キーを登録 → 接続テスト OK
 - [ ] 1 テーマ投入 → Marketer ジョブが queued → running に遷移 (Worker 稼働確認)
 
@@ -146,6 +146,7 @@ pnpm --filter @a2p/db seed
 | `catalog-fetch-daily` | `catalog.fetch` | `0 19 * * *`(既定) | 04:00 | 単価カタログ取得 (env で可変) |
 | `archive-db-backup-weekly` | `archive.db.backup` | `0 18 * * 6` | 日 03:00 | pg_dump → R2 (R-12) |
 | `archive-jobs-weekly` | `archive.jobs` | `0 18 * * 6` | 日 03:00 | 90 日超 Job を R2 退避 + DB 削除 |
+| `kdp-publish-status-sync-6h` | `kdp.publish.status.sync` | `0 */6 * * *` | 6 時間毎 | `publish_status='submitted'` の本を KDP 本棚 READ-ONLY 巡回し LIVE 検知で `published` に自動昇格 |
 
 > per_book スコープのコストチェックはパイプラインから個別 enqueue されるため cron には無い。
 
@@ -169,7 +170,7 @@ pnpm --filter @a2p/db seed
 ### 4.2 Worker が動かない / ジョブが滞留
 
 - Worker サービスログを確認。`DATABASE_URL` 不一致が最頻原因。
-- graphile-worker の起動ログ (cron 6 件登録) が出ているか。
+- graphile-worker の起動ログ (cron 7 件登録) が出ているか。
 - 滞留ジョブ: S-025 (ジョブログ一覧) で `failed` を確認 → 一括リトライ。
   または S-026 で「ステップから再開」。
 - 期限切れ BookLock が掃けず書籍がロックされたまま →

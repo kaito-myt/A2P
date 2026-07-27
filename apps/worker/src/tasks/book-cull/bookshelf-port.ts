@@ -30,8 +30,30 @@ export type TakedownBookResult =
   | { ok: true; steps: TakedownStep[]; finalState: string }
   | { ok: false; reason: 'session_expired' | 'not_found' | 'ambiguous' | 'action_failed' | 'timeout' | 'unknown'; message: string; steps?: TakedownStep[] };
 
+/**
+ * `kdp.publish.status.sync` (submitted→published 自動昇格) 用の読み取り専用ステータス取得。
+ * KDP 本棚を検索し、対象行のステータスラベルを 5 値に正規化する。
+ */
+export interface ReadBookStatusArgs {
+  /** ASIN があれば優先して検索クエリに使う(完全一致・誤爆防止)。 */
+  asin?: string;
+  /** ASIN 未設定時のフォールバック検索クエリ。 */
+  title: string;
+  /** 復号済み Playwright storageState(JSON)。 */
+  sessionState: string;
+  timeoutMs?: number;
+}
+
+export type KdpBookStatus = 'live' | 'draft' | 'in_review' | 'blocked' | 'not_found';
+
+export type ReadBookStatusResult =
+  | { ok: true; status: KdpBookStatus }
+  | { ok: false; reason: 'session_expired' | 'no_session' | 'action_failed' | 'unknown'; message: string };
+
 export type BookshelfPort = {
   takedownBook(args: TakedownBookArgs): Promise<TakedownBookResult>;
+  /** READ-ONLY。ログイン/出版/取り下げ等の状態変更操作は一切行わない。 */
+  readBookStatus(args: ReadBookStatusArgs): Promise<ReadBookStatusResult>;
 };
 
 /** 常に成功を返すダミー(テスト用)。 */
@@ -42,6 +64,9 @@ export function createFixtureBookshelfPort(finalState = 'archived'): BookshelfPo
       if (args.mode === 'unpublish_archive') steps.push({ step: 'archive', ok: true });
       return { ok: true, steps, finalState };
     },
+    async readBookStatus() {
+      return { ok: true, status: 'live' };
+    },
   };
 }
 
@@ -49,6 +74,9 @@ export function createFixtureBookshelfPort(finalState = 'archived'): BookshelfPo
 export function createSessionExpiredBookshelfPort(): BookshelfPort {
   return {
     async takedownBook() {
+      return { ok: false, reason: 'session_expired', message: 'session expired (test dummy)' };
+    },
+    async readBookStatus() {
       return { ok: false, reason: 'session_expired', message: 'session expired (test dummy)' };
     },
   };

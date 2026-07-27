@@ -750,6 +750,8 @@
 - **受け入れ基準**: 入稿翌日に ASIN が必ず取り込まれる（再試行込み）
 - **関連エージェント**: N/A
 
+**`books.publish_status` ライフサイクル**: `unlisted`（未対応）→ `submitted`（`scripts/kdp-publish.mjs` が入稿成功時にセット）→ `published`（KDP で実際に LIVE=販売中になった状態）。従来 `published` への遷移は運営者が UI (`PublishStatusControl`) で手動切替するのみだったが、`kdp.publish.status.sync` (worker cron、6 時間毎、`docs/05` §5.3.19) が `submitted` の本を保存済みセッションで READ-ONLY 巡回し、LIVE 検知で自動的に `published` に昇格させる（運営者の手動切替は引き続き可能・自動化と併存）。
+
 ---
 
 ### F-043 シングルユーザー認証（NextAuth Credentials、env パスワード）

@@ -1857,6 +1857,23 @@ export const ArchiveJobsPayload = z.object({})
 | priority | 90 |
 | 実行内容 | `Job` の `created_at < now - retention_days` を R2 (`archive/jobs/{yyyy-mm}.jsonl.gz`) に退避 → DB から削除。 |
 
+#### 5.3.19 `kdp.publish.status.sync` [F-041/F-042 補完]
+
+```typescript
+// payload なし (対象は publish_status='submitted' の全書籍を毎回スキャン)
+```
+
+| 項目 | 値 |
+|---|---|
+| cron | `0 */6 * * *` UTC (6 時間毎、AppSettings トグル無しの常時 ON) |
+| 想定時間 | 対象冊数 × 数秒〜十数秒 |
+| timeout | 30 分 |
+| max_attempts | 1 (READ-ONLY・失敗しても次 cron tick で再試行されるため再試行不要) |
+| priority | 60 |
+| 実行内容 | `scripts/kdp-publish.mjs` が入稿成功時に立てる `publish_status='submitted'` は、Amazon 側の審査が通り実際に LIVE (販売中) になったかまでは分からない。本タスクはそのギャップを埋める: 作成日最古の active `Account` の `kdp_session_state_enc` を復号 → `publish_status='submitted'` の `Book` を全件取得 → 各本について `BookshelfPort.readBookStatus({ asin, title, sessionState })` (book-cull の `takedownBook` と同じ本棚検索ロジックを再利用した **READ-ONLY** 追加メソッド。ログイン/出版/取り下げ等の状態変更操作は一切行わない) で KDP 本棚の状態ラベルを 5 値 (`live`/`draft`/`in_review`/`blocked`/`not_found`) に正規化して取得 → `live` なら `Book.publish_status='published'` に更新 + `audit_log` (`action='kdp.publish.published'`) を記録。`session_expired` を検知したら以降の本の走査を即座に打ち切り (連打防止)、LINE 双方向認証リレーが設定済みなら通知のみ行う (**再ログインは行わない** — 別タスクの責務外)。アカウント/セッション未設定時は何もせず正常終了。 |
+
+`readBookStatus` の状態ラベル→5値マッピングは `apps/worker/src/tasks/book-cull/playwright-bookshelf-port.ts` の純関数 `mapStatusLabel` (単体テスト対象) が担う: 販売中/Live→`live`、下書き/Draft→`draft`、レビュー中/In Review→`in_review`、ブロック/Blocked→`blocked`、該当行なし/未知の文言→`not_found`。
+
 ### 5.4 crontab 定義
 
 `apps/worker/src/crontab.ts`：
@@ -1867,6 +1884,7 @@ export const ArchiveJobsPayload = z.object({})
 0  17 * * *  sales.fetch ?{"account_id":"$ALL","year_month":"$CURRENT"}  # Phase 2
 0  * * * *   alert.cost.check ?{"scope":"monthly"}
 0  18 * * 6  archive.jobs                                                  # 土 18:00 UTC = 日曜 03:00 JST
+0  */6 * * * kdp.publish.status.sync                                      # 6 時間毎、submitted→published 自動昇格
 ```
 
 `sales.fetch` の `$ALL` は worker 側で全 active アカウント分に展開。
