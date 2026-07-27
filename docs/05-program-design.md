@@ -1034,6 +1034,7 @@ CREATE UNIQUE INDEX prompts_role_genre_active_key
 | POST | `/api/kdp/2fa/[jobId]` | 必須 | 2FA コード入力 (Phase 3) | path: `jobId`, body: `{ code: string }` | `{ ok: true }` |
 | POST | `/api/kdp/2fa/[jobId]/email-callback` | URL 署名 | メール内ボタンからの 2FA 入力画面 | — | 302 → `/kdp/2fa/[jobId]` |
 | GET  | `/api/notify/test` | 必須 (S-027) | テストメール送信 | — | `{ ok: true }` |
+| POST | `/api/line/webhook` | LINE 署名 (`x-line-signature`) | LINE 双方向認証リレー受信 (KDP ログイン/OTP 中継, `scripts/kdp-publish.mjs` と連携) | LINE Webhook 標準ペイロード | `{ ok: true }` (常に 200) |
 
 #### 4.2.1 SSE イベント形式
 
@@ -2908,6 +2909,18 @@ export const logger = pino({
   走らせ、出力・コスト(cost_jpy)・レイテンシ(latency_ms)を保存、comparator が rank/quality_score を付与。
 - **`model_catalog`** に OpenAI(GPT) をキュレート単価で登録可能に (pricing ページが SPA でスクレイプ不能なため
   `catalog-fetch` に `OPENAI_CURATED_PRICING` フォールバックを追加)。
+- **`kdp_auth_requests`** (LINE 双方向認証リレー)。ローカルの運営者アシスト出版ツール
+  (`scripts/kdp-publish.mjs`, 触らない) が KDP の再ログイン/OTP 待ちを検知すると本テーブルに
+  `status='pending'` 行を INSERT + LINE push で運営者に通知する。運営者が LINE アプリに 6 桁コードを
+  返信すると `POST /api/line/webhook` が受信し、`purpose`/`prompt`/`code`/`created_at`/`expires_at`/
+  `fulfilled_at`/`consumed_at` を持つこの行に `code` を書き戻して `status='fulfilled'` にする。ローカル
+  ツールは fulfilled 行をポーリングして Amazon の入力欄に自動入力し、消費後 `status='consumed'` に更新
+  する (消費側のロジックはローカルツール側の責務、本 Web 側は書き込みのみ)。認証は LINE 署名
+  (`x-line-signature`, HMAC-SHA256 timing-safe 比較) であり NextAuth セッションを使わない
+  (`middleware.ts` の matcher で `/api/line` を除外)。env: `LINE_CHANNEL_SECRET` /
+  `LINE_CHANNEL_ACCESS_TOKEN` / `LINE_ALLOWED_USER_ID` (全て任意、未設定なら webhook は 503)。
+  純粋ロジックは `apps/web/lib/line-webhook-core.ts` (`extractOtpCode`/`processLineEvents`)、署名検証/
+  返信 API 呼び出しは `apps/web/lib/line-client.ts` に分離。
 
 ## 追加エージェントロール (prompts / model_assignments 対象)
 

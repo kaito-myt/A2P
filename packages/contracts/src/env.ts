@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * A2P 環境変数スキーマ (docs/03 §5 全 29 項目)
+ * A2P 環境変数スキーマ (docs/03 §5 全 32 項目)
  *
  * 起動時に `parseEnv(process.env)` を呼び、失敗した場合はアプリを `process.exit(1)` で停止する。
  * - `apps/web/instrumentation.ts` または起動エントリ
@@ -93,6 +93,11 @@ export const EnvSchema = z.object({
   // --- 27-28. コスト上限 (JPY) ---------------------------------------------
   COST_LIMIT_PER_BOOK_JPY: NonNegativeInt.default(500),
   COST_LIMIT_MONTHLY_JPY: NonNegativeInt.default(50000),
+
+  // --- 29-31. LINE 双方向認証リレー (KDP ログイン/OTP 中継, 任意) ----------
+  LINE_CHANNEL_SECRET: emptyToUndef(z.string().min(1).optional()),
+  LINE_CHANNEL_ACCESS_TOKEN: emptyToUndef(z.string().min(1).optional()),
+  LINE_ALLOWED_USER_ID: emptyToUndef(z.string().min(1).optional()),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

@@ -278,6 +278,9 @@ LTS / latest stable を基本とし、Phase 0-1 では新規プロジェクト�
 | `FX_RATE_API_URL` | 為替 API エンドポイント | 任意 | `https://open.er-api.com/v6/latest/USD` |
 | `COST_LIMIT_PER_BOOK_JPY` | 1 冊コスト上限 | 任意（既定 500） | `500` |
 | `COST_LIMIT_MONTHLY_JPY` | 月次コスト上限 | 任意（既定 50000） | `50000` |
+| `LINE_CHANNEL_SECRET` | LINE 双方向認証リレー: webhook 署名検証用チャネルシークレット | 任意（未設定時 `/api/line/webhook` は 503） | LINE Developers コンソール発行 |
+| `LINE_CHANNEL_ACCESS_TOKEN` | LINE 双方向認証リレー: Messaging API 返信用アクセストークン | 任意 | LINE Developers コンソール発行 |
+| `LINE_ALLOWED_USER_ID` | LINE 双方向認証リレー: 認証コード返信を受け付ける運営者本人の LINE userId（なりすまし防止） | 任意 | `U...` |
 
 ---
 

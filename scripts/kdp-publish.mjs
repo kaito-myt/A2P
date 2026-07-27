@@ -10,7 +10,10 @@
  *    残りを試行する。制限解除後に再実行すれば、未出版の本が順次出版される（＝手動リトライ運用）。
  *
  * 使い方:
- *   # 環境変数: DBURL(=prod DATABASE_PUBLIC_URL), R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET_NAME
+ *   # 環境変数(必須): DBURL(=prod DATABASE_PUBLIC_URL), R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET_NAME
+ *   # 環境変数(任意/LINE認証リレー): LINE_CHANNEL_ACCESS_TOKEN, LINE_USER_ID(=通知先/自分のuserId)
+ *   #   → OTP画面に到達するとLINEに通知が飛び、返信した6桁コードを自動入力する。
+ *   # 環境変数(任意/ログイン自動入力): AMAZON_EMAIL, AMAZON_PASSWORD(未設定ならブラウザで手入力)
  *   node scripts/kdp-publish.mjs                      # 既定: 入稿キュー(kdp_publish_queued=true)の本を全部出版
  *   node scripts/kdp-publish.mjs --dry-run            # 出版直前まで（最後の「出版」を押さない）
  *   node scripts/kdp-publish.mjs --book-id=<id>       # 1冊だけ
@@ -53,6 +56,77 @@ const STAGE = path.join(os.tmpdir(), 'kdp-publish-stage');
 fs.mkdirSync(STAGE, { recursive: true });
 
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
+
+// ---- LINE 認証リレー / ログイン自動入力の設定 ----
+const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push';
+const LINE_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
+const LINE_USER = process.env.LINE_USER_ID || process.env.LINE_ALLOWED_USER_ID || '';
+const AMZ_EMAIL = process.env.AMAZON_EMAIL || '';
+const AMZ_PASS = process.env.AMAZON_PASSWORD || '';
+
+const genId = () => 'kar_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+const isOnDetails = (page) =>
+  /title-setup\/kindle\/[^/]+\/details/.test(page.url()) && !/signin/i.test(page.url());
+
+// LINE Messaging API push（通知のみ。返信の受信は Web webhook 側 /api/line/webhook が担当）
+async function pushLine(text) {
+  if (!LINE_TOKEN || !LINE_USER) {
+    log('  LINE未設定 (LINE_CHANNEL_ACCESS_TOKEN / LINE_USER_ID) — push省略');
+    return false;
+  }
+  try {
+    const res = await fetch(LINE_PUSH_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + LINE_TOKEN },
+      body: JSON.stringify({ to: LINE_USER, messages: [{ type: 'text', text }] }),
+    });
+    if (!res.ok) {
+      log('  LINE push失敗', res.status, await res.text().catch(() => ''));
+      return false;
+    }
+    return true;
+  } catch (e) {
+    log('  LINE push例外', e.message);
+    return false;
+  }
+}
+
+// OTP画面到達 → DBに認証待ちを作成 → LINE通知 → 返信コードをポーリング → 入力
+async function relayOtpViaLine(c, page, otpInput, submitSel) {
+  const id = genId();
+  const expires = new Date(Date.now() + 5 * 60 * 1000);
+  await c.query(
+    `INSERT INTO kdp_auth_requests (id, purpose, status, prompt, expires_at) VALUES ($1,'kdp_login_otp','pending',$2,$3)`,
+    [id, 'KDPログインの2段階認証コードを入力してください', expires],
+  );
+  const ok = await pushLine(
+    '🔐 A2P: KDPログインの認証が必要です。\n認証アプリの6桁コードをこのトークにそのまま返信してください（5分以内）。',
+  );
+  if (!ok) log('  ※LINE通知は未送信ですが、DBに認証待ちを作成済み（Web webhook経由でコード受信可）');
+  log('  返信された6桁コードを待機中（最大5分）...');
+  let code = null;
+  for (let i = 0; i < 150; i++) {
+    const r = await c.query(`SELECT code, status FROM kdp_auth_requests WHERE id=$1`, [id]);
+    const row = r.rows[0];
+    if (row && row.status === 'fulfilled' && row.code) {
+      code = row.code;
+      break;
+    }
+    await page.waitForTimeout(2000);
+  }
+  if (!code) {
+    await c.query(`UPDATE kdp_auth_requests SET status='expired' WHERE id=$1 AND status='pending'`, [id]);
+    log('  コード未受信 — タイムアウト');
+    return false;
+  }
+  log('  コード受信 → 自動入力');
+  await otpInput.fill(code);
+  await c.query(`UPDATE kdp_auth_requests SET status='consumed', consumed_at=now() WHERE id=$1`, [id]);
+  await page.check('#auth-mfa-remember-device').catch(() => {});
+  if (submitSel) await page.click(submitSel).catch(() => {});
+  await page.waitForTimeout(4000);
+  return true;
+}
 
 // ---- DB ----
 function db() {
@@ -239,13 +313,46 @@ async function captureAsin(page, title) {
   return asin;
 }
 
-async function ensureLoggedIn(page) {
+async function ensureLoggedIn(page, c) {
   await page.goto(CREATE, { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(6000);
-  if (/title-setup\/kindle\/[^/]+\/details/.test(page.url()) && !/signin/i.test(page.url())) return true;
-  log('*** ブラウザでAmazonにログイン（パスワード+2FA）してください。最大10分待機します ***');
+  if (isOnDetails(page)) return true;
+  log('*** Amazonログイン処理を開始（LINE認証リレー対応）。最大10分待機します ***');
+  log('    email/passwordはenv (AMAZON_EMAIL/AMAZON_PASSWORD) があれば自動入力、無ければブラウザで手入力可');
   for (let i = 0; i < 120; i++) {
+    if (isOnDetails(page)) { log('ログイン確認'); return true; }
+
+    // email 入力欄
+    const emailEl = await page.$('#ap_email, input[type="email"][name="email"]').catch(() => null);
+    if (emailEl && AMZ_EMAIL && (await emailEl.isVisible().catch(() => false))) {
+      await emailEl.fill(AMZ_EMAIL).catch(() => {});
+      await page.click('#continue, input#continue').catch(() => {});
+      await page.waitForTimeout(2500);
+    }
+
+    // password 入力欄
+    const passEl = await page.$('#ap_password, input[type="password"][name="password"]').catch(() => null);
+    if (passEl && AMZ_PASS && (await passEl.isVisible().catch(() => false))) {
+      await passEl.fill(AMZ_PASS).catch(() => {});
+      await page.check('#rememberMe').catch(() => {});
+      await page.click('#signInSubmit, input#signInSubmit').catch(() => {});
+      await page.waitForTimeout(3000);
+    }
+
+    // OTP / 2SV / CVF 入力欄 → LINE認証リレー
+    const otpEl = await page
+      .$('#auth-mfa-otpcode, input[name="otpCode"], #cvf-input-code, input[name="code"]')
+      .catch(() => null);
+    if (otpEl && (await otpEl.isVisible().catch(() => false))) {
+      const submitSel = (await page.$('#auth-signin-button').catch(() => null))
+        ? '#auth-signin-button'
+        : (await page.$('#cvf-submit-otp-button').catch(() => null))
+          ? '#cvf-submit-otp-button'
+          : 'input[type="submit"]';
+      const done = await relayOtpViaLine(c, page, otpEl, submitSel);
+      if (!done) return false;
+    }
+
     await page.waitForTimeout(5000);
-    if (/title-setup\/kindle\/[^/]+\/details/.test(page.url()) && !/signin/i.test(page.url())) { log('ログイン確認'); return true; }
   }
   return false;
 }
@@ -259,7 +366,7 @@ async function main() {
   const ctx = await chromium.launchPersistentContext(USERDATA, { headless: false, channel: 'chrome', locale: 'ja-JP', viewport: { width: 1500, height: 1200 }, args: ['--disable-blink-features=AutomationControlled'] });
   const page = ctx.pages()[0] ?? await ctx.newPage();
   page.setDefaultTimeout(60000);
-  if (!(await ensureLoggedIn(page))) { log('ログイン未完了 — 中止'); await ctx.close(); await c.end(); return; }
+  if (!(await ensureLoggedIn(page, c))) { log('ログイン未完了 — 中止'); await ctx.close(); await c.end(); return; }
 
   const results = [];
   for (const b of books) {

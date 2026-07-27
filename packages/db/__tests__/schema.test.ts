@@ -33,6 +33,7 @@ const EXPECTED_MODELS = [
   'KdpMetadata',
   'KdpSubmissionProgress',
   'Kdp2FaCode',
+  'KdpAuthRequest',
   'Artifact',
   'Job',
   'BatchPlan',

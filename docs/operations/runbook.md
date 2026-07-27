@@ -6,7 +6,7 @@
 
 関連ドキュメント:
 
-- 環境変数の正典: [`.env.example`](../../.env.example) (全 29 項目) / 検証スキーマ: `packages/contracts/src/env.ts`
+- 環境変数の正典: [`.env.example`](../../.env.example) (全 32 項目) / 検証スキーマ: `packages/contracts/src/env.ts`
 - アーキ全体像: `docs/03-tech-selection.md` / `docs/05-program-design.md` §5 (ジョブ/cron)
 - 実走コスト実測: [`docs/operations/phase1-real-run.md`](./phase1-real-run.md) (T-09-08)
 
@@ -55,7 +55,7 @@
 
 ### 1.3 環境変数の登録
 
-`.env.example` の全 29 項目を Railway Variables に登録する。**§2 のチェックリスト**を使用。
+`.env.example` の全 32 項目を Railway Variables に登録する。**§2 のチェックリスト**を使用。
 Web / Worker の両サービスに同じ値を設定する (特に `DATABASE_URL`, `*_CRED_KEY`, R2 系)。
 
 ### 1.4 マイグレーション & シード
@@ -84,7 +84,7 @@ pnpm --filter @a2p/db seed
 
 ---
 
-## 2. 環境変数チェックリスト (29 項目)
+## 2. 環境変数チェックリスト (32 項目)
 
 正典は [`.env.example`](../../.env.example)。本番では Railway Variables に登録。
 キーの追加/削除は `packages/contracts/src/env.ts` と同時に行い、`pnpm tsx scripts/check-env-example.ts` で差分検出する。
@@ -120,9 +120,12 @@ pnpm --filter @a2p/db seed
 | 27 | `FX_RATE_API_URL` | ✕ | 為替 | 既定 open.er-api.com |
 | 28 | `COST_LIMIT_PER_BOOK_JPY` | ✕ | コスト | 既定 500 |
 | 29 | `COST_LIMIT_MONTHLY_JPY` | ✕ | コスト | 既定 50000 |
+| 30 | `LINE_CHANNEL_SECRET` | ✕ | LINE中継 | 未設定なら `/api/line/webhook` は 503 (中継無効) |
+| 31 | `LINE_CHANNEL_ACCESS_TOKEN` | ✕ | LINE中継 | Messaging API 返信用トークン |
+| 32 | `LINE_ALLOWED_USER_ID` | ✕ | LINE中継 | 認証コード返信を受け付ける運営者本人の userId |
 
 凡例: ✅=必須 / △=条件付き必須 / ✕=任意。
-**シークレット (3,7,14,17,20,21 と LLM キー) は git に commit しない** (CLAUDE.md Hard Rule 6)。
+**シークレット (3,7,14,17,20,21,30,31 と LLM キー) は git に commit しない** (CLAUDE.md Hard Rule 6)。
 
 ---
 

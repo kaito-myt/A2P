@@ -81,7 +81,7 @@ CLAUDE.md                       プロジェクト全体ガイド
 ## Railway デプロイ手順
 
 > 📘 **運用の正典は [`docs/operations/runbook.md`](./docs/operations/runbook.md)** です。
-> デプロイ手順 / 環境変数チェックリスト (29 項目) / 障害復旧 / pg_dump 復元 / モニタリング指針を網羅しています。
+> デプロイ手順 / 環境変数チェックリスト (32 項目) / 障害復旧 / pg_dump 復元 / モニタリング指針を網羅しています。
 > 以下は概要。詳細・トラブルシュートは runbook を参照してください。
 
 A2P は Railway の 1 プロジェクト内に **Web (Next.js) + Worker (graphile-worker) + PostgreSQL** の 3 サービスを同居させる構成です。

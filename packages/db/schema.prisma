@@ -1,6 +1,6 @@
 // packages/db/schema.prisma
-// 全 31 model — docs/05 §3 から転記。手を入れる際は必ず docs/05 を同時更新すること。
-// T-02-13 で ApiCredential (model #31) を追加。
+// docs/05 §3 から転記。手を入れる際は必ず docs/05 を同時更新すること。
+// KdpAuthRequest は LINE 双方向認証リレー用 (scripts/kdp-publish.mjs のログイン/OTP 待ち)。
 
 generator client {
   provider = "prisma-client-js"
@@ -555,6 +555,25 @@ model Kdp2FaCode {
 
   @@index([status, timeout_at], map: "kdp_2fa_codes_status_timeout_idx")
   @@map("kdp_2fa_codes")
+}
+
+// LINE 双方向認証リレー [scripts/kdp-publish.mjs の再認証待ち]
+// ローカルの手動出版ツールがログイン/OTP 待ちを検知すると本テーブルに pending 行を作り
+// LINE 通知(push)を送る。運営者が LINE に 6 桁コードを返信 → /api/line/webhook が
+// code を書き戻す(fulfilled) → ローカルツールがポーリングして Amazon 側に入力する。
+model KdpAuthRequest {
+  id           String    @id @default(cuid())
+  purpose      String    @default("kdp_login_otp")
+  status       String    @default("pending") // pending | fulfilled | consumed | expired | cancelled
+  prompt       String?   @db.Text
+  code         String?
+  created_at   DateTime  @default(now())
+  expires_at   DateTime
+  fulfilled_at DateTime?
+  consumed_at  DateTime?
+
+  @@index([status, created_at])
+  @@map("kdp_auth_requests")
 }
 
 // =====================================================================

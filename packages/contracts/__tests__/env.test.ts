@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ENV_KEYS, EnvValidationError, parseEnv } from '../src/env.js';
 
-// 29 項目すべて埋めた最小限の正常 fixture (T-02-13 で API_CRED_KEY 追加)。
+// 32 項目すべて埋めた最小限の正常 fixture (T-02-13 で API_CRED_KEY 追加、LINE 双方向認証リレーで 3 項目追加)。
 const validEnv = (): NodeJS.ProcessEnv => ({
   NODE_ENV: 'test',
   DATABASE_URL: 'postgresql://user:pass@localhost:5432/a2p',
@@ -32,11 +32,14 @@ const validEnv = (): NodeJS.ProcessEnv => ({
   FX_RATE_API_URL: 'https://open.er-api.com/v6/latest/USD',
   COST_LIMIT_PER_BOOK_JPY: '500',
   COST_LIMIT_MONTHLY_JPY: '50000',
+  LINE_CHANNEL_SECRET: 'line-secret-test',
+  LINE_CHANNEL_ACCESS_TOKEN: 'line-token-test',
+  LINE_ALLOWED_USER_ID: 'U-test-user',
 });
 
 describe('ENV_KEYS', () => {
-  it('docs/03 §5 + T-02-13 の正本である 29 項目を露出する', () => {
-    expect(ENV_KEYS).toHaveLength(29);
+  it('docs/03 §5 + T-02-13 + LINE 双方向認証リレーの正本である 32 項目を露出する', () => {
+    expect(ENV_KEYS).toHaveLength(32);
   });
 
   it('スキーマと export の集合が一致する', () => {
@@ -70,6 +73,9 @@ describe('ENV_KEYS', () => {
       'FX_RATE_API_URL',
       'COST_LIMIT_PER_BOOK_JPY',
       'COST_LIMIT_MONTHLY_JPY',
+      'LINE_CHANNEL_SECRET',
+      'LINE_CHANNEL_ACCESS_TOKEN',
+      'LINE_ALLOWED_USER_ID',
     ]);
     expect(new Set(ENV_KEYS)).toEqual(expected);
   });
