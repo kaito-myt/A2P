@@ -131,6 +131,8 @@ export interface ChecklistBookView {
   hasBlockingComments: boolean;
   mustCommentCount: number;
   mustComments: MustCommentView[];
+  /** Book.kdp_publish_queued — 入稿キュー登録済みか (F-041) */
+  kdpPublishQueued: boolean;
   fields: ChecklistFieldView[];
   /** 最終自動保存タイムスタンプ (KdpSubmissionProgress.updated_at) */
   lastSavedAt: string | null;
@@ -154,6 +156,7 @@ export interface PrismaBookForChecklist {
   subtitle: string | null;
   publish_status: string;
   has_blocking_comments: boolean;
+  kdp_publish_queued: boolean;
   account: {
     pen_name: string;
   };
@@ -399,6 +402,7 @@ export function serializeChecklistBook(
     hasBlockingComments: mustComments.length > 0,
     mustCommentCount: mustComments.length,
     mustComments,
+    kdpPublishQueued: book.kdp_publish_queued,
     fields,
     lastSavedAt: book.kdpSubmissionProgress?.updated_at instanceof Date
       ? book.kdpSubmissionProgress.updated_at.toISOString()

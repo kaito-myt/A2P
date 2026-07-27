@@ -348,7 +348,7 @@ test.describe('S-015 KDP 入稿チェックリスト', () => {
     // バナー内に must コメントが表示される（最低 1 件）
     await expect(blockBanner).toContainText(/コメント|修正|確認/);
 
-    // submit ボタンは常に disabled (Phase 3 機能)
+    // must コメント未対応の本は入稿キュー登録ボタンが disabled になる (F-041)
     const submitButton = page.locator('[data-testid="submit-to-kdp-btn"]');
     await expect(submitButton).toBeDisabled();
   });

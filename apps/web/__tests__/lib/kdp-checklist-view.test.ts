@@ -32,6 +32,7 @@ const BASE_BOOK: PrismaBookForChecklist = {
   subtitle: '初心者でも今日から始められる実践 7 ステップ',
   publish_status: 'unlisted',
   has_blocking_comments: false,
+  kdp_publish_queued: false,
   account: { pen_name: 'テスト太郎' },
   kdpMetadata: {
     description: 'テスト用の紹介文です。本書は副業を始めたいけれど...',

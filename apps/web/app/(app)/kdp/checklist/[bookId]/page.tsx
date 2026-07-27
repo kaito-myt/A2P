@@ -36,6 +36,7 @@ export default async function KdpChecklistDetailPage({
       subtitle: true,
       publish_status: true,
       has_blocking_comments: true,
+      kdp_publish_queued: true,
       account: { select: { pen_name: true } },
       theme: {
         select: {

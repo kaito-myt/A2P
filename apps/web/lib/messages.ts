@@ -2570,8 +2570,29 @@ export const messages = {
     blockReasonTitle: (n: number) =>
       `この書籍には must 優先度のコメントが ${n} 件残っています。入稿はブロックされています`,
     blockReasonCta: 'コメント一覧へ',
-    submitKdpButton: '自動入稿を実行',
-    submitKdpTooltip: 'Phase 3 で有効化',
+    queuedBadge: '入稿キュー登録済み',
+    submitKdp: {
+      button: '自動入稿キューに登録',
+      queueing: '登録中…',
+      queuedLabel: '入稿キュー登録済み',
+      cancelButton: '取消',
+      cancelling: '取消中…',
+      disabledTooltip:
+        'must コメント未対応・メタデータ未生成・出版済みのいずれかのため入稿キューに登録できません',
+      queueSuccess: '入稿キューに登録しました',
+      unqueueSuccess: '入稿キューを取り消しました',
+    },
+    bulkSubmitKdp: {
+      button: '準備完了の本をまとめて入稿キューに登録',
+      queueing: '登録中…',
+      helperText:
+        '実際の入稿はローカルのアシスト出版ツール（scripts/kdp-publish.mjs）が行います。1 回のバッチ処理につき KDP へ 1 回ログインします。',
+      noReadyBooks: '入稿キューに登録できる準備完了の本がありません',
+      result: (queued: number, blocked: number) =>
+        blocked > 0
+          ? `${queued} 冊を入稿キューに登録しました（条件未達のため ${blocked} 冊はスキップしました）`
+          : `${queued} 冊を入稿キューに登録しました`,
+    },
     nextBook: '次の書籍へ →',
     saveProgress: '進捗保存',
     autoSaveStatus: (iso: string) => `進捗自動保存済 (${iso})`,
@@ -2626,8 +2647,14 @@ export const messages = {
   kdpSubmit: {
     errors: {
       validation: '入力内容に誤りがあります',
-      phase3Unavailable: '自動入稿は Phase 3 で有効化されます。現時点では手動で KDP に入稿してください',
-      unknown: '自動入稿の起動に失敗しました。時間を空けて再試行してください',
+      unknown: '入稿キューの操作に失敗しました。時間を空けて再試行してください',
+    },
+    blockedReasons: {
+      notFound: '書籍が見つかりません',
+      hasBlockingComments: 'must 優先度のコメントが未対応のため入稿キューに登録できません',
+      alreadyPublished: '既に出版済みのため入稿キューに登録できません',
+      notSubmittableStatus: '生成が完了していないため入稿キューに登録できません',
+      metadataMissing: 'メタデータが未生成のため入稿キューに登録できません',
     },
   },
   plans: {

@@ -11,10 +11,14 @@
  *
  * 使い方:
  *   # 環境変数: DBURL(=prod DATABASE_PUBLIC_URL), R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET_NAME
+ *   node scripts/kdp-publish.mjs                      # 既定: 入稿キュー(kdp_publish_queued=true)の本を全部出版
  *   node scripts/kdp-publish.mjs --dry-run            # 出版直前まで（最後の「出版」を押さない）
  *   node scripts/kdp-publish.mjs --book-id=<id>       # 1冊だけ
  *   node scripts/kdp-publish.mjs --limit=1            # 最大N冊
- *   node scripts/kdp-publish.mjs                      # 未出品(done/unlisted)全冊
+ *   node scripts/kdp-publish.mjs --all                # 従来挙動: 未出品(done/unlisted)全冊
+ *
+ * A2P の「自動入稿/一括自動入稿」ボタンで本を入稿キューに登録 → 本ツールを1回ログインして流すと
+ * キューの本だけ自動入稿し、成功した本は kdp_publish_queued=false + publish_status='submitted' に更新。
  *
  * セレクタは実 KDP で検証済み（2026-07-25）。Step1(詳細)は実証済み、Step2/3 は既存本の編集ページから
  * リバースエンジニアリング（作成数制限のため新規作成での実地検証は制限解除後）。
@@ -39,6 +43,9 @@ const args = process.argv.slice(2);
 const DRY_RUN = args.includes('--dry-run');
 const BOOK_ID = (args.find((a) => a.startsWith('--book-id=')) || '').split('=')[1] || null;
 const LIMIT = parseInt((args.find((a) => a.startsWith('--limit=')) || '').split('=')[1] || '99', 10);
+// 既定は UI「自動入稿/一括自動入稿」で登録された入稿キュー (kdp_publish_queued=true) のみを対象にする。
+// --all で従来挙動 (done+unlisted 全件)。--book-id 指定時はその本のみ。
+const ALL_MODE = args.includes('--all');
 const USERDATA = 'C:/DEV/A2P/scripts/.kdp-userdata';
 const CREATE = 'https://kdp.amazon.co.jp/action/mangaactions.createkindle/ja_JP/title-setup/kindle/new/details';
 const BOOKSHELF = 'https://kdp.amazon.co.jp/ja_JP/bookshelf';
@@ -55,7 +62,9 @@ function db() {
 async function fetchBooks(c) {
   const where = BOOK_ID
     ? { sql: 'b.id=$1', params: [BOOK_ID] }
-    : { sql: "b.status='done' AND b.publish_status='unlisted'", params: [] };
+    : ALL_MODE
+      ? { sql: "b.status='done' AND b.publish_status='unlisted'", params: [] }
+      : { sql: "b.kdp_publish_queued = true AND b.publish_status <> 'published'", params: [] };
   const { rows } = await c.query(
     `SELECT b.id, b.title, b.subtitle, acc.pen_name,
        km.description, km.categories, km.keywords, km.price_jpy,
@@ -280,9 +289,9 @@ async function main() {
       const asin = await captureAsin(page, b.title);
       log('  PUBLISHED asin=', asin);
       if (asin) {
-        await c.query("UPDATE books SET publish_status='submitted', asin=$2 WHERE id=$1", [b.id, asin]);
+        await c.query("UPDATE books SET publish_status='submitted', kdp_publish_queued=false, asin=$2 WHERE id=$1", [b.id, asin]);
       } else {
-        await c.query("UPDATE books SET publish_status='submitted' WHERE id=$1", [b.id]);
+        await c.query("UPDATE books SET publish_status='submitted', kdp_publish_queued=false WHERE id=$1", [b.id]);
       }
       results.push({ id: b.id, title: b.title, status: 'published', asin });
     } catch (e) {

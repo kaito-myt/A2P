@@ -51,6 +51,11 @@ export function ChecklistList({ books }: { books: ChecklistBookView[] }) {
                 <Badge variant={publishVariant[book.publishStatus]}>
                   {publishLabel[book.publishStatus]}
                 </Badge>
+                {book.kdpPublishQueued && (
+                  <Badge variant="may" data-testid={`checklist-list-queued-badge-${book.id}`}>
+                    {m.queuedBadge}
+                  </Badge>
+                )}
                 {book.metadataMissing ? (
                   <Badge variant="should">{m.listMetadataMissing}</Badge>
                 ) : book.hasBlockingComments ? (

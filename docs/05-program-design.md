@@ -1434,7 +1434,7 @@ export async function testApiCredential(input): Promise<ActionResult<{
 //      → token_usage には記録しない (生成ではないため)
 ```
 
-#### 4.3.16 KDP 入稿チェックリスト [F-020/F-041] — `actions/kdp-checklist.ts`
+#### 4.3.16 KDP 入稿チェックリスト [F-020/F-041] — `actions/kdp-checklist.ts` / `actions/kdp-submit.ts`
 
 ```typescript
 // S-015
@@ -1446,9 +1446,15 @@ export const updateChecklistInput = z.object({
 })
 export async function updateChecklist(input): Promise<ActionResult<void>>
 
-// Phase 3: 自動入稿キック
+// [設計変更 — 実装済み] 自動入稿は Playwright ワーカーではなく「入稿キュー登録」のみを行う。
+// 理由: Amazon KDP は入稿の都度インタラクティブな 2FA 再認証を要求するため、サーバサイドの
+// 無人ジョブから直接入稿することができない。運営者がクリックすると Book.kdp_publish_queued
+// を true にするだけで、実際の入稿はローカルのアシスト出版ツール (scripts/kdp-publish.mjs、
+// 運営者が対話的にログインしながら実行) がキューを拾って行う。下記 5.3.15 `kdp.submit`
+// job/2FA ポーリング設計は不採用 (未実装のまま置き換え)。
 export const submitToKdpInput = z.object({ book_ids: z.array(z.string()).min(1).max(20) })
-export async function submitToKdp(input): Promise<ActionResult<{ jobs: Array<{ book_id: string; job_id: string }>; blocked: Array<{ book_id: string; reason: string }> }>>
+export async function submitToKdp(input): Promise<ActionResult<{ queued: Array<{ book_id: string }>; blocked: Array<{ book_id: string; reason: string }> }>>
+export async function unqueueFromKdp(input): Promise<ActionResult<{ unqueued: Array<{ book_id: string }> }>>
 ```
 
 #### 4.3.17 アラート [S-028] — `actions/alerts.ts`
@@ -1778,7 +1784,12 @@ export const SalesFetchPayload = z.object({ account_id: z.string(), year_month: 
 | priority | 40 |
 | 実行内容 | Playwright で KDP レポート画面ログイン → CSV ダウンロード → `SalesRecord` upsert。2FA 発生時は `Kdp2FaCode` INSERT + メール送信 → ポーリング待ち。 |
 
-#### 5.3.15 `kdp.submit` [F-041] (Phase 3)
+#### 5.3.15 `kdp.submit` [F-041] (Phase 3・不採用 — 4.3.16 参照)
+
+> **実装メモ**: Amazon KDP の入稿都度 2FA 再認証要求により、この Playwright 無人ジョブ設計は
+> 実現不能と判断し不採用とした。実際には `actions/kdp-submit.ts` の `submitToKdp` が
+> `Book.kdp_publish_queued` を立てるだけで、入稿自体はローカルのアシスト出版ツール
+> (`scripts/kdp-publish.mjs`) が担当する。以下は当初案として記録のみ残す。
 
 ```typescript
 export const KdpSubmitPayload = z.object({ book_id: z.string(), job_id: z.string() })

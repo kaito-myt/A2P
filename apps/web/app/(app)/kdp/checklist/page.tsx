@@ -15,6 +15,7 @@ import { messages } from '@/lib/messages';
 import { serializeChecklistPage } from '@/lib/kdp-checklist-view';
 import { EmptyState } from '@/components/common/empty-state';
 import { ChecklistList } from '@/components/kdp-checklist/checklist-list';
+import { BulkQueueButton } from '@/components/kdp-checklist/bulk-queue-button';
 
 export const metadata: Metadata = {
   title: `${messages.kdpChecklist.pageTitle} | ${messages.brand.appName}`,
@@ -42,6 +43,7 @@ export default async function KdpChecklistPage() {
       subtitle: true,
       publish_status: true,
       has_blocking_comments: true,
+      kdp_publish_queued: true,
       account: {
         select: { pen_name: true },
       },
@@ -99,6 +101,12 @@ export default async function KdpChecklistPage() {
   });
 
   const data = serializeChecklistPage(booksRaw);
+
+  // 一括自動入稿キュー登録の対象 = ブロックなし・メタデータあり・未キューの本
+  // (publish_status は取得クエリで既に「出版済み」を除外済み)。
+  const readyBookIds = data.books
+    .filter((b) => !b.hasBlockingComments && !b.metadataMissing && !b.kdpPublishQueued)
+    .map((b) => b.id);
 
   if (data.books.length === 0) {
     return (
@@ -160,6 +168,8 @@ export default async function KdpChecklistPage() {
           {m.openKdp}
         </a>
       </header>
+
+      <BulkQueueButton readyBookIds={readyBookIds} />
 
       <ChecklistList books={data.books} />
     </div>

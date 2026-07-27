@@ -132,7 +132,11 @@ export function ChecklistDetailShell({ book: initialBook }: { book: ChecklistBoo
           >
             {messages.books.header.bundleDownload}
           </a>
-          <SubmitToKdpButton disabled />
+          <SubmitToKdpButton
+            bookId={book.id}
+            disabled={book.hasBlockingComments || book.metadataMissing || book.publishStatus === 'published'}
+            queued={book.kdpPublishQueued}
+          />
         </div>
       </div>
     </div>
