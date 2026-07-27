@@ -555,19 +555,21 @@ async function runAssist(c, page, s3, books) {
       await download(s3, b.docx_key, docxPath);
       // STEP1 (詳細) — 入力のみ
       await page.goto(editBase + id + '/details', { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(6000);
+      const titleReady = await page.waitForSelector('#data-title', { state: 'visible', timeout: 45000 }).then(() => true).catch(() => false);
+      if (!titleReady) { await page.screenshot({ path: path.join(STAGE, b.id + '-nodetails.png'), fullPage: true }).catch(() => {}); log('  詳細ページの入力欄が出ません skip'); results.push({ title: b.title, status: 'no_details' }); continue; }
       await fillStep1(page, b);
-      log('  ★ STEP1入力完了 → 内容を確認して「保存して続行」を押してください');
-      if (!(await waitUrl(page, /\/content/))) { log('  content未遷移 タイムアウト skip'); results.push({ title: b.title, status: 'timeout_step1' }); continue; }
+      log('  ★ STEP1入力完了 → 内容を確認して「保存して続行」を押してください（最大30分待機）');
+      if (!(await waitUrl(page, /\/content/, 1800000))) { log('  content未遷移 タイムアウト skip'); results.push({ title: b.title, status: 'timeout_step1' }); continue; }
       await page.waitForTimeout(4000);
       // STEP2 (コンテンツ) — 入力のみ
       await fillStep2(page, coverPath, docxPath);
-      log('  ★ STEP2入力完了 → 「保存して続行」を押してください');
-      if (!(await waitUrl(page, /\/pricing/))) { log('  pricing未遷移 タイムアウト skip'); results.push({ title: b.title, status: 'timeout_step2' }); continue; }
+      log('  ★ STEP2入力完了 → 「保存して続行」を押してください（最大30分待機）');
+      if (!(await waitUrl(page, /\/pricing/, 1800000))) { log('  pricing未遷移 タイムアウト skip'); results.push({ title: b.title, status: 'timeout_step2' }); continue; }
       await page.waitForTimeout(4000);
       // STEP3 (価格) — 入力のみ
       await fillStep3(page, b);
-      log('  ★ 価格入力完了 → 「出版」を押してください');
-      if (!(await waitUrl(page, /bookshelf/))) { log('  出版未検知 タイムアウト'); results.push({ title: b.title, status: 'timeout_publish' }); continue; }
+      log('  ★ 価格入力完了 → 「出版」を押してください（最大30分待機）');
+      if (!(await waitUrl(page, /bookshelf/, 1800000))) { log('  出版未検知 タイムアウト'); results.push({ title: b.title, status: 'timeout_publish' }); continue; }
       await page.waitForTimeout(3000);
       await c.query("UPDATE books SET publish_status='submitted', kdp_publish_queued=false WHERE id=$1", [b.id]);
       log('  ✅ 出版検知 → publish_status=submitted');
