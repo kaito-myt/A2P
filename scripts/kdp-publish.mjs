@@ -386,6 +386,19 @@ async function ensureLoggedIn(page, c) {
       if (!done) return false;
     }
 
+    // ログイン済みだが details 以外(ダッシュボード等)に着地した場合 → CREATE へ再遷移して詳細ページへ
+    const url = page.url();
+    if (!/signin|\/ap\/|\/mfa|\/cvf/i.test(url)) {
+      const hasAuthField = await page
+        .$('#ap_email, input[type="email"][name="email"], #ap_password, input[type="password"][name="password"], ' + OTP_SEL)
+        .catch(() => null);
+      if (!hasAuthField) {
+        await page.goto(CREATE, { waitUntil: 'domcontentloaded' }).catch(() => {});
+        await page.waitForTimeout(6000);
+        if (isOnDetails(page)) { log('ログイン確認(ウィザードへ再遷移)'); return true; }
+      }
+    }
+
     await page.waitForTimeout(5000);
   }
   return false;
