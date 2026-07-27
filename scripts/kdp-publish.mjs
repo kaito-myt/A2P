@@ -19,6 +19,8 @@
  *   node scripts/kdp-publish.mjs --book-id=<id>       # 1冊だけ
  *   node scripts/kdp-publish.mjs --limit=1            # 最大N冊
  *   node scripts/kdp-publish.mjs --all                # 従来挙動: 未出品(done/unlisted)全冊
+ *   node scripts/kdp-publish.mjs --assist             # 準自動: 既存の下書きをresumeして各ステップを自動入力。
+ *                                                     #   「保存して続行/出版」は運営者が押す(新規作成しないので日次上限を消費しない)
  *
  * A2P の「自動入稿/一括自動入稿」ボタンで本を入稿キューに登録 → 本ツールを1回ログインして流すと
  * キューの本だけ自動入稿し、成功した本は kdp_publish_queued=false + publish_status='submitted' に更新。
@@ -49,6 +51,8 @@ const LIMIT = parseInt((args.find((a) => a.startsWith('--limit=')) || '').split(
 // 既定は UI「自動入稿/一括自動入稿」で登録された入稿キュー (kdp_publish_queued=true) のみを対象にする。
 // --all で従来挙動 (done+unlisted 全件)。--book-id 指定時はその本のみ。
 const ALL_MODE = args.includes('--all');
+// 準自動モード: 既存の下書きをresumeして上書き入力。各ステップの「保存して続行/出版」は運営者が押す。
+const ASSIST = args.includes('--assist');
 const USERDATA = 'C:/DEV/A2P/scripts/.kdp-userdata';
 const CREATE = 'https://kdp.amazon.co.jp/action/mangaactions.createkindle/ja_JP/title-setup/kindle/new/details';
 const BOOKSHELF = 'https://kdp.amazon.co.jp/ja_JP/bookshelf';
@@ -303,6 +307,7 @@ async function fillStep1(page, b) {
     await page.click('button:has-text("カテゴリーを保存")').catch(() => {});
     await page.waitForTimeout(3000);
   }
+  if (ASSIST) return { ok: true, assist: true }; // 入力のみ。「保存して続行」は運営者が押す
   // continue
   await page.click('#save-and-continue-announce').catch(() => {});
   await page.waitForTimeout(7000);
@@ -362,6 +367,7 @@ async function fillStep2(page, coverPath, docxPath) {
     }
   });
   await page.waitForTimeout(600);
+  if (ASSIST) return { ok: true, assist: true }; // 入力のみ。「保存して続行」は運営者が押す
   await page.click('#save-and-continue-announce').catch(() => {});
   await page.waitForTimeout(7000);
   if (!/\/(pricing)/.test(page.url())) {
@@ -432,6 +438,7 @@ async function fillStep3(page, b) {
   // JP price
   await page.fill('input[name="data[digital][channels][amazon][JP][price_vat_inclusive]"]', String(b.price_jpy || 550)).catch(() => {});
   await page.waitForTimeout(2000);
+  if (ASSIST) return { ok: true, assist: true }; // 価格入力のみ。「出版」は運営者が押す
   if (DRY_RUN) { log('  [dry-run] stopping before publish'); return { ok: true, dryRun: true }; }
   await page.click('#save-and-publish-announce').catch(() => {});
   await page.waitForTimeout(4000);
@@ -450,12 +457,15 @@ async function captureAsin(page, title) {
 }
 
 async function ensureLoggedIn(page, c) {
-  await page.goto(CREATE, { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(6000);
-  if (isOnDetails(page)) return true;
+  // ASSIST時はCREATE(新規作成=下書き発生/制限)を避け、本棚でログイン判定する
+  const target = ASSIST ? BOOKSHELF : CREATE;
+  const loggedIn = () => (ASSIST ? /\/bookshelf/.test(page.url()) && !/signin/i.test(page.url()) : isOnDetails(page));
+  await page.goto(target, { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(6000);
+  if (loggedIn()) return true;
   log('*** Amazonログイン処理を開始（LINE認証リレー対応）。最大10分待機します ***');
   log('    email/passwordはenv (AMAZON_EMAIL/AMAZON_PASSWORD) があれば自動入力、無ければブラウザで手入力可');
   for (let i = 0; i < 120; i++) {
-    if (isOnDetails(page)) { log('ログイン確認'); return true; }
+    if (loggedIn()) { log('ログイン確認'); return true; }
 
     // email 入力欄
     const emailEl = await page.$('#ap_email, input[type="email"][name="email"]').catch(() => null);
@@ -495,9 +505,9 @@ async function ensureLoggedIn(page, c) {
         .$('#ap_email, input[type="email"][name="email"], #ap_password, input[type="password"][name="password"], ' + OTP_SEL)
         .catch(() => null);
       if (!hasAuthField) {
-        await page.goto(CREATE, { waitUntil: 'domcontentloaded' }).catch(() => {});
+        await page.goto(target, { waitUntil: 'domcontentloaded' }).catch(() => {});
         await page.waitForTimeout(6000);
-        if (isOnDetails(page)) { log('ログイン確認(ウィザードへ再遷移)'); return true; }
+        if (loggedIn()) { log('ログイン確認(再遷移)'); return true; }
       }
     }
 
@@ -506,16 +516,84 @@ async function ensureLoggedIn(page, c) {
   return false;
 }
 
+// URLが正規表現にマッチするまで待つ / マッチしなくなるまで待つ
+async function waitUrl(page, re, ms = 600000) { const s = Date.now(); while (Date.now() - s < ms) { if (re.test(page.url())) return true; await page.waitForTimeout(1500); } return false; }
+
+// 本棚から「下書き」行の編集ID一覧を収集 (公開済みの本を誤って上書きしないよう下書きに限定)
+async function collectDraftIds(page) {
+  await page.goto(BOOKSHELF, { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(6000);
+  return page.evaluate(() => {
+    const out = []; const seen = new Set();
+    for (const a of document.querySelectorAll('a[href*="editkindledetails"]')) {
+      const m = (a.getAttribute('href') || '').match(/kindle\/([A-Z0-9]{8,})\/details/);
+      if (!m) continue;
+      let row = a;
+      for (let i = 0; i < 8 && row; i++) { row = row.parentElement; if (row && /下書き/.test(row.textContent || '')) break; }
+      const rt = row ? row.textContent || '' : '';
+      if (/下書き/.test(rt) && !/レビュー中|販売中|ライブ|出版準備中/.test(rt) && !seen.has(m[1])) { seen.add(m[1]); out.push(m[1]); }
+    }
+    return out;
+  });
+}
+
+// 準自動モード: 既存の下書きをresumeして各ステップを自動入力。次へ/出版は運営者が押す。
+async function runAssist(c, page, s3, books) {
+  const editBase = 'https://kdp.amazon.co.jp/action/dualbookshelf.editkindledetails/ja_JP/title-setup/kindle/';
+  const ids = await collectDraftIds(page);
+  log(`下書きスロット ${ids.length}個 / 対象書籍 ${books.length}冊 → ${Math.min(ids.length, books.length)}冊を処理`);
+  if (!ids.length) { log('下書きが見つかりません。中止'); return; }
+  const results = [];
+  const n = Math.min(ids.length, books.length);
+  for (let i = 0; i < n; i++) {
+    const b = books[i]; const id = ids[i];
+    log(`\n=== [${i + 1}/${n}] ${b.title}  (下書き ${id}) ===`);
+    try {
+      if (!b.cover_key || !b.docx_key) { log('  資産不足 skip'); results.push({ title: b.title, status: 'skip_no_assets' }); continue; }
+      const coverPath = path.join(STAGE, b.id + '-cover.jpg');
+      const docxPath = path.join(STAGE, b.id + '.docx');
+      await download(s3, b.cover_key, coverPath);
+      await download(s3, b.docx_key, docxPath);
+      // STEP1 (詳細) — 入力のみ
+      await page.goto(editBase + id + '/details', { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(6000);
+      await fillStep1(page, b);
+      log('  ★ STEP1入力完了 → 内容を確認して「保存して続行」を押してください');
+      if (!(await waitUrl(page, /\/content/))) { log('  content未遷移 タイムアウト skip'); results.push({ title: b.title, status: 'timeout_step1' }); continue; }
+      await page.waitForTimeout(4000);
+      // STEP2 (コンテンツ) — 入力のみ
+      await fillStep2(page, coverPath, docxPath);
+      log('  ★ STEP2入力完了 → 「保存して続行」を押してください');
+      if (!(await waitUrl(page, /\/pricing/))) { log('  pricing未遷移 タイムアウト skip'); results.push({ title: b.title, status: 'timeout_step2' }); continue; }
+      await page.waitForTimeout(4000);
+      // STEP3 (価格) — 入力のみ
+      await fillStep3(page, b);
+      log('  ★ 価格入力完了 → 「出版」を押してください');
+      if (!(await waitUrl(page, /bookshelf/))) { log('  出版未検知 タイムアウト'); results.push({ title: b.title, status: 'timeout_publish' }); continue; }
+      await page.waitForTimeout(3000);
+      await c.query("UPDATE books SET publish_status='submitted', kdp_publish_queued=false WHERE id=$1", [b.id]);
+      log('  ✅ 出版検知 → publish_status=submitted');
+      results.push({ title: b.title, status: 'submitted' });
+    } catch (e) {
+      log('  ERROR:', e.message);
+      await page.screenshot({ path: path.join(STAGE, b.id + '-assist-error.png'), fullPage: true }).catch(() => {});
+      results.push({ title: b.title, status: 'error', error: e.message });
+    }
+  }
+  log('\n===== ASSIST RESULT =====');
+  for (const r of results) log(` ${r.status}\t${r.title}`);
+}
+
 async function main() {
   const c = db(); await c.connect();
   const books = await fetchBooks(c);
-  log(`対象書籍: ${books.length}冊${DRY_RUN ? ' (DRY RUN)' : ''}`);
+  log(`対象書籍: ${books.length}冊${DRY_RUN ? ' (DRY RUN)' : ''}${ASSIST ? ' (ASSIST)' : ''}`);
   if (!books.length) { await c.end(); return; }
   const s3 = r2();
   const ctx = await chromium.launchPersistentContext(USERDATA, { headless: false, channel: 'chrome', locale: 'ja-JP', viewport: { width: 1500, height: 1200 }, args: ['--disable-blink-features=AutomationControlled'] });
   const page = ctx.pages()[0] ?? await ctx.newPage();
   page.setDefaultTimeout(60000);
   if (!(await ensureLoggedIn(page, c))) { log('ログイン未完了 — 中止'); await ctx.close(); await c.end(); return; }
+
+  if (ASSIST) { await runAssist(c, page, s3, books); await page.waitForTimeout(2000); await ctx.close(); await c.end(); return; }
 
   const results = [];
   for (const b of books) {
