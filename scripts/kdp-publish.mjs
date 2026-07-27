@@ -321,21 +321,53 @@ async function fillStep2(page, coverPath, docxPath) {
   await page.setInputFiles('#data-assets-interior-file-upload-AjaxInput', docxPath).catch((e) => { throw new Error('interior upload: ' + e.message); });
   log('  manuscript uploading...');
   // wait for conversion: continue enabled and no "アップロード中/変換中/処理中"
-  await waitUploadDone(page, 'interior');
+  await waitUploadDone(page, 'interior', 1);
   // reading direction: 左から右 (横書き)
   await page.click('#a-autoid-0-announce').catch(() => {});
   // cover
-  await page.setInputFiles('#data-assets-cover-file-upload-AjaxInput', coverPath).catch((e) => { throw new Error('cover upload: ' + e.message); });
-  log('  cover uploading...');
-  await waitUploadDone(page, 'cover');
-  // AI questionnaire (truthful): text=作品全体(広範な編集あり), images=1つまたはいくつかのAI生成画像(最小限の編集あり、または編集なし), translations=なし
-  await selectAqui(page, 'generative-ai-questionnaire-text', '作品全体 (広範な編集あり)');
-  await selectAqui(page, 'generative-ai-questionnaire-images', '1 つまたはいくつかの AI 生成画像 (最小限の編集あり、または編集なし)');
-  await selectAqui(page, 'generative-ai-questionnaire-translations', 'なし');
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});
   await page.waitForTimeout(1500);
+  // 表紙: 日本語マーケットプレイス用の cover-jp が実体 (従来の cover-* は非表示ダミー)
+  const coverSel = (await page.$('#data-assets-cover-jp-file-upload-AjaxInput').catch(() => null))
+    ? '#data-assets-cover-jp-file-upload-AjaxInput'
+    : '#data-assets-cover-file-upload-AjaxInput';
+  await page.setInputFiles(coverSel, coverPath).catch((e) => { throw new Error('cover upload: ' + e.message); });
+  log('  cover uploading...', coverSel);
+  await waitCoverDone(page);
+  // AI生成コンテンツ: 「いいえ」を選択 (運営者指示)。react-aui部品なのでマウスイベント一式を発火。
+  await page.evaluate(() => {
+    const all = [...document.querySelectorAll('*')];
+    const q = all.find((x) => /AI ツールを使用しましたか/.test(x.textContent || '') && (x.textContent || '').length < 300);
+    let root = q;
+    for (let i = 0; i < 10 && root; i++) { if ([...root.querySelectorAll('*')].some((e) => e.textContent.trim() === 'いいえ')) break; root = root.parentElement; }
+    root = root || document.body;
+    const leaf = [...root.querySelectorAll('*')].find((e) => e.textContent.trim() === 'いいえ' && e.children.length === 0);
+    const target = leaf ? (leaf.closest('label,[role=radio],.a-radio,button,a') || leaf) : null;
+    if (target) ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach((t) => target.dispatchEvent(new MouseEvent(t, { bubbles: true })));
+  });
+  await page.waitForTimeout(1500);
+  // アクセシビリティ: 「画像すべてに代替テキスト/説明あり」を選択 (運営者指示)
+  await page.evaluate(() => {
+    const radios = [...document.querySelectorAll('input[name="data[accessibility][image_reading]"]')];
+    const lbl = (e) => { const l = e.closest('label') || (e.id && document.querySelector('label[for="' + e.id + '"]')); return l ? l.textContent.trim() : (e.parentElement ? e.parentElement.textContent.trim() : ''); };
+    const t = radios.find((r) => /すべてに代替テキストや詳細な説明が含まれています/.test(lbl(r)));
+    if (t) t.click();
+  });
+  await page.waitForTimeout(800);
+  // 再アップロード時に出る確認チェック「自分の回答が正しいことを確認」を入れる (祖先テキスト走査)
+  await page.evaluate(() => {
+    for (const c of [...document.querySelectorAll('input[type=checkbox]')]) {
+      let n = c;
+      for (let i = 0; i < 5 && n; i++) { n = n.parentElement; if (n && /自分の回答が正しいこと|新しい原稿または表紙画像/.test(n.textContent || '')) { if (!c.checked) c.click(); return; } }
+    }
+  });
+  await page.waitForTimeout(600);
   await page.click('#save-and-continue-announce').catch(() => {});
   await page.waitForTimeout(7000);
-  if (!/\/(pricing)/.test(page.url())) return { blocked: 'content_not_advanced', url: page.url() };
+  if (!/\/(pricing)/.test(page.url())) {
+    await page.screenshot({ path: path.join(STAGE, 'step2-blocked.png'), fullPage: true }).catch(() => {});
+    return { blocked: 'content_not_advanced', url: page.url() };
+  }
   return { ok: true };
 }
 
@@ -355,11 +387,9 @@ async function selectAqui(page, id, label) {
 
 // アップロード完了は「正常にアップロードしました」等の成功表示の出現で判定する
 // (旧実装は「変換中/処理中」文字の消失待ちで、常駐文言により誤タイムアウトしていた)
-async function waitUploadDone(page, tag, timeoutMs = 300000) {
-  const successSrc =
-    tag === 'interior'
-      ? '正常にアップロードしました|ファイルの処理が完了|原稿チェックが完了'
-      : '正常にアップロードしました|アップロードが完了';
+// 「◯◯を正常にアップロードしました」の出現件数で判定する。
+// interior 後は 1 件、cover 後は 2 件 (本文の成功文言を表紙判定で誤検知しないため)。
+async function waitUploadDone(page, tag, minCount = 1, timeoutMs = 180000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const err = await page.evaluate(() =>
@@ -369,12 +399,32 @@ async function waitUploadDone(page, tag, timeoutMs = 300000) {
       await page.screenshot({ path: path.join(STAGE, tag + '-uploaderr.png') }).catch(() => {});
       throw new Error(tag + ' upload error');
     }
-    const done = await page.evaluate((src) => new RegExp(src).test(document.body.textContent || ''), successSrc);
-    if (done) { await page.waitForTimeout(2500); return; }
+    const n = await page.evaluate(() => (document.body.textContent.match(/正常にアップロードしました/g) || []).length);
+    if (n >= minCount) { await page.waitForTimeout(2500); return; }
     await page.waitForTimeout(3000);
   }
   await page.screenshot({ path: path.join(STAGE, tag + '-uploadtimeout.png') }).catch(() => {});
-  throw new Error(tag + ' upload timeout');
+  throw new Error(tag + ' upload timeout (count<' + minCount + ')');
+}
+
+// 表紙は「表紙がアップロードされていません」プレースホルダの消失で完了判定する。
+async function waitCoverDone(page, timeoutMs = 180000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const st = await page.evaluate(() => ({
+      done: /表紙のアップロードに成功|アップロードに成功しました/.test(document.body.textContent || ''),
+      err: /アップロードに失敗|正常にアップロードできませんでした|サポートされていないファイル|画像のサイズが小さ/.test(document.body.textContent || ''),
+    }));
+    if (st.err) { await page.screenshot({ path: path.join(STAGE, 'cover-err.png'), fullPage: true }).catch(() => {}); throw new Error('cover upload error'); }
+    if (st.done) { await page.waitForTimeout(2500); return; }
+    await page.waitForTimeout(3000);
+  }
+  await page.screenshot({ path: path.join(STAGE, 'cover-timeout.png'), fullPage: true }).catch(() => {});
+  const txt = await page.evaluate(() => {
+    const s = [...document.querySelectorAll('*')].find((x) => /Kindle 本の表紙|表紙ファイル/.test(x.textContent || '') && (x.textContent || '').length < 400);
+    return s ? s.textContent.replace(/\s+/g, ' ').trim().slice(0, 250) : '(cover section not found)';
+  });
+  throw new Error('cover upload timeout | coverSection="' + txt + '"');
 }
 
 async function fillStep3(page, b) {
