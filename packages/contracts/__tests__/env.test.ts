@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ENV_KEYS, EnvValidationError, parseEnv } from '../src/env.js';
 
-// 32 項目すべて埋めた最小限の正常 fixture (T-02-13 で API_CRED_KEY 追加、LINE 双方向認証リレーで 3 項目追加)。
+// 34 項目すべて埋めた最小限の正常 fixture (T-02-13 で API_CRED_KEY 追加、LINE 双方向認証リレーで 3 項目追加、
+// sales.fetch 自動再ログインで AMAZON_EMAIL/AMAZON_PASSWORD の 2 項目追加)。
 const validEnv = (): NodeJS.ProcessEnv => ({
   NODE_ENV: 'test',
   DATABASE_URL: 'postgresql://user:pass@localhost:5432/a2p',
@@ -35,11 +36,13 @@ const validEnv = (): NodeJS.ProcessEnv => ({
   LINE_CHANNEL_SECRET: 'line-secret-test',
   LINE_CHANNEL_ACCESS_TOKEN: 'line-token-test',
   LINE_ALLOWED_USER_ID: 'U-test-user',
+  AMAZON_EMAIL: 'operator@example.com',
+  AMAZON_PASSWORD: 'amazon-pass-test',
 });
 
 describe('ENV_KEYS', () => {
-  it('docs/03 §5 + T-02-13 + LINE 双方向認証リレーの正本である 32 項目を露出する', () => {
-    expect(ENV_KEYS).toHaveLength(32);
+  it('docs/03 §5 + T-02-13 + LINE 双方向認証リレー + Amazon 自動再ログインの正本である 34 項目を露出する', () => {
+    expect(ENV_KEYS).toHaveLength(34);
   });
 
   it('スキーマと export の集合が一致する', () => {
@@ -76,6 +79,8 @@ describe('ENV_KEYS', () => {
       'LINE_CHANNEL_SECRET',
       'LINE_CHANNEL_ACCESS_TOKEN',
       'LINE_ALLOWED_USER_ID',
+      'AMAZON_EMAIL',
+      'AMAZON_PASSWORD',
     ]);
     expect(new Set(ENV_KEYS)).toEqual(expected);
   });
@@ -168,6 +173,26 @@ describe('parseEnv (success cases)', () => {
     src.AUTH_USERNAME = '';
 
     expect(() => parseEnv(src, { onError: 'throw' })).toThrow(EnvValidationError);
+  });
+
+  it('AMAZON_EMAIL / AMAZON_PASSWORD は省略可能 (自動再ログイン任意機能)', () => {
+    const src = validEnv();
+    delete src.AMAZON_EMAIL;
+    delete src.AMAZON_PASSWORD;
+
+    const env = parseEnv(src, { onError: 'throw' });
+    expect(env.AMAZON_EMAIL).toBeUndefined();
+    expect(env.AMAZON_PASSWORD).toBeUndefined();
+  });
+
+  it('AMAZON_EMAIL / AMAZON_PASSWORD の空文字は undefined 化される', () => {
+    const src = validEnv();
+    src.AMAZON_EMAIL = '';
+    src.AMAZON_PASSWORD = '';
+
+    const env = parseEnv(src, { onError: 'throw' });
+    expect(env.AMAZON_EMAIL).toBeUndefined();
+    expect(env.AMAZON_PASSWORD).toBeUndefined();
   });
 
   it('T-02-13: KDP_CRED_KEY / API_CRED_KEY に hex 不正値は依然として拒否', () => {

@@ -91,41 +91,75 @@ async function pushLine(text) {
   }
 }
 
-// OTP画面到達 → DBに認証待ちを作成 → LINE通知 → 返信コードをポーリング → 入力
-async function relayOtpViaLine(c, page, otpInput, submitSel) {
+const OTP_SEL = '#auth-mfa-otpcode, input[name="otpCode"], #cvf-input-code, input[name="code"]';
+const MAX_OTP_ROUNDS = 3; // タイムアウト/認証失敗ごとに再送する最大回数
+
+// 認証待ちを1件作成 → LINE通知 → 5分ポーリング。code | null を返す。
+async function awaitOtpOnce(c, page, prompt) {
   const id = genId();
   const expires = new Date(Date.now() + 5 * 60 * 1000);
   await c.query(
     `INSERT INTO kdp_auth_requests (id, purpose, status, prompt, expires_at) VALUES ($1,'kdp_login_otp','pending',$2,$3)`,
-    [id, 'KDPログインの2段階認証コードを入力してください', expires],
+    [id, prompt, expires],
   );
-  const ok = await pushLine(
-    '🔐 A2P: KDPログインの認証が必要です。\n認証アプリの6桁コードをこのトークにそのまま返信してください（5分以内）。',
-  );
+  const ok = await pushLine(prompt);
   if (!ok) log('  ※LINE通知は未送信ですが、DBに認証待ちを作成済み（Web webhook経由でコード受信可）');
-  log('  返信された6桁コードを待機中（最大5分）...');
-  let code = null;
   for (let i = 0; i < 150; i++) {
     const r = await c.query(`SELECT code, status FROM kdp_auth_requests WHERE id=$1`, [id]);
     const row = r.rows[0];
     if (row && row.status === 'fulfilled' && row.code) {
-      code = row.code;
-      break;
+      await c.query(`UPDATE kdp_auth_requests SET status='consumed', consumed_at=now() WHERE id=$1`, [id]);
+      return row.code;
     }
     await page.waitForTimeout(2000);
   }
-  if (!code) {
-    await c.query(`UPDATE kdp_auth_requests SET status='expired' WHERE id=$1 AND status='pending'`, [id]);
-    log('  コード未受信 — タイムアウト');
-    return false;
+  await c.query(`UPDATE kdp_auth_requests SET status='expired' WHERE id=$1 AND status='pending'`, [id]);
+  return null;
+}
+
+// OTP画面到達 → LINEリレー。タイムアウト/認証失敗のたびに再送して最大 MAX_OTP_ROUNDS 回試行。
+async function relayOtpViaLine(c, page, otpInput, submitSel) {
+  for (let round = 1; round <= MAX_OTP_ROUNDS; round++) {
+    const prompt =
+      round === 1
+        ? '🔐 A2P: KDPログインの認証が必要です。\n認証アプリの6桁コードをこのトークに返信してください（5分以内）。'
+        : `🔁 A2P: 認証コードを再送してください（${round}/${MAX_OTP_ROUNDS} 回目）。\n認証アプリに表示中の最新の6桁コードを返信してください（5分以内）。`;
+    log(`  LINE認証リレー round ${round}/${MAX_OTP_ROUNDS} — 返信待機中（最大5分）...`);
+    const code = await awaitOtpOnce(c, page, prompt);
+
+    if (!code) {
+      // 5分タイムアウト → 再送
+      log('  コード未受信 — タイムアウト → 再送');
+      await pushLine('⏰ A2P: 5分以内に認証コードが届きませんでした。もう一度コードを送っていただければ再開します。');
+      continue;
+    }
+
+    log('  コード受信 → 自動入力');
+    // 入力欄ハンドルが失効している場合は取り直す
+    let el = otpInput;
+    if (!(await el.isVisible().catch(() => false))) {
+      el = await page.$(OTP_SEL).catch(() => null);
+    }
+    if (el) await el.fill(code).catch(() => {});
+    await page.check('#auth-mfa-remember-device').catch(() => {});
+    if (submitSel) await page.click(submitSel).catch(() => {});
+    await page.waitForTimeout(5000);
+
+    // 認証成否判定: OTP入力欄がまだ表示されている＝コード不正/期限切れで再入力要求
+    const stillOtp = await page.$(OTP_SEL).catch(() => null);
+    const rejected = stillOtp && (await stillOtp.isVisible().catch(() => false));
+    if (!rejected) {
+      log('  認証成功');
+      return true;
+    }
+    log('  認証失敗（コード不正/期限切れ） → 再送');
+    await pushLine('❌ A2P: 認証コードが正しくないか期限切れでした。認証アプリの新しい6桁コードを送ってください。');
+    otpInput = stillOtp;
   }
-  log('  コード受信 → 自動入力');
-  await otpInput.fill(code);
-  await c.query(`UPDATE kdp_auth_requests SET status='consumed', consumed_at=now() WHERE id=$1`, [id]);
-  await page.check('#auth-mfa-remember-device').catch(() => {});
-  if (submitSel) await page.click(submitSel).catch(() => {});
-  await page.waitForTimeout(4000);
-  return true;
+
+  log('  認証リレー最大回数に到達 — 中断');
+  await pushLine(`🛑 A2P: 認証に${MAX_OTP_ROUNDS}回失敗しました。処理を中断します。時間をおいて再実行してください。`);
+  return false;
 }
 
 // ---- DB ----

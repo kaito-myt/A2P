@@ -1,11 +1,13 @@
 import { z } from 'zod';
 
 import { createLogger, type Logger } from '@a2p/contracts/logger';
-import { decryptKdpCredentials } from '@a2p/crypto';
+import { decryptKdpCredentials, encryptKdpCredentials } from '@a2p/crypto';
 import { prisma as defaultPrisma } from '@a2p/db';
 import { parseKdpReportWorkbook, normalizeKdpRows } from '@a2p/kdp-report';
 
+import { isLineRelayConfigured, pushLine, type LineAuthRelayPrisma } from './lib/line-auth-relay.js';
 import type { BrowserPort } from './sales-fetch/browser-port.js';
+import { refreshKdpSession } from './sales-fetch/kdp-login-refresh.js';
 
 /**
  * `sales.fetch` ワーカタスク (F-038, 自動取得 Phase2)。
@@ -44,7 +46,14 @@ export interface SalesFetchPrisma {
       where: { id: string };
       select: { kdp_session_state_enc: true };
     }): Promise<{ kdp_session_state_enc: string | null } | null>;
+    /** 自動再ログイン成功時に更新後の storageState を書き戻す。 */
+    update(args: {
+      where: { id: string };
+      data: { kdp_session_state_enc: string };
+    }): Promise<unknown>;
   };
+  /** LINE 双方向認証リレー (自動再ログインの OTP 中継) が利用する。 */
+  kdpAuthRequest: LineAuthRelayPrisma['kdpAuthRequest'];
   salesFetchRun: {
     create(args: {
       data: { account_id: string; year_month: string; status: string };
@@ -146,7 +155,39 @@ export async function runSalesFetch(deps: SalesFetchDeps): Promise<SalesFetchRes
   }
 
   // 2. レポート DL
-  const dl = await deps.browserPort.downloadReport({ sessionState, yearMonth: payload.year_month });
+  let dl = await deps.browserPort.downloadReport({ sessionState, yearMonth: payload.year_month });
+
+  // 2b. セッション切れ → LINE 中継 + AMAZON_EMAIL/PASSWORD が揃っていれば自動再ログインを試みる。
+  if (!dl.ok && dl.reason === 'session_expired') {
+    const canAutoRelogin =
+      isLineRelayConfigured() && Boolean(process.env.AMAZON_EMAIL) && Boolean(process.env.AMAZON_PASSWORD);
+    if (canAutoRelogin) {
+      await pushLine('KDP売上取得: セッション切れを検知。自動再ログインを試みます。').catch(() => {});
+      const ref = await refreshKdpSession({ prisma: db, oldStorageState: sessionState });
+      if (ref.ok) {
+        try {
+          await db.account.update({
+            where: { id: payload.account_id },
+            data: { kdp_session_state_enc: encryptKdpCredentials(ref.storageState) },
+          });
+        } catch (err) {
+          log.warn({ err, runId }, 'failed to persist refreshed kdp_session_state_enc');
+        }
+        const retryDl = await deps.browserPort.downloadReport({
+          sessionState: ref.storageState,
+          yearMonth: payload.year_month,
+        });
+        if (!retryDl.ok) {
+          log.warn({ runId, reason: retryDl.reason }, 'auto re-login succeeded but retry download still failed');
+        }
+        dl = retryDl;
+      } else {
+        await pushLine(`自動再ログイン失敗（${ref.reason}）。手動でセッション再取得が必要です。`).catch(() => {});
+        log.warn({ runId, reason: ref.reason, message: ref.message }, 'auto kdp re-login failed');
+      }
+    }
+  }
+
   if (!dl.ok) {
     const reason = dl.reason === 'session_expired' ? 'session_expired' : dl.reason === 'download_failed' ? 'download_failed' : 'unknown';
     const msg =

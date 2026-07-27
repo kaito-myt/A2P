@@ -677,6 +677,18 @@
   - 日次で自動実行される
   - 2FA 発生時は push-and-wait で運営者承認を待つ
 - **関連エージェント**: N/A
+- **追加実装 [実装済み] サーバー完結の自動再ログイン (LINE OTP 中継)**: 保存済みセッション
+  (`accounts.kdp_session_state_enc`) が失効し `session_expired` になった場合、`env AMAZON_EMAIL`/
+  `AMAZON_PASSWORD` と LINE 双方向認証リレー (`LINE_CHANNEL_ACCESS_TOKEN`/`LINE_ALLOWED_USER_ID`、
+  F-041 と共通) が設定済みなら、worker がヘッドレスで Amazon/KDP に再ログインし新セッションを
+  保存 → レポート DL を再試行する（人手を介さずサーバー側だけで復旧）。2 段階認証コードは
+  `kdp_auth_requests` 経由で運営者の LINE に中継し、運営者は 6 桁コードを返信するだけでよい。
+  タイムアウトやコード不正時は最大 3 回まで再送してリトライする。
+  **既知の限界 (フォールバック)**: データセンター IP からのログインは Amazon 側 CAPTCHA が提示され
+  うる。ヘッドレスでは CAPTCHA を解けないため検知時は諦め、従来通り運営者による手動セッション
+  再キャプチャにフォールバックする（自動化不可のケースを機能低下ではなく明示的な失敗として扱う）。
+  `AMAZON_EMAIL`/`AMAZON_PASSWORD` または LINE 中継が未設定の場合は本機能を一切実行せず、従来通り
+  `session_expired` で失敗し手動対応を促す（後方互換）。
 
 ---
 

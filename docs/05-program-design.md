@@ -1785,6 +1785,14 @@ export const SalesFetchPayload = z.object({ account_id: z.string(), year_month: 
 | priority | 40 |
 | 実行内容 | Playwright で KDP レポート画面ログイン → CSV ダウンロード → `SalesRecord` upsert。2FA 発生時は `Kdp2FaCode` INSERT + メール送信 → ポーリング待ち。 |
 
+> **実装メモ (Phase 2 実装済み)**: 上表は当初案。実際は `BrowserPort.downloadReport` (`apps/worker/src/tasks/sales-fetch/playwright-browser-port.ts`) が保存済み storageState (`accounts.kdp_session_state_enc`) を再利用して PMR レポート xlsx を **2 段 GET** で取得する DOM 操作不要の経路であり、`Kdp2FaCode`/メール承認は使わない。
+>
+> **セッション切れ時の自動再ログイン (追加実装)**: `downloadReport` が `reason='session_expired'` を返した場合、`env.LINE_CHANNEL_ACCESS_TOKEN`/`LINE_ALLOWED_USER_ID` (LINE 双方向認証リレー) と `env.AMAZON_EMAIL`/`AMAZON_PASSWORD` が揃っていれば、`apps/worker/src/tasks/sales-fetch/kdp-login-refresh.ts` の `refreshKdpSession` がヘッドレス Chromium で Amazon/KDP に再ログインを試み、成功すれば新しい storageState を `accounts.kdp_session_state_enc` に書き戻して DL を 1 回だけ再試行する。
+>   - OTP (2 段階認証) は `apps/worker/src/tasks/lib/line-auth-relay.ts` の `requestOtpViaLine` が `kdp_auth_requests` (既存の LINE 双方向認証リレー機構、`scripts/kdp-publish.mjs`/`/api/line/webhook` と共有) に pending 行を作り LINE push → 運営者が LINE に 6 桁コードを返信 → webhook が書き戻す → ポーリングで拾う、という流れ。5 分間コードが届かなければ行を `expired` にし再送通知のうえ新しい行を作って再試行 (既定 `maxRounds=3`)。
+>   - ログイン画面で OTP を送信しても認証に失敗した場合 (入力欄が消えない = コード不正/期限切れ) は `handleOtpRetryLoop` が運営者に再送を促し、新しいコードで再入力する (既定 `maxAttempts=3`)。
+>   - データセンター IP からのログインは CAPTCHA が提示されることがあり、`looksLikeCaptcha` で検知した場合は `reason='captcha'` を返してヘッドレス突破を諦め、従来通り手動でのセッション再キャプチャにフォールバックする (F-038 の既知の限界)。
+>   - `AMAZON_EMAIL`/`AMAZON_PASSWORD` 未設定、または LINE 中継未設定の場合は本追加ロジックを一切実行せず、従来通り `session_expired` で failed のまま (後方互換)。
+
 #### 5.3.15 `kdp.submit` [F-041] (Phase 3・不採用 — 4.3.16 参照)
 
 > **実装メモ**: Amazon KDP の入稿都度 2FA 再認証要求により、この Playwright 無人ジョブ設計は
@@ -2919,6 +2927,10 @@ export const logger = pino({
   (`x-line-signature`, HMAC-SHA256 timing-safe 比較) であり NextAuth セッションを使わない
   (`middleware.ts` の matcher で `/api/line` を除外)。env: `LINE_CHANNEL_SECRET` /
   `LINE_CHANNEL_ACCESS_TOKEN` / `LINE_ALLOWED_USER_ID` (全て任意、未設定なら webhook は 503)。
+  **同テーブルは `sales.fetch` の自動再ログイン (5.3.14 実装メモ参照) からも共用消費される**:
+  `apps/worker/src/tasks/lib/line-auth-relay.ts` の `requestOtpViaLine` が worker 側から pending 行を
+  作成・LINE push・ポーリング/消費までを行う (`purpose='kdp_sales_relogin'`)。ローカルツールと worker は
+  同じテーブル/webhook を共有するが、同時に両方が認証待ちになる運用は想定していない。
   純粋ロジックは `apps/web/lib/line-webhook-core.ts` (`extractOtpCode`/`processLineEvents`)、署名検証/
   返信 API 呼び出しは `apps/web/lib/line-client.ts` に分離。
 
@@ -2956,6 +2968,9 @@ gpt-image-2 単価行を seed 済 (`apply-openai-catalog.ts`)。本ドキュメ�
 - `pipeline.book.promotion.generate` (F-051 販促プラン生成)
 - `sales.fetch` を **実ブラウザ (Playwright + Chromium)** で実装 (Phase 3 SP-14)。KDPログイン→
   TOTP(otplib)で2FA自動突破→レポート取得。証跡(screenshot/HTML)を `debug/sales-fetch/` に保存。
+  **追加実装**: `session_expired` 時の自動再ログイン (`sales-fetch/kdp-login-refresh.ts`
+  `refreshKdpSession`、LINE OTP 中継は `lib/line-auth-relay.ts`)。詳細は 5.3.14 実装メモ参照。
+  env: `AMAZON_EMAIL` / `AMAZON_PASSWORD` (任意、未設定なら自動再ログインは行わず従来通り失敗)。
 - **販促自動運用 (F-052)** の 3 タスク:
   - `promotion.posts.generate` — 販促プラン(`promotion_plans.plan_json`)から `buildPromotionPosts`
     (contracts/promotion/channels、純関数) で SNS/note/blog の投稿を日程付き生成し `promotion_posts` に登録。

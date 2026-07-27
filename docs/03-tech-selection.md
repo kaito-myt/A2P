@@ -281,6 +281,8 @@ LTS / latest stable を基本とし、Phase 0-1 では新規プロジェクト�
 | `LINE_CHANNEL_SECRET` | LINE 双方向認証リレー: webhook 署名検証用チャネルシークレット | 任意（未設定時 `/api/line/webhook` は 503） | LINE Developers コンソール発行 |
 | `LINE_CHANNEL_ACCESS_TOKEN` | LINE 双方向認証リレー: Messaging API 返信用アクセストークン | 任意 | LINE Developers コンソール発行 |
 | `LINE_ALLOWED_USER_ID` | LINE 双方向認証リレー: 認証コード返信を受け付ける運営者本人の LINE userId（なりすまし防止） | 任意 | `U...` |
+| `AMAZON_EMAIL` | `sales.fetch` セッション切れ時の自動再ログイン用 Amazon アカウントのメールアドレス（LINE 双方向認証リレーと併用） | 任意（未設定なら自動再ログインは行わず従来通り手動キャプチャにフォールバック） | `operator@example.com` |
+| `AMAZON_PASSWORD` | 同上のパスワード | 任意 | — |
 
 ---
 

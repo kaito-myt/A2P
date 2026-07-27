@@ -22,11 +22,11 @@ const DEFAULT_TIMEOUT_MS = 60_000;
 const REPORTS_HOST = process.env.KDP_REPORTS_HOST ?? 'https://kdpreports.amazon.co.jp';
 /** {ym} を YYYY-MM に置換して使う PMR ダウンロードエンドポイント。 */
 const PMR_DOWNLOAD_PATH = '/download/report/pmr/ja_JP/pmrReport.xslx?selectedMonth={ym}&reportType=KDP_PMR';
-const UA =
+export const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
-/** コンテナ (Railway) 上の Chromium 起動引数。 */
-const LAUNCH_ARGS = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'];
+/** コンテナ (Railway) 上の Chromium 起動引数。kdp-login-refresh.ts と共有。 */
+export const LAUNCH_ARGS = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'];
 
 export function createPlaywrightBrowserPort(): BrowserPort {
   return { downloadReport };
