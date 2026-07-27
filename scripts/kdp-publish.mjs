@@ -215,18 +215,58 @@ function segs(pathStr) {
   return i >= 0 ? p.slice(i) : p;
 }
 
+// ---- カナ→ローマ字 (KDPのローマ字欄はASCIIのみ許可) ----
+const KANA_ROMAJI = {
+  'キャ':'kya','キュ':'kyu','キョ':'kyo','シャ':'sha','シュ':'shu','ショ':'sho','チャ':'cha','チュ':'chu','チョ':'cho',
+  'ニャ':'nya','ニュ':'nyu','ニョ':'nyo','ヒャ':'hya','ヒュ':'hyu','ヒョ':'hyo','ミャ':'mya','ミュ':'myu','ミョ':'myo',
+  'リャ':'rya','リュ':'ryu','リョ':'ryo','ギャ':'gya','ギュ':'gyu','ギョ':'gyo','ジャ':'ja','ジュ':'ju','ジョ':'jo',
+  'ビャ':'bya','ビュ':'byu','ビョ':'byo','ピャ':'pya','ピュ':'pyu','ピョ':'pyo','ヂャ':'ja','ヂュ':'ju','ヂョ':'jo',
+  'ヴァ':'va','ヴィ':'vi','ヴェ':'ve','ヴォ':'vo','ファ':'fa','フィ':'fi','フェ':'fe','フォ':'fo',
+  'ウィ':'wi','ウェ':'we','ウォ':'wo','ティ':'ti','ディ':'di','トゥ':'tu','ドゥ':'du',
+  'ア':'a','イ':'i','ウ':'u','エ':'e','オ':'o','カ':'ka','キ':'ki','ク':'ku','ケ':'ke','コ':'ko',
+  'サ':'sa','シ':'shi','ス':'su','セ':'se','ソ':'so','タ':'ta','チ':'chi','ツ':'tsu','テ':'te','ト':'to',
+  'ナ':'na','ニ':'ni','ヌ':'nu','ネ':'ne','ノ':'no','ハ':'ha','ヒ':'hi','フ':'fu','ヘ':'he','ホ':'ho',
+  'マ':'ma','ミ':'mi','ム':'mu','メ':'me','モ':'mo','ヤ':'ya','ユ':'yu','ヨ':'yo',
+  'ラ':'ra','リ':'ri','ル':'ru','レ':'re','ロ':'ro','ワ':'wa','ヲ':'o','ン':'n',
+  'ガ':'ga','ギ':'gi','グ':'gu','ゲ':'ge','ゴ':'go','ザ':'za','ジ':'ji','ズ':'zu','ゼ':'ze','ゾ':'zo',
+  'ダ':'da','ヂ':'ji','ヅ':'zu','デ':'de','ド':'do','バ':'ba','ビ':'bi','ブ':'bu','ベ':'be','ボ':'bo',
+  'パ':'pa','ピ':'pi','プ':'pu','ペ':'pe','ポ':'po','ヴ':'vu',
+  'ァ':'a','ィ':'i','ゥ':'u','ェ':'e','ォ':'o','ー':'','・':' ','　':' ',
+};
+function kanaToRomaji(s) {
+  if (!s) return '';
+  s = String(s).replace(/[ぁ-ゖ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) + 0x60)); // ひらがな→カタカナ
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const two = s.substr(i, 2);
+    if (KANA_ROMAJI[two] !== undefined) { out += KANA_ROMAJI[two]; i++; continue; }
+    const ch = s[i];
+    if (ch === 'ッ') { const nx = KANA_ROMAJI[s.substr(i + 1, 2)] ?? KANA_ROMAJI[s[i + 1]] ?? ''; if (nx) out += nx[0]; continue; }
+    out += KANA_ROMAJI[ch] !== undefined ? KANA_ROMAJI[ch] : ch;
+  }
+  return out;
+}
+const asciiOnly = (v) => (v && /^[\x00-\x7F]+$/.test(String(v))) ? String(v) : null;
+// ローマ字欄の値: 既存romajiがASCIIならそれ、無ければカナから変換、それも無理なら未入力(undefined)
+function romajiFor(romaji, kana) {
+  const a = asciiOnly(romaji);
+  if (a) return a;
+  const r = kanaToRomaji(kana).replace(/[^\x00-\x7F]/g, ' ').replace(/\s+/g, ' ').trim();
+  return r || undefined;
+}
+
 // ---- wizard steps ----
 async function fillStep1(page, b) {
   const set = async (sel, v) => { if (v == null || v === '') return; const e = await page.$(sel); if (e) await e.fill(String(v)); };
   await set('#data-title', b.title);
   await set('#data-title-pronunciation', b.title_kana);
-  await set('#data-title-romanized', b.title_romaji);
+  await set('#data-title-romanized', romajiFor(b.title_romaji, b.title_kana));
   await set('#data-subtitle', b.subtitle);
   await set('#data-subtitle-pronunciation', b.subtitle_kana);
-  await set('#data-subtitle-romanized', b.subtitle_romaji);
+  await set('#data-subtitle-romanized', romajiFor(b.subtitle_romaji, b.subtitle_kana));
   await set('#data-print-book-primary-author-last-name-jp', b.pen_name);
   await set('#data-primary-author-pronunciation', b.author_kana);
-  await set('#data-primary-author-name-romanized', b.author_romaji);
+  await set('#data-primary-author-name-romanized', romajiFor(b.author_romaji, b.author_kana));
   for (let i = 0; i < 7; i++) if (b.keywords?.[i]) await set('#data-keywords-' + i, b.keywords[i]);
   await page.check('#non-public-domain', { force: true }).catch(() => {});
   await page.check('input[name="data[is_adult_content]-radio"][value="false"]', { force: true }).catch(() => {});
@@ -313,15 +353,27 @@ async function selectAqui(page, id, label) {
   if (!ok) log('  WARN: AI questionnaire not set for', id);
 }
 
+// アップロード完了は「正常にアップロードしました」等の成功表示の出現で判定する
+// (旧実装は「変換中/処理中」文字の消失待ちで、常駐文言により誤タイムアウトしていた)
 async function waitUploadDone(page, tag, timeoutMs = 300000) {
+  const successSrc =
+    tag === 'interior'
+      ? '正常にアップロードしました|ファイルの処理が完了|原稿チェックが完了'
+      : '正常にアップロードしました|アップロードが完了';
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const busy = await page.evaluate(() => /アップロード中|アップロード処理中|変換中|処理中です|アップロードしています/.test(document.body.textContent || ''));
-    const err = await page.evaluate(() => /エラー|失敗しました|問題が発生/.test((document.querySelector('.a-alert-error, [role=alert]')?.textContent) || ''));
-    if (err) throw new Error(tag + ' upload error');
-    if (!busy) { await page.waitForTimeout(2500); return; }
+    const err = await page.evaluate(() =>
+      /アップロードに失敗|正常にアップロードできません|ファイルの処理に失敗|問題が発生しました/.test(document.body.textContent || ''),
+    );
+    if (err) {
+      await page.screenshot({ path: path.join(STAGE, tag + '-uploaderr.png') }).catch(() => {});
+      throw new Error(tag + ' upload error');
+    }
+    const done = await page.evaluate((src) => new RegExp(src).test(document.body.textContent || ''), successSrc);
+    if (done) { await page.waitForTimeout(2500); return; }
     await page.waitForTimeout(3000);
   }
+  await page.screenshot({ path: path.join(STAGE, tag + '-uploadtimeout.png') }).catch(() => {});
   throw new Error(tag + ' upload timeout');
 }
 
