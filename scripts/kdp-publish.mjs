@@ -173,6 +173,15 @@ function db() {
   if (!process.env.DBURL) throw new Error('DBURL env required (prod DATABASE_PUBLIC_URL)');
   return new Client({ connectionString: process.env.DBURL, ssl: false });
 }
+// 長時間のブラウザ操作中は開きっぱなしの接続がアイドルで切れる。DB 書込みはその都度
+// 新規接続で行い、使い終わったら閉じる(短命接続)。ブラウザ処理をDB接続寿命に依存させない。
+async function dbExec(sql, params) {
+  const cc = db();
+  cc.on('error', () => {}); // アイドル切断で unhandled 'error' がプロセスを落とさないように
+  await cc.connect();
+  try { return await cc.query(sql, params); }
+  finally { await cc.end().catch(() => {}); }
+}
 async function fetchBooks(c) {
   const where = BOOK_ID
     ? { sql: 'b.id=$1', params: [BOOK_ID] }
@@ -430,6 +439,8 @@ async function fillStep2(page, coverPath, docxPath) {
     log('  step2 options(retry ' + (r + 1) + '):', JSON.stringify(opt));
   }
   await page.waitForTimeout(800);
+  // 設定後の状態を全ページスクショで残す(運営者/assistantが目視検証できるように)。
+  await page.screenshot({ path: path.join(STAGE, 'step2-ready.png'), fullPage: true }).catch(() => {});
   if (ASSIST && !AUTO) return { ok: true, assist: true }; // 入力のみ。「保存して続行」は運営者が押す
   // 変換処理中(ブロッキングモーダル表示中)は保存しても /pricing に進めない。モーダルが無い時だけ
   // save-and-continue をクリックし、/pricing 到達まで一定間隔でポーリング(最大8分)。
@@ -740,7 +751,7 @@ async function runAuto(c, page, s3, books) {
       if (!pub) { log('  出版後の本棚遷移を検知できず → submittedにしない'); await page.screenshot({ path: path.join(STAGE, b.id + '-publish-unconfirmed.png'), fullPage: true }).catch(() => {}); results.push({ title: b.title, status: 'publish_unconfirmed', url: page.url() }); continue; }
       await page.waitForTimeout(3000);
       const asin = await captureAsin(page, b.title).catch(() => null);
-      await c.query("UPDATE books SET publish_status='submitted', kdp_publish_queued=false, asin=COALESCE($2,asin) WHERE id=$1", [b.id, asin]);
+      await dbExec("UPDATE books SET publish_status='submitted', kdp_publish_queued=false, asin=COALESCE($2,asin) WHERE id=$1", [b.id, asin]);
       log('  ✅ PUBLISHED asin=', asin, '-> publish_status=submitted');
       results.push({ title: b.title, status: 'submitted', asin });
     } catch (e) {
@@ -754,7 +765,9 @@ async function runAuto(c, page, s3, books) {
 }
 
 async function main() {
-  const c = db(); await c.connect();
+  const c = db();
+  c.on('error', (e) => { try { log('  (DB接続エラー(無視): ' + e.message + ')'); } catch {} }); // アイドル切断でプロセスを落とさない
+  await c.connect();
   const books = await fetchBooks(c);
   log(`対象書籍: ${books.length}冊${DRY_RUN ? ' (DRY RUN)' : ''}${AUTO ? ' (AUTO)' : ASSIST ? ' (ASSIST)' : ''}`);
   if (!books.length) { await c.end(); return; }
