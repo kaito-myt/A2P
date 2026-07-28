@@ -634,35 +634,18 @@ async function passReauthIfNeeded(page, c) {
   const authForm = async () =>
     page.$('#ap_password, input[type="password"][name="password"], #signInSubmit, ' + OTP_SEL).catch(() => null);
   if (!(await authForm())) return true; // 認証フォームが無ければ通過済み
-  log('  🔐 再認証(reauth)要求 → パスワード/OTPで通します（最大10分）');
-  for (let i = 0; i < 120; i++) {
+  // 注意: Chrome は自動入力パスワードをスクリプト送信から保護するため、AMAZON_PASSWORD が env に
+  // 無いとスクリプトからの submit は弾かれる。その場合は運営者が「サインイン」を1回押すのを待つ。
+  log('  🔐 再認証(reauth)要求。ブラウザの Amazon サインイン画面で「サインイン」を1回押してください');
+  log('     (AMAZON_PASSWORD が env にあれば自動。OTPが出たら LINE に通知が飛びます)');
+  let autoTries = 0;
+  for (let i = 0; i < 200; i++) { // 約10分待つ
     // email (稀に要求)
     const emailEl = await page.$('#ap_email, input[type="email"][name="email"]').catch(() => null);
     if (emailEl && AMZ_EMAIL && (await emailEl.isVisible().catch(() => false))) {
       await emailEl.fill(AMZ_EMAIL).catch(() => {});
       await page.click('#continue, input#continue').catch(() => {});
       await page.waitForTimeout(2500);
-    }
-    // password (概ね事前入力済み。空なら env で補完)
-    const passEl = await page.$('#ap_password, input[type="password"][name="password"]').catch(() => null);
-    if (passEl && (await passEl.isVisible().catch(() => false))) {
-      const val = await passEl.inputValue().catch(() => '');
-      if (!val && AMZ_PASS) {
-        await passEl.click().catch(() => {});
-        await passEl.type(AMZ_PASS, { delay: 25 }).catch(() => {});
-      } else {
-        // 事前入力(プロファイル保存)のパスワードは input イベント未発火で Amazon に「未入力」
-        // 扱いされ submit が弾かれる。実キーイベント(末尾に空白→削除)を発火させて認識させる。
-        await passEl.focus().catch(() => {});
-        await passEl.press('End').catch(() => {});
-        await page.keyboard.type(' ').catch(() => {});
-        await page.keyboard.press('Backspace').catch(() => {});
-        await page.evaluate(() => { const p = document.querySelector('#ap_password'); if (p) { p.dispatchEvent(new Event('input', { bubbles: true })); p.dispatchEvent(new Event('change', { bubbles: true })); } }).catch(() => {});
-      }
-      await page.check('#auth-remember-me, #rememberMe').catch(() => {});
-      await page.click('#signInSubmit, input#signInSubmit').catch(() => {});
-      await page.waitForTimeout(4000);
-      await page.screenshot({ path: path.join(STAGE, 'reauth-after-submit.png'), fullPage: true }).catch(() => {});
     }
     // OTP → LINE リレー
     const otpEl = await page.$(OTP_SEL).catch(() => null);
@@ -675,8 +658,20 @@ async function passReauthIfNeeded(page, c) {
       const done = await relayOtpViaLine(c, page, otpEl, submitSel);
       if (!done) return false;
     }
-    await page.waitForTimeout(3500);
+    // password: env に AMAZON_PASSWORD があれば実タイプ+submit を最大3回自動試行。
+    // 無ければ自動submitは不可(Chrome保護)なので運営者のクリックを待つ(何もしない)。
+    const passEl = await page.$('#ap_password, input[type="password"][name="password"]').catch(() => null);
+    if (passEl && (await passEl.isVisible().catch(() => false)) && AMZ_PASS && autoTries < 3) {
+      autoTries++;
+      await passEl.click().catch(() => {});
+      await passEl.fill('').catch(() => {});
+      await passEl.type(AMZ_PASS, { delay: 25 }).catch(() => {});
+      await page.check('#auth-remember-me, #rememberMe').catch(() => {});
+      await page.click('#signInSubmit, input#signInSubmit').catch(() => {});
+      await page.waitForTimeout(4000);
+    }
     if (!(await authForm())) { await page.waitForTimeout(1500); return true; } // 認証フォームが消えた=通過
+    await page.waitForTimeout(3000);
   }
   return false;
 }
