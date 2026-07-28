@@ -644,6 +644,27 @@ async function captureAsin(page, title) {
   return asin;
 }
 
+// 本棚で書名を検索し、その本が出版された(レビュー中/出版準備中/販売中/ライブ)かを確認する。
+// 出版クリックのナビゲーションで context 破棄されても、これで結果を確定できる。
+async function verifyPublished(page, title) {
+  await page.goto(BOOKSHELF, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await page.waitForTimeout(6000);
+  const sb = await page.$('input[type="search"], input[aria-label*="検索"], input[placeholder*="検索"]').catch(() => null);
+  if (sb) { await sb.fill(title.slice(0, 16)).catch(() => {}); await page.keyboard.press('Enter').catch(() => {}); await page.waitForTimeout(5000); }
+  return await page.evaluate((title) => {
+    const key = title.slice(0, 12);
+    const rows = [...document.querySelectorAll('div')].filter((d) => (d.textContent || '').includes(key) && (d.textContent || '').length < 700);
+    // 最小の該当行を優先(親ほど長い)
+    rows.sort((a, b) => (a.textContent || '').length - (b.textContent || '').length);
+    for (const r of rows) {
+      const t = r.textContent || '';
+      const m = t.match(/レビュー中|出版準備中|販売中|ライブ/);
+      if (m) { const a = t.match(/\bB0[A-Z0-9]{8}\b/); return { published: true, label: m[0], asin: a ? a[0] : null }; }
+    }
+    return { published: false, label: null, asin: null };
+  }, title);
+}
+
 async function ensureLoggedIn(page, c) {
   // ASSIST時はCREATE(新規作成=下書き発生/制限)を避け、本棚でログイン判定する
   const target = (ASSIST || AUTO) ? BOOKSHELF : CREATE;
@@ -877,17 +898,27 @@ async function runAuto(c, page, s3, books) {
       const s2 = await fillStep2(page, coverPath, docxPath); // アップロード失敗時は throw → catch で skip(出版しない)
       if (s2.blocked) { log('  BLOCKED step2:', s2.blocked); results.push({ title: b.title, status: 'blocked_' + s2.blocked }); continue; }
       log('  step2 OK (本文/表紙アップロード検証済) -> pricing');
-      const s3r = await fillStep3(page, b);
+      let s3r;
+      try { s3r = await fillStep3(page, b); }
+      catch (e) {
+        // 出版クリックのナビゲーションで context 破棄されることがある(=出版成功の可能性)。本棚で確認する。
+        log('  step3中に例外(' + e.message.slice(0, 50) + ') → 本棚で出版確認');
+        s3r = { verify: true };
+      }
       if (s3r.dryRun) { await page.screenshot({ path: path.join(STAGE, b.id + '-dryrun-pricing.png'), fullPage: true }).catch(() => {}); results.push({ title: b.title, status: 'dry_run_ready' }); continue; }
       if (s3r.blocked) { log('  BLOCKED step3:', s3r.blocked); results.push({ title: b.title, status: 'blocked_' + s3r.blocked }); continue; }
-      // 出版確定: 本棚への遷移を検証。未検知なら submitted にしない(要手動確認)。
-      const pub = await waitUrl(page, /bookshelf/, 120000);
-      if (!pub) { log('  出版後の本棚遷移を検知できず → submittedにしない'); await page.screenshot({ path: path.join(STAGE, b.id + '-publish-unconfirmed.png'), fullPage: true }).catch(() => {}); results.push({ title: b.title, status: 'publish_unconfirmed', url: page.url() }); continue; }
-      await page.waitForTimeout(3000);
-      const asin = await captureAsin(page, b.title).catch(() => null);
-      await dbExec("UPDATE books SET publish_status='submitted', kdp_publish_queued=false, asin=COALESCE($2,asin) WHERE id=$1", [b.id, asin]);
-      log('  ✅ PUBLISHED asin=', asin, '-> publish_status=submitted');
-      results.push({ title: b.title, status: 'submitted', asin });
+      // 出版確定: 本棚で書名の状態を確認(レビュー中/出版準備中/販売中/ライブ = 出版済み)。
+      await page.waitForTimeout(4000);
+      const pubv = await verifyPublished(page, b.title).catch(() => ({ published: false }));
+      if (pubv.published) {
+        await dbExec("UPDATE books SET publish_status='submitted', kdp_publish_queued=false, asin=COALESCE($2,asin) WHERE id=$1", [b.id, pubv.asin || null]);
+        log('  ✅ 出版確認(' + pubv.label + ') asin=' + (pubv.asin || '-') + ' -> submitted');
+        results.push({ title: b.title, status: 'submitted', asin: pubv.asin || null });
+      } else {
+        log('  出版未確認 → submittedにしない(要手動確認)');
+        await page.screenshot({ path: path.join(STAGE, b.id + '-publish-unconfirmed.png'), fullPage: true }).catch(() => {});
+        results.push({ title: b.title, status: 'publish_unconfirmed' });
+      }
     } catch (e) {
       log('  ERROR:', e.message);
       await page.screenshot({ path: path.join(STAGE, b.id + '-auto-error.png'), fullPage: true }).catch(() => {});
