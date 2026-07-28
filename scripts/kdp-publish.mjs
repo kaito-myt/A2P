@@ -370,13 +370,17 @@ async function fillStep2(page, coverPath, docxPath) {
   });
   await page.waitForTimeout(600);
   if (ASSIST && !AUTO) return { ok: true, assist: true }; // 入力のみ。「保存して続行」は運営者が押す
-  await page.click('#save-and-continue-announce').catch(() => {});
-  await page.waitForTimeout(7000);
-  if (!/\/(pricing)/.test(page.url())) {
-    await page.screenshot({ path: path.join(STAGE, 'step2-blocked.png'), fullPage: true }).catch(() => {});
-    return { blocked: 'content_not_advanced', url: page.url() };
+  // ファイル変換処理の完了を待ってから保存する(処理中に押すとブロックされ /pricing に進めない)。
+  await waitFileProcessing(page);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await page.click('#save-and-continue-announce').catch(() => {});
+    await page.waitForTimeout(8000);
+    if (/\/(pricing)/.test(page.url())) return { ok: true };
+    // まだ処理中/準備中モーダルでブロックされている可能性 → 処理完了を待って再クリック。
+    await waitFileProcessing(page);
   }
-  return { ok: true };
+  await page.screenshot({ path: path.join(STAGE, 'step2-blocked.png'), fullPage: true }).catch(() => {});
+  return { blocked: 'content_not_advanced', url: page.url() };
 }
 
 async function selectAqui(page, id, label) {
@@ -433,6 +437,29 @@ async function waitCoverDone(page, timeoutMs = 180000) {
     return s ? s.textContent.replace(/\s+/g, ' ').trim().slice(0, 250) : '(cover section not found)';
   });
   throw new Error('cover upload timeout | coverSection="' + txt + '"');
+}
+
+// アップロード後の「ファイル変換処理」完了を待つ。KDP は原稿/表紙のアップロード受信直後に
+// 「正常にアップロードしました」を出すが、その後「ファイルを準備しています / 原稿と表紙を処理
+// しています」モーダルで変換処理を続ける。処理中に「保存して続行」を押すとブロックされ /pricing
+// へ進めない。このモーダル(処理中表示)が消えるまで待つ。
+async function waitFileProcessing(page, timeoutMs = 240000) {
+  const start = Date.now();
+  let seen = false;
+  while (Date.now() - start < timeoutMs) {
+    const processing = await page.evaluate(() =>
+      /ファイルを準備しています|原稿と表紙を処理しています|ファイルを処理しています/.test(document.body.textContent || ''),
+    );
+    if (processing) { seen = true; await page.waitForTimeout(3000); continue; }
+    // 処理表示が消えた(または最初から無い)。安定確認のため少し待って再確認。
+    await page.waitForTimeout(2500);
+    const still = await page.evaluate(() =>
+      /ファイルを準備しています|原稿と表紙を処理しています|ファイルを処理しています/.test(document.body.textContent || ''),
+    );
+    if (!still) return { processed: seen };
+  }
+  await page.screenshot({ path: path.join(STAGE, 'file-processing-timeout.png'), fullPage: true }).catch(() => {});
+  return { processed: seen, timeout: true };
 }
 
 async function fillStep3(page, b) {
