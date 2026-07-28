@@ -649,19 +649,17 @@ async function captureAsin(page, title) {
 async function verifyPublished(page, title) {
   await page.goto(BOOKSHELF, { waitUntil: 'domcontentloaded' }).catch(() => {});
   await page.waitForTimeout(6000);
-  const sb = await page.$('input[type="search"], input[aria-label*="検索"], input[placeholder*="検索"]').catch(() => null);
-  if (sb) { await sb.fill(title.slice(0, 16)).catch(() => {}); await page.keyboard.press('Enter').catch(() => {}); await page.waitForTimeout(5000); }
+  // 書名で検索してその本だけに絞ってから、ページ全体でステータスを判定する
+  // (行DOMのネストが不定で行単位マッチは取りこぼすため)。
+  const sb = await page.$('input[type="search"], input[aria-label*="検索"], input[placeholder*="検索"], input[name*="search"]').catch(() => null);
+  if (sb) { await sb.fill('').catch(() => {}); await sb.fill(title.slice(0, 14)).catch(() => {}); await page.keyboard.press('Enter').catch(() => {}); await page.waitForTimeout(6000); }
   return await page.evaluate((title) => {
-    const key = title.slice(0, 12);
-    const rows = [...document.querySelectorAll('div')].filter((d) => (d.textContent || '').includes(key) && (d.textContent || '').length < 700);
-    // 最小の該当行を優先(親ほど長い)
-    rows.sort((a, b) => (a.textContent || '').length - (b.textContent || '').length);
-    for (const r of rows) {
-      const t = r.textContent || '';
-      const m = t.match(/レビュー中|出版準備中|販売中|ライブ/);
-      if (m) { const a = t.match(/\bB0[A-Z0-9]{8}\b/); return { published: true, label: m[0], asin: a ? a[0] : null }; }
-    }
-    return { published: false, label: null, asin: null };
+    const key = title.slice(0, 10);
+    const body = document.body.textContent || '';
+    if (!body.includes(key)) return { published: false, label: 'not_found', asin: null };
+    const m = body.match(/レビュー中|出版準備中|販売中|ライブ/);
+    if (m) { const a = body.match(/\bB0[A-Z0-9]{8}\b/); return { published: true, label: m[0], asin: a ? a[0] : null }; }
+    return { published: false, label: 'draft?', asin: null };
   }, title);
 }
 
