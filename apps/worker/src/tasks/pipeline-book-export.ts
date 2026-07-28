@@ -264,12 +264,27 @@ export async function runPipelineBookExport(
     // 4. Fetch Book + Chapters
     const book = await prisma.book.findUnique({
       where: { id: bookId },
-      select: { id: true, title: true, subtitle: true },
+      select: { id: true, title: true, subtitle: true, status: true },
     });
     if (!book) {
       throw new NotFoundError(`Book not found: ${bookId}`, {
         details: { bookId, jobId },
       });
+    }
+
+    // 外部取込み本 (status='external') はパイプライン生成物 (章) を持たないため
+    // export 対象外。retry しても永久に章が無いので NotFoundError で 25 回焼くのではなく
+    // 正常スキップ (Job done) にする。
+    if (book.status === 'external') {
+      await prisma.job.update({
+        where: { id: jobId },
+        data: { status: 'done', finished_at: now(), error: null, result_json: { skipped: 'external_book_no_chapters' } },
+      });
+      log.info(
+        { task: PIPELINE_BOOK_EXPORT_TASK_NAME, jobId, bookId },
+        'skip export: external book has no pipeline chapters',
+      );
+      return;
     }
 
     const chapters = await prisma.chapter.findMany({

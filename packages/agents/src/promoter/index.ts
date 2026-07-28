@@ -22,7 +22,10 @@ import {
 import type { LoggingContext, WithTokenLoggingDeps } from '../lib/with-token-logging.js';
 import type { LoadModelAssignmentDeps } from '../lib/load-model-assignment.js';
 
-const DEFAULT_MAX_OUTPUT_TOKENS = 6144;
+// note_article(最大4000字)+blog_outline(2000字)+summary+各配列を日本語で全て埋めると
+// 6144 では truncation し generateObject が "No object generated: schema 不一致" で失敗する。
+// 日本語は 1 字≒1〜1.5 token のため十分な余裕を持たせる。
+const DEFAULT_MAX_OUTPUT_TOKENS = 12000;
 
 export interface GeneratePromotionDeps {
   loadActivePrompt?: typeof defaultLoadActivePrompt;

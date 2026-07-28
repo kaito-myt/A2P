@@ -43,7 +43,7 @@ import { PIPELINE_BOOK_THUMBNAIL_TEXT_TASK_NAME } from './pipeline-book-thumbnai
  *   4. Book + ThemeCandidate + Chapter[] (book_id ASC) + AppSettings.ai_disclosure_text を fetch。
  *      - Chapter 0 件 → NotFoundError (Writer chapter が未実行 / 部分失敗)
  *      - AppSettings 1 行不在 → NotFoundError (seed 投入済が前提、運用上ありえない)
- *      - ai_disclosure_text が空文字 → ValidationError (R-05 違反防止)
+ *      - ai_disclosure_text は空を許容 (本文へ AI 開示文を挿入しない運用。空なら末尾挿入skip)
  *   5. `editBook({ jobId, bookId, accountId, genre, themeContext, chapters,
  *      aiDisclosureText, feedback })` 呼出 (token_usage は editBook 内で role='editor' 記録)。
  *   6. **章ごとに atomic な ChapterRevision INSERT + Chapter update**:
@@ -395,13 +395,11 @@ export async function runPipelineBookEditor(
         details: { bookId, jobId },
       });
     }
+    // ai_disclosure_text は空を許容する。運営者要望により本文への AI 開示文は挿入
+    // しない運用 (既定で空)。KDP への AI 開示は入稿フォームの「AI生成コンテンツ」設問で
+    // 行う。editBook / editor エージェントは空文字を受け取ると末尾挿入をスキップする
+    // (packages/agents/src/editor/index.ts の R-05 安全装置参照)。
     const aiDisclosureText = ((appSettings.ai_disclosure_text as string | undefined) ?? '').trim();
-    if (aiDisclosureText.length === 0) {
-      throw new ValidationError(
-        'AppSettings.ai_disclosure_text が空です (R-05 違反防止)',
-        { details: { bookId, jobId } },
-      );
-    }
 
     // 5. editBook 呼出 (token_usage は editBook 内で role='editor', book_id 紐付け INSERT)
     const genre = normalizeGenre(theme.genre);
