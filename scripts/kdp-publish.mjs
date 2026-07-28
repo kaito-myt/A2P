@@ -332,6 +332,30 @@ async function fillStep1(page, b) {
   return { ok: true };
 }
 
+// 再アップロード確認チェック(AI・アクセシビリティ各セクション)は MDN/AUI の疑似チェック
+// (<div role="checkbox" aria-checked=...>)で React 管理のため JS dispatch では切り替わらない。
+// Playwright の実クリック(だめなら focus+Space)で aria-checked=true にする。
+async function checkConfirmBoxes(page) {
+  const handles = await page.$$('[role="checkbox"]').catch(() => []);
+  let total = 0, checked = 0;
+  for (const h of handles) {
+    const isConfirm = await h
+      .evaluate((el) => { let n = el; for (let i = 0; i < 6 && n; i++) { n = n.parentElement; if (n && /新しい原稿または表紙画像をアップロード|自分の回答が正しいこと/.test(n.textContent || '')) return true; } return false; })
+      .catch(() => false);
+    if (!isConfirm) continue;
+    total++;
+    let ac = await h.getAttribute('aria-checked').catch(() => null);
+    if (ac !== 'true') {
+      await h.click().catch(() => {});
+      await page.waitForTimeout(500);
+      ac = await h.getAttribute('aria-checked').catch(() => null);
+      if (ac !== 'true') { await h.focus().catch(() => {}); await page.keyboard.press('Space').catch(() => {}); await page.waitForTimeout(400); ac = await h.getAttribute('aria-checked').catch(() => null); }
+    }
+    if (ac === 'true') checked++;
+  }
+  return { total, checked };
+}
+
 // STEP2 の各種ラジオ/チェックを設定する。ファイル処理完了後(再描画後)に呼ぶこと。
 // DRM=いいえ(なし) / AI使用=いいえ / アクセシビリティ=すべてに代替テキスト / 再アップロード確認チェック。
 // 設定できたかを boolean で返す(呼出側で検証・再試行)。
@@ -455,11 +479,19 @@ async function fillStep2(page, coverPath, docxPath) {
   log('  step2 options:', JSON.stringify({ ...opt, confirmDumps: undefined }));
   if (opt.confirmDumps && opt.confirmDumps.length) for (const d of opt.confirmDumps) log('    confirm-box:', d);
   else log('    confirm-box: (検出0件 — 確認チェック不在の可能性)');
-  // 未設定(AI/DRM、または存在する確認チェック)が残っていれば数回まで再設定を試みる。
-  for (let r = 0; r < 3 && (!opt.aiNo || !opt.drm || (opt.confirmPresent && !opt.confirm)); r++) {
+  // 未設定(AI/DRM)が残っていれば数回まで再設定を試みる。
+  for (let r = 0; r < 3 && (!opt.aiNo || !opt.drm); r++) {
     await page.waitForTimeout(2500);
     opt = await setStep2Options(page);
-    log('  step2 options(retry ' + (r + 1) + '):', JSON.stringify(opt));
+    log('  step2 options(retry ' + (r + 1) + '):', JSON.stringify({ ...opt, confirmDumps: undefined }));
+  }
+  // 確認チェック(AUI role=checkbox)は Playwright 実クリックで入れる。両方 aria-checked=true まで再試行。
+  let cc = await checkConfirmBoxes(page);
+  log('  confirm checkboxes:', JSON.stringify(cc));
+  for (let r = 0; r < 4 && cc.total > 0 && cc.checked < cc.total; r++) {
+    await page.waitForTimeout(1500);
+    cc = await checkConfirmBoxes(page);
+    log('  confirm checkboxes(retry ' + (r + 1) + '):', JSON.stringify(cc));
   }
   await page.waitForTimeout(800);
   // 設定後の状態を全ページスクショで残す(運営者/assistantが目視検証できるように)。
