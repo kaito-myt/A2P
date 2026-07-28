@@ -558,18 +558,39 @@ async function runAssist(c, page, s3, books) {
       const titleReady = await page.waitForSelector('#data-title', { state: 'visible', timeout: 45000 }).then(() => true).catch(() => false);
       if (!titleReady) { await page.screenshot({ path: path.join(STAGE, b.id + '-nodetails.png'), fullPage: true }).catch(() => {}); log('  詳細ページの入力欄が出ません skip'); results.push({ title: b.title, status: 'no_details' }); continue; }
       await fillStep1(page, b);
-      log('  ★ STEP1入力完了 → 内容を確認して「保存して続行」を押してください（最大30分待機）');
-      if (!(await waitUrl(page, /\/content/, 1800000))) { log('  content未遷移 タイムアウト skip'); results.push({ title: b.title, status: 'timeout_step1' }); continue; }
-      await page.waitForTimeout(4000);
-      // STEP2 (コンテンツ) — 入力のみ
-      await fillStep2(page, coverPath, docxPath);
-      log('  ★ STEP2入力完了 → 「保存して続行」を押してください（最大30分待機）');
-      if (!(await waitUrl(page, /\/pricing/, 1800000))) { log('  pricing未遷移 タイムアウト skip'); results.push({ title: b.title, status: 'timeout_step2' }); continue; }
-      await page.waitForTimeout(4000);
-      // STEP3 (価格) — 入力のみ
-      await fillStep3(page, b);
-      log('  ★ 価格入力完了 → 「出版」を押してください（最大30分待機）');
-      if (!(await waitUrl(page, /bookshelf/, 1800000))) { log('  出版未検知 タイムアウト'); results.push({ title: b.title, status: 'timeout_publish' }); continue; }
+      log('  ★ STEP1入力完了 → 内容を確認して「保存して続行」を押してください');
+      // ページ状態ポーラ: 直線的な waitUrl は「保存して続行」後の遷移を取りこぼすと固着する。
+      // 現在URLを常時監視し、content/pricing に来たらそのページを自動入力、bookshelf 復帰で完了。
+      // 押すタイミング/順序に依存せず進む。現在ページを都度ログ出力し詰まり位置を可視化する。
+      const filled = { content: false, pricing: false };
+      const deadline = Date.now() + 45 * 60 * 1000; // 45分/冊
+      let lastUrl = ''; let done = false;
+      while (Date.now() < deadline) {
+        const u = page.url();
+        if (u !== lastUrl) { lastUrl = u; log('   … 現在ページ: ' + u.replace(/^https?:\/\/kdp\.amazon\.co\.jp/, '')); }
+        if (/\/bookshelf/.test(u)) { done = true; break; }
+        try {
+          if (/\/content/.test(u) && !filled.content) {
+            await page.waitForTimeout(2500);
+            if (/\/content/.test(page.url())) { // 入力直前に再確認
+              await fillStep2(page, coverPath, docxPath);
+              filled.content = true;
+              log('  ★ STEP2入力完了 → 「保存して続行」を押してください');
+            }
+          } else if (/\/pricing/.test(u) && !filled.pricing) {
+            await page.waitForTimeout(2500);
+            if (/\/pricing/.test(page.url())) {
+              await fillStep3(page, b);
+              filled.pricing = true;
+              log('  ★ 価格入力完了 → 「出版」を押してください');
+            }
+          }
+        } catch (e) {
+          log('   (入力中エラー: ' + e.message + ' — 次周回で再試行)');
+        }
+        await page.waitForTimeout(2000);
+      }
+      if (!done) { log('  タイムアウト（45分）skip'); results.push({ title: b.title, status: 'timeout' }); continue; }
       await page.waitForTimeout(3000);
       await c.query("UPDATE books SET publish_status='submitted', kdp_publish_queued=false WHERE id=$1", [b.id]);
       log('  ✅ 出版検知 → publish_status=submitted');
