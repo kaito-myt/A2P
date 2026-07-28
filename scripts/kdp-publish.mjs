@@ -596,12 +596,26 @@ async function waitFileProcessing(page, timeoutMs = 240000) {
 }
 
 async function fillStep3(page, b) {
-  // territory: worldwide is default. KDP Select: keep checked (#data-is-select). royalty 70% default.
+  // territory: すべての地域(全世界)が既定。
+  // ロイヤリティ プラン 70% を選択する。未選択だと他マーケットプレイス価格が JP 基準で自動換算
+  // されず「希望小売価格を設定します」エラーで出版不可になる。
+  await page.evaluate(() => {
+    const lbl = (e) => { const l = e.closest('label') || (e.id && document.querySelector('label[for="' + e.id + '"]')); return ((l ? l.textContent : (e.parentElement ? e.parentElement.textContent : '')) || '').replace(/\s+/g, ' ').trim(); };
+    const radios = [...document.querySelectorAll('input[type=radio]')];
+    let t = radios.find((r) => lbl(r).replace(/\s/g, '').includes('70%') && !lbl(r).includes('35'));
+    if (!t) t = radios.find((r) => (r.value || '').replace(/\s/g, '') === '70' || (r.value || '').includes('royalty_70'));
+    if (t && !t.checked) t.click();
+  });
+  await page.waitForTimeout(2500);
   // JP price
   await page.fill('input[name="data[digital][channels][amazon][JP][price_vat_inclusive]"]', String(b.price_jpy || 550)).catch(() => {});
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(5000); // 他マーケットプレイス価格の自動換算を待つ
+  await page.screenshot({ path: path.join(STAGE, 'step3-ready.png'), fullPage: true }).catch(() => {});
   if (ASSIST && !AUTO) return { ok: true, assist: true }; // 価格入力のみ。「出版」は運営者が押す
   if (DRY_RUN) { log('  [dry-run] stopping before publish'); return { ok: true, dryRun: true }; }
+  // 残エラー(価格未設定/ロイヤリティ未選択)があれば出版しない(安全)。
+  const priceErr = await page.evaluate(() => /希望小売価格を設定します|ロイヤリティ プランを選択/.test(document.body.textContent || ''));
+  if (priceErr) { await page.screenshot({ path: path.join(STAGE, 'step3-priceerr.png'), fullPage: true }).catch(() => {}); return { blocked: 'price_not_set' }; }
   await page.click('#save-and-publish-announce').catch(() => {});
   await page.waitForTimeout(4000);
   // confirm dialog if any (変更内容を出版 / OK)
@@ -853,6 +867,7 @@ async function runAuto(c, page, s3, books) {
       log('  step2 OK (本文/表紙アップロード検証済) -> pricing');
       const s3r = await fillStep3(page, b);
       if (s3r.dryRun) { await page.screenshot({ path: path.join(STAGE, b.id + '-dryrun-pricing.png'), fullPage: true }).catch(() => {}); results.push({ title: b.title, status: 'dry_run_ready' }); continue; }
+      if (s3r.blocked) { log('  BLOCKED step3:', s3r.blocked); results.push({ title: b.title, status: 'blocked_' + s3r.blocked }); continue; }
       // 出版確定: 本棚への遷移を検証。未検知なら submitted にしない(要手動確認)。
       const pub = await waitUrl(page, /bookshelf/, 120000);
       if (!pub) { log('  出版後の本棚遷移を検知できず → submittedにしない'); await page.screenshot({ path: path.join(STAGE, b.id + '-publish-unconfirmed.png'), fullPage: true }).catch(() => {}); results.push({ title: b.title, status: 'publish_unconfirmed', url: page.url() }); continue; }
