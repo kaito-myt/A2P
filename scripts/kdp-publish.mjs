@@ -348,21 +348,25 @@ async function setStep2Options(page) {
       return ((l ? l.textContent : (inp.parentElement ? inp.parentElement.textContent : '')) || '').replace(/\s+/g, ' ').trim();
     };
     const radios = [...document.querySelectorAll('input[type=radio]')];
-    // DRM: 「デジタル著作権管理 (DRM) を適用せず」= いいえ(なし)
-    const drmR = radios.find((r) => /を適用せず/.test(labelOf(r)));
+    // DRM: 「はい。デジタル著作権管理を適用します」= はい (運営者指示)
+    const drmR = radios.find((r) => /デジタル著作権管理を適用します/.test(labelOf(r)))
+      || radios.find((r) => /DRM/.test(labelOf(r)) && /を適用します/.test(labelOf(r)));
     if (drmR && !drmR.checked) drmR.click();
     // アクセシビリティ: すべてに代替テキスト
     const accR = [...document.querySelectorAll('input[name="data[accessibility][image_reading]"]')]
       .find((r) => /すべてに代替テキストや詳細な説明が含まれています/.test(labelOf(r)));
     if (accR && !accR.checked) accR.click();
-    // 再アップロード確認チェック「自分の回答が正しいこと」
-    let confirmChk = null;
+    // 再アップロード確認チェックは AI生成コンテンツ / アクセシビリティ の各セクションに1つずつ = 複数ある。
+    // 「自分の回答が正しいこと」「新しい原稿または表紙画像」を含むチェックボックスを全て入れる。
+    let confirmTotal = 0;
     for (const c of [...document.querySelectorAll('input[type=checkbox]')]) {
-      let n = c;
-      for (let i = 0; i < 6 && n; i++) { n = n.parentElement; if (n && /自分の回答が正しいこと|新しい原稿または表紙画像/.test(n.textContent || '')) { confirmChk = c; break; } }
-      if (confirmChk) break;
+      let n = c, match = false;
+      for (let i = 0; i < 6 && n; i++) { n = n.parentElement; if (n && /自分の回答が正しいこと|新しい原稿または表紙画像/.test(n.textContent || '')) { match = true; break; } }
+      if (match) { confirmTotal++; if (!c.checked) c.click(); }
     }
-    if (confirmChk && !confirmChk.checked) confirmChk.click();
+    const confirmChecked = [...document.querySelectorAll('input[type=checkbox]')].filter((c) => {
+      let n = c; for (let i = 0; i < 6 && n; i++) { n = n.parentElement; if (n && /自分の回答が正しいこと|新しい原稿または表紙画像/.test(n.textContent || '')) return c.checked; } return false;
+    }).length;
     // AI「いいえ」判定: react-aui の選択状態(aria-checked / .a-icon-radio-active) を探す
     const aiNo = (() => {
       const all = [...document.querySelectorAll('*')];
@@ -378,8 +382,10 @@ async function setStep2Options(page) {
     return {
       drm: !!(drmR && drmR.checked),
       accessibility: !!(accR && accR.checked),
-      confirm: !!(confirmChk && confirmChk.checked),
-      confirmPresent: !!confirmChk,
+      confirm: confirmTotal > 0 && confirmChecked >= confirmTotal,
+      confirmPresent: confirmTotal > 0,
+      confirmChecked,
+      confirmTotal,
       aiNo,
     };
   });
