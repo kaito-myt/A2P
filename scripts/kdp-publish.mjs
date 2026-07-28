@@ -607,20 +607,31 @@ async function fillStep3(page, b) {
     if (t && !t.checked) t.click();
   });
   await page.waitForTimeout(2500);
-  // JP price
-  await page.fill('input[name="data[digital][channels][amazon][JP][price_vat_inclusive]"]', String(b.price_jpy || 550)).catch(() => {});
-  await page.waitForTimeout(5000); // 他マーケットプレイス価格の自動換算を待つ
+  // JP price: 実タイプ+Tab(blur)で入力を確定し、他マーケットプレイス価格の自動換算を発火させる。
+  // page.fill だけだと換算値が表示のみでフォーム未コミットのことがあり、出版時にクリアされて
+  // 「希望小売価格を設定します」エラーになる。
+  const jpSel = 'input[name="data[digital][channels][amazon][JP][price_vat_inclusive]"]';
+  await page.click(jpSel).catch(() => {});
+  await page.fill(jpSel, '').catch(() => {});
+  await page.type(jpSel, String(b.price_jpy || 550), { delay: 40 }).catch(() => {});
+  await page.keyboard.press('Tab').catch(() => {});
+  // エラーバナー消失(=全価格換算済み)を最大60秒待ち、消えた後も安定を確認する。
+  const bannerErr = () => page.evaluate(() => /続行するには[、,].{0,40}エラーを修正|強調表示されている項目のエラーを修正/.test(document.body.textContent || ''));
+  let converted = false;
+  for (let i = 0; i < 30; i++) {
+    await page.waitForTimeout(2000);
+    if (!(await bannerErr())) { await page.waitForTimeout(3000); if (!(await bannerErr())) { converted = true; break; } }
+  }
   await page.screenshot({ path: path.join(STAGE, 'step3-ready.png'), fullPage: true }).catch(() => {});
   if (ASSIST && !AUTO) return { ok: true, assist: true }; // 価格入力のみ。「出版」は運営者が押す
   if (DRY_RUN) { log('  [dry-run] stopping before publish'); return { ok: true, dryRun: true }; }
-  // 残エラーがあれば出版しない(安全)。※各行の案内文「〜の範囲で希望小売価格を設定します」は
-  // 常時表示のため使わず、実エラーバナー「続行するには…エラーを修正してください」のみ判定する。
-  const priceErr = await page.evaluate(() => /続行するには[、,].{0,40}エラーを修正|強調表示されている項目のエラーを修正/.test(document.body.textContent || ''));
-  if (priceErr) { await page.screenshot({ path: path.join(STAGE, 'step3-priceerr.png'), fullPage: true }).catch(() => {}); return { blocked: 'price_not_set' }; }
+  if (!converted) { await page.screenshot({ path: path.join(STAGE, 'step3-priceerr.png'), fullPage: true }).catch(() => {}); return { blocked: 'price_not_set' }; }
+  // 出版
   await page.click('#save-and-publish-announce').catch(() => {});
-  await page.waitForTimeout(4000);
-  // confirm dialog if any (変更内容を出版 / OK)
-  await page.click('#save-and-publish-announce:visible, button:has-text("出版")').catch(() => {});
+  await page.waitForTimeout(5000);
+  // 確認ダイアログがあれば「出版」を押す。ただしエラーが再発したら出版扱いにしない。
+  if (await bannerErr()) { await page.screenshot({ path: path.join(STAGE, 'step3-publish-reverted.png'), fullPage: true }).catch(() => {}); return { blocked: 'price_reverted_on_publish' }; }
+  await page.click('button:has-text("出版"):visible, #save-and-publish-announce:visible').catch(() => {});
   await page.waitForTimeout(8000);
   return { ok: true };
 }
