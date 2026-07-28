@@ -647,10 +647,22 @@ async function passReauthIfNeeded(page, c) {
     const passEl = await page.$('#ap_password, input[type="password"][name="password"]').catch(() => null);
     if (passEl && (await passEl.isVisible().catch(() => false))) {
       const val = await passEl.inputValue().catch(() => '');
-      if (!val && AMZ_PASS) await passEl.fill(AMZ_PASS).catch(() => {});
-      await page.check('#rememberMe').catch(() => {});
+      if (!val && AMZ_PASS) {
+        await passEl.click().catch(() => {});
+        await passEl.type(AMZ_PASS, { delay: 25 }).catch(() => {});
+      } else {
+        // 事前入力(プロファイル保存)のパスワードは input イベント未発火で Amazon に「未入力」
+        // 扱いされ submit が弾かれる。実キーイベント(末尾に空白→削除)を発火させて認識させる。
+        await passEl.focus().catch(() => {});
+        await passEl.press('End').catch(() => {});
+        await page.keyboard.type(' ').catch(() => {});
+        await page.keyboard.press('Backspace').catch(() => {});
+        await page.evaluate(() => { const p = document.querySelector('#ap_password'); if (p) { p.dispatchEvent(new Event('input', { bubbles: true })); p.dispatchEvent(new Event('change', { bubbles: true })); } }).catch(() => {});
+      }
+      await page.check('#auth-remember-me, #rememberMe').catch(() => {});
       await page.click('#signInSubmit, input#signInSubmit').catch(() => {});
-      await page.waitForTimeout(3000);
+      await page.waitForTimeout(4000);
+      await page.screenshot({ path: path.join(STAGE, 'reauth-after-submit.png'), fullPage: true }).catch(() => {});
     }
     // OTP → LINE リレー
     const otpEl = await page.$(OTP_SEL).catch(() => null);
