@@ -627,6 +627,48 @@ async function ensureLoggedIn(page, c) {
   return false;
 }
 
+// 下書き編集ページ等に入る瞬間、max_auth_age=0 で再認証(パスワード/OTP)を求められることがある。
+// 本棚閲覧は通るが編集ページで再認証ウォールに当たる。パスワードは概ね事前入力済みなので
+// サインインをクリック、OTP は LINE リレーで通す。通過したら true。
+async function passReauthIfNeeded(page, c) {
+  const authForm = async () =>
+    page.$('#ap_password, input[type="password"][name="password"], #signInSubmit, ' + OTP_SEL).catch(() => null);
+  if (!(await authForm())) return true; // 認証フォームが無ければ通過済み
+  log('  🔐 再認証(reauth)要求 → パスワード/OTPで通します（最大10分）');
+  for (let i = 0; i < 120; i++) {
+    // email (稀に要求)
+    const emailEl = await page.$('#ap_email, input[type="email"][name="email"]').catch(() => null);
+    if (emailEl && AMZ_EMAIL && (await emailEl.isVisible().catch(() => false))) {
+      await emailEl.fill(AMZ_EMAIL).catch(() => {});
+      await page.click('#continue, input#continue').catch(() => {});
+      await page.waitForTimeout(2500);
+    }
+    // password (概ね事前入力済み。空なら env で補完)
+    const passEl = await page.$('#ap_password, input[type="password"][name="password"]').catch(() => null);
+    if (passEl && (await passEl.isVisible().catch(() => false))) {
+      const val = await passEl.inputValue().catch(() => '');
+      if (!val && AMZ_PASS) await passEl.fill(AMZ_PASS).catch(() => {});
+      await page.check('#rememberMe').catch(() => {});
+      await page.click('#signInSubmit, input#signInSubmit').catch(() => {});
+      await page.waitForTimeout(3000);
+    }
+    // OTP → LINE リレー
+    const otpEl = await page.$(OTP_SEL).catch(() => null);
+    if (otpEl && (await otpEl.isVisible().catch(() => false))) {
+      const submitSel = (await page.$('#auth-signin-button').catch(() => null))
+        ? '#auth-signin-button'
+        : (await page.$('#cvf-submit-otp-button').catch(() => null))
+          ? '#cvf-submit-otp-button'
+          : 'input[type="submit"]';
+      const done = await relayOtpViaLine(c, page, otpEl, submitSel);
+      if (!done) return false;
+    }
+    await page.waitForTimeout(3500);
+    if (!(await authForm())) { await page.waitForTimeout(1500); return true; } // 認証フォームが消えた=通過
+  }
+  return false;
+}
+
 // URLが正規表現にマッチするまで待つ / マッチしなくなるまで待つ
 async function waitUrl(page, re, ms = 600000) { const s = Date.now(); while (Date.now() - s < ms) { if (re.test(page.url())) return true; await page.waitForTimeout(1500); } return false; }
 
@@ -736,6 +778,13 @@ async function runAuto(c, page, s3, books) {
       await download(s3, b.cover_key, coverPath);
       await download(s3, b.docx_key, docxPath);
       await page.goto(editBase + id + '/details', { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(6000);
+      // 編集ページで再認証ウォール(max_auth_age=0)に当たることがある → 通す。
+      if (!(await passReauthIfNeeded(page, c))) { log('  再認証に失敗 skip'); results.push({ title: b.title, status: 'reauth_failed' }); continue; }
+      // 再認証後は詳細ページに戻っていないことがあるので、詳細ページを確実に開き直す。
+      if (!/\/details/.test(page.url()) || !(await page.$('#data-title').catch(() => null))) {
+        await page.goto(editBase + id + '/details', { waitUntil: 'domcontentloaded' }); await page.waitForTimeout(6000);
+        await passReauthIfNeeded(page, c);
+      }
       const titleReady = await page.waitForSelector('#data-title', { state: 'visible', timeout: 45000 }).then(() => true).catch(() => false);
       if (!titleReady) { await page.screenshot({ path: path.join(STAGE, b.id + '-nodetails.png'), fullPage: true }).catch(() => {}); log('  詳細ページ入力欄なし skip'); results.push({ title: b.title, status: 'no_details' }); continue; }
       const s1 = await fillStep1(page, b);

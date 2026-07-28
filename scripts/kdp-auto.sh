@@ -19,6 +19,8 @@ export R2_ACCOUNT_ID=$(railway variables --service A2P-Worker --kv 2>/dev/null |
 export R2_ACCESS_KEY_ID=$(railway variables --service A2P-Worker --kv 2>/dev/null | grep '^R2_ACCESS_KEY_ID=' | cut -d= -f2- | tr -d '\r')
 export R2_SECRET_ACCESS_KEY=$(railway variables --service A2P-Worker --kv 2>/dev/null | grep '^R2_SECRET_ACCESS_KEY=' | cut -d= -f2- | tr -d '\r')
 export R2_BUCKET_NAME=$(railway variables --service A2P-Worker --kv 2>/dev/null | grep '^R2_BUCKET_NAME=' | cut -d= -f2- | tr -d '\r')
+export AMAZON_EMAIL=$(railway variables --service A2P-Worker --kv 2>/dev/null | grep '^AMAZON_EMAIL=' | cut -d= -f2- | tr -d '\r')
+export AMAZON_PASSWORD=$(railway variables --service A2P-Worker --kv 2>/dev/null | grep '^AMAZON_PASSWORD=' | cut -d= -f2- | tr -d '\r')
 
 if [ -z "$DBURL" ] || [ -z "$R2_BUCKET_NAME" ]; then
   echo "ERROR: 環境変数の取得に失敗しました。railway login / railway link を確認してください。" >&2
