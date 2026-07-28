@@ -323,6 +323,68 @@ async function fillStep1(page, b) {
   return { ok: true };
 }
 
+// STEP2 の各種ラジオ/チェックを設定する。ファイル処理完了後(再描画後)に呼ぶこと。
+// DRM=いいえ(なし) / AI使用=いいえ / アクセシビリティ=すべてに代替テキスト / 再アップロード確認チェック。
+// 設定できたかを boolean で返す(呼出側で検証・再試行)。
+async function setStep2Options(page) {
+  // 読む方向: 左から右(横書き) — react-aui のトグルを念のため再クリック
+  await page.click('#a-autoid-0-announce').catch(() => {});
+  await page.waitForTimeout(300);
+  // AI「いいえ」は react-aui のためマウスイベント一式で。native ラジオ/チェックは .click()。
+  await page.evaluate(() => {
+    const all = [...document.querySelectorAll('*')];
+    const q = all.find((x) => /AI ツールを使用しましたか/.test(x.textContent || '') && (x.textContent || '').length < 300);
+    let root = q;
+    for (let i = 0; i < 10 && root; i++) { if ([...root.querySelectorAll('*')].some((e) => e.textContent.trim() === 'いいえ')) break; root = root.parentElement; }
+    root = root || document.body;
+    const leaf = [...root.querySelectorAll('*')].find((e) => e.textContent.trim() === 'いいえ' && e.children.length === 0);
+    const target = leaf ? (leaf.closest('label,[role=radio],.a-radio,button,a') || leaf) : null;
+    if (target) ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach((t) => target.dispatchEvent(new MouseEvent(t, { bubbles: true })));
+  });
+  await page.waitForTimeout(700);
+  return await page.evaluate(() => {
+    const labelOf = (inp) => {
+      const l = inp.closest('label') || (inp.id && document.querySelector('label[for="' + inp.id + '"]'));
+      return ((l ? l.textContent : (inp.parentElement ? inp.parentElement.textContent : '')) || '').replace(/\s+/g, ' ').trim();
+    };
+    const radios = [...document.querySelectorAll('input[type=radio]')];
+    // DRM: 「デジタル著作権管理 (DRM) を適用せず」= いいえ(なし)
+    const drmR = radios.find((r) => /を適用せず/.test(labelOf(r)));
+    if (drmR && !drmR.checked) drmR.click();
+    // アクセシビリティ: すべてに代替テキスト
+    const accR = [...document.querySelectorAll('input[name="data[accessibility][image_reading]"]')]
+      .find((r) => /すべてに代替テキストや詳細な説明が含まれています/.test(labelOf(r)));
+    if (accR && !accR.checked) accR.click();
+    // 再アップロード確認チェック「自分の回答が正しいこと」
+    let confirmChk = null;
+    for (const c of [...document.querySelectorAll('input[type=checkbox]')]) {
+      let n = c;
+      for (let i = 0; i < 6 && n; i++) { n = n.parentElement; if (n && /自分の回答が正しいこと|新しい原稿または表紙画像/.test(n.textContent || '')) { confirmChk = c; break; } }
+      if (confirmChk) break;
+    }
+    if (confirmChk && !confirmChk.checked) confirmChk.click();
+    // AI「いいえ」判定: react-aui の選択状態(aria-checked / .a-icon-radio-active) を探す
+    const aiNo = (() => {
+      const all = [...document.querySelectorAll('*')];
+      const q = all.find((x) => /AI ツールを使用しましたか/.test(x.textContent || '') && (x.textContent || '').length < 300);
+      let root = q; for (let i = 0; i < 10 && root; i++) { if ([...root.querySelectorAll('*')].some((e) => e.textContent.trim() === 'いいえ')) break; root = root.parentElement; }
+      root = root || document.body;
+      const leaf = [...root.querySelectorAll('*')].find((e) => e.textContent.trim() === 'いいえ' && e.children.length === 0);
+      const box = leaf ? leaf.closest('label,[role=radio],.a-radio') : null;
+      if (!box) return false;
+      if (box.querySelector('input[type=radio]')) return box.querySelector('input[type=radio]').checked;
+      return /a-icon-radio-active/.test(box.innerHTML) || box.getAttribute('aria-checked') === 'true';
+    })();
+    return {
+      drm: !!(drmR && drmR.checked),
+      accessibility: !!(accR && accR.checked),
+      confirm: !!(confirmChk && confirmChk.checked),
+      confirmPresent: !!confirmChk,
+      aiNo,
+    };
+  });
+}
+
 async function fillStep2(page, coverPath, docxPath) {
   // manuscript
   await page.setInputFiles('#data-assets-interior-file-upload-AjaxInput', docxPath).catch((e) => { throw new Error('interior upload: ' + e.message); });
@@ -341,34 +403,27 @@ async function fillStep2(page, coverPath, docxPath) {
   await page.setInputFiles(coverSel, coverPath).catch((e) => { throw new Error('cover upload: ' + e.message); });
   log('  cover uploading...', coverSel);
   await waitCoverDone(page);
-  // AI生成コンテンツ: 「いいえ」を選択 (運営者指示)。react-aui部品なのでマウスイベント一式を発火。
-  await page.evaluate(() => {
-    const all = [...document.querySelectorAll('*')];
-    const q = all.find((x) => /AI ツールを使用しましたか/.test(x.textContent || '') && (x.textContent || '').length < 300);
-    let root = q;
-    for (let i = 0; i < 10 && root; i++) { if ([...root.querySelectorAll('*')].some((e) => e.textContent.trim() === 'いいえ')) break; root = root.parentElement; }
-    root = root || document.body;
-    const leaf = [...root.querySelectorAll('*')].find((e) => e.textContent.trim() === 'いいえ' && e.children.length === 0);
-    const target = leaf ? (leaf.closest('label,[role=radio],.a-radio,button,a') || leaf) : null;
-    if (target) ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach((t) => target.dispatchEvent(new MouseEvent(t, { bubbles: true })));
-  });
-  await page.waitForTimeout(1500);
-  // アクセシビリティ: 「画像すべてに代替テキスト/説明あり」を選択 (運営者指示)
-  await page.evaluate(() => {
-    const radios = [...document.querySelectorAll('input[name="data[accessibility][image_reading]"]')];
-    const lbl = (e) => { const l = e.closest('label') || (e.id && document.querySelector('label[for="' + e.id + '"]')); return l ? l.textContent.trim() : (e.parentElement ? e.parentElement.textContent.trim() : ''); };
-    const t = radios.find((r) => /すべてに代替テキストや詳細な説明が含まれています/.test(lbl(r)));
-    if (t) t.click();
-  });
-  await page.waitForTimeout(800);
-  // 再アップロード時に出る確認チェック「自分の回答が正しいことを確認」を入れる (祖先テキスト走査)
-  await page.evaluate(() => {
-    for (const c of [...document.querySelectorAll('input[type=checkbox]')]) {
-      let n = c;
-      for (let i = 0; i < 5 && n; i++) { n = n.parentElement; if (n && /自分の回答が正しいこと|新しい原稿または表紙画像/.test(n.textContent || '')) { if (!c.checked) c.click(); return; } }
+  // アップロード後のファイル変換処理(モーダル)が終わるまで待つ。処理中/再描画中に選択すると
+  // ラジオ/チェックがリセットされて未選択のまま save→ブロックされる。処理完了後にまとめて設定する。
+  {
+    const pdl = Date.now() + 6 * 60 * 1000;
+    while (Date.now() < pdl) {
+      const busy = await page.evaluate(() => /ファイルを準備しています|原稿と表紙を処理しています/.test(document.body.textContent || ''));
+      if (!busy) break;
+      await page.waitForTimeout(4000);
     }
-  });
-  await page.waitForTimeout(600);
+  }
+  await page.waitForTimeout(2000);
+  // 各種ラジオ/チェックを設定 (処理完了後の再描画後)。native input は click、AI は react-aui。
+  let opt = await setStep2Options(page);
+  log('  step2 options:', JSON.stringify(opt));
+  // 未設定(AI/DRM、または存在する確認チェック)が残っていれば数回まで再設定を試みる。
+  for (let r = 0; r < 3 && (!opt.aiNo || !opt.drm || (opt.confirmPresent && !opt.confirm)); r++) {
+    await page.waitForTimeout(2500);
+    opt = await setStep2Options(page);
+    log('  step2 options(retry ' + (r + 1) + '):', JSON.stringify(opt));
+  }
+  await page.waitForTimeout(800);
   if (ASSIST && !AUTO) return { ok: true, assist: true }; // 入力のみ。「保存して続行」は運営者が押す
   // 変換処理中(ブロッキングモーダル表示中)は保存しても /pricing に進めない。モーダルが無い時だけ
   // save-and-continue をクリックし、/pricing 到達まで一定間隔でポーリング(最大8分)。
