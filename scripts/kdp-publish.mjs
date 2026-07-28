@@ -370,15 +370,25 @@ async function fillStep2(page, coverPath, docxPath) {
   });
   await page.waitForTimeout(600);
   if (ASSIST && !AUTO) return { ok: true, assist: true }; // 入力のみ。「保存して続行」は運営者が押す
-  // ファイル変換処理の完了を待ってから保存する(処理中に押すとブロックされ /pricing に進めない)。
-  await waitFileProcessing(page);
-  for (let attempt = 0; attempt < 4; attempt++) {
-    await page.click('#save-and-continue-announce').catch(() => {});
-    await page.waitForTimeout(8000);
-    if (/\/(pricing)/.test(page.url())) return { ok: true };
-    // まだ処理中/準備中モーダルでブロックされている可能性 → 処理完了を待って再クリック。
-    await waitFileProcessing(page);
+  // 変換処理中(ブロッキングモーダル表示中)は保存しても /pricing に進めない。モーダルが無い時だけ
+  // save-and-continue をクリックし、/pricing 到達まで一定間隔でポーリング(最大8分)。
+  // ※ 残留しがちな inline「ファイルを処理しています…」ではなく、確実に前進を阻む
+  //   「ファイルを準備しています/原稿と表紙を処理しています」モーダルのみを busy 判定に使う。
+  const saveDeadline = Date.now() + 8 * 60 * 1000;
+  let clicks = 0;
+  while (Date.now() < saveDeadline) {
+    const busy = await page.evaluate(() =>
+      /ファイルを準備しています|原稿と表紙を処理しています/.test(document.body.textContent || ''),
+    );
+    if (!busy) {
+      await page.click('#save-and-continue-announce').catch(() => {});
+      clicks++;
+      await page.waitForTimeout(6000);
+      if (/\/(pricing)/.test(page.url())) return { ok: true };
+    }
+    await page.waitForTimeout(6000);
   }
+  log('  step2 保存タイムアウト(clicks=' + clicks + ')');
   await page.screenshot({ path: path.join(STAGE, 'step2-blocked.png'), fullPage: true }).catch(() => {});
   return { blocked: 'content_not_advanced', url: page.url() };
 }
