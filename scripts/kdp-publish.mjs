@@ -466,9 +466,11 @@ async function fillStep2(page, coverPath, docxPath) {
   // アップロード後のファイル変換処理(モーダル)が終わるまで待つ。処理中/再描画中に選択すると
   // ラジオ/チェックがリセットされて未選択のまま save→ブロックされる。処理完了後にまとめて設定する。
   {
+    // 「ファイルを準備しています」モーダル(実際に消える)の消失で処理完了を判定する。
+    // 「原稿と表紙を処理しています」は完了後も残留するため使わない。
     const pdl = Date.now() + 6 * 60 * 1000;
     while (Date.now() < pdl) {
-      const busy = await page.evaluate(() => /ファイルを準備しています|原稿と表紙を処理しています/.test(document.body.textContent || ''));
+      const busy = await page.evaluate(() => /ファイルを準備しています/.test(document.body.textContent || ''));
       if (!busy) break;
       await page.waitForTimeout(4000);
     }
@@ -497,23 +499,17 @@ async function fillStep2(page, coverPath, docxPath) {
   // 設定後の状態を全ページスクショで残す(運営者/assistantが目視検証できるように)。
   await page.screenshot({ path: path.join(STAGE, 'step2-ready.png'), fullPage: true }).catch(() => {});
   if (ASSIST && !AUTO) return { ok: true, assist: true }; // 入力のみ。「保存して続行」は運営者が押す
-  // 変換処理中(ブロッキングモーダル表示中)は保存しても /pricing に進めない。モーダルが無い時だけ
-  // save-and-continue をクリックし、/pricing 到達まで一定間隔でポーリング(最大8分)。
-  // ※ 残留しがちな inline「ファイルを処理しています…」ではなく、確実に前進を阻む
-  //   「ファイルを準備しています/原稿と表紙を処理しています」モーダルのみを busy 判定に使う。
+  // 「保存して続行」を一定間隔でクリックし /pricing 到達までポーリング(最大8分)。
+  // ※ 以前は「原稿と表紙を処理しています」を busy 判定に使ったが、この文言は処理完了後も
+  //   ページに残留し全クリックが抑制された(clicks=0)。処理は options 設定前に待機済みなので、
+  //   ここでは busy 判定せず無条件にクリックする(モーダル中のクリックは no-op で無害)。
   const saveDeadline = Date.now() + 8 * 60 * 1000;
   let clicks = 0;
   while (Date.now() < saveDeadline) {
-    const busy = await page.evaluate(() =>
-      /ファイルを準備しています|原稿と表紙を処理しています/.test(document.body.textContent || ''),
-    );
-    if (!busy) {
-      await page.click('#save-and-continue-announce').catch(() => {});
-      clicks++;
-      await page.waitForTimeout(6000);
-      if (/\/(pricing)/.test(page.url())) return { ok: true };
-    }
+    await page.click('#save-and-continue-announce').catch(() => {});
+    clicks++;
     await page.waitForTimeout(6000);
+    if (/\/(pricing)/.test(page.url())) return { ok: true };
   }
   log('  step2 保存タイムアウト(clicks=' + clicks + ')');
   await page.screenshot({ path: path.join(STAGE, 'step2-blocked.png'), fullPage: true }).catch(() => {});
