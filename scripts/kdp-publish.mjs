@@ -365,21 +365,37 @@ async function setStep2Options(page) {
     const accR = [...document.querySelectorAll('input[name="data[accessibility][image_reading]"]')]
       .find((r) => /すべてに代替テキストや詳細な説明が含まれています/.test(labelOf(r)));
     if (accR && !accR.checked) accR.click();
-    // 再アップロード確認チェックは AI生成コンテンツ / アクセシビリティ の各セクションに1つずつ。
-    // 祖先walkだと階層が深く取りこぼすため、「確認テキスト＋チェックボックスを内包する小コンテナ」で
-    // チェックボックスを特定して全て入れる。
-    const confirmBoxes = [];
-    const seenCb = new Set();
-    for (const el of [...document.querySelectorAll('div, section, fieldset, label, li, p, span')]) {
-      const t = el.textContent || '';
-      if (t.length > 400) continue;
-      if (!/自分の回答が正しいこと|新しい原稿または表紙画像をアップロード/.test(t)) continue;
-      const cb = el.querySelector('input[type=checkbox]');
-      if (cb && !seenCb.has(cb)) { seenCb.add(cb); confirmBoxes.push(cb); }
-    }
-    for (const cb of confirmBoxes) { if (!cb.checked) cb.click(); }
-    const confirmTotal = confirmBoxes.length;
-    const confirmChecked = confirmBoxes.filter((cb) => cb.checked).length;
+    // 再アップロード確認チェック(AI・アクセシビリティ各セクション)。native input か AUI 疑似チェック
+    // か不明なので、確認テキストを含む最小コンテナ内の checkbox 相当をマウスイベントで押す。
+    const cf = (() => {
+      const cands = [...document.querySelectorAll('div, section, fieldset, li')].filter((el) => {
+        const t = el.textContent || '';
+        return t.length < 400 && /新しい原稿または表紙画像をアップロード/.test(t) && /自分の回答が正しいこと/.test(t);
+      });
+      const minimal = cands.filter((el) => !cands.some((o) => o !== el && el.contains(o)));
+      const dumps = [];
+      let total = 0, checked = 0;
+      const isOn = (box, aui) => {
+        const nat = box.querySelector('input[type=checkbox]');
+        if (nat) return nat.checked;
+        if (aui && aui.getAttribute && aui.getAttribute('aria-checked') === 'true') return true;
+        return /a-checkbox-checked|is-checked|aria-checked="true"/.test(box.innerHTML || '');
+      };
+      for (const box of minimal) {
+        total++;
+        dumps.push((box.outerHTML || '').replace(/\s+/g, ' ').slice(0, 260));
+        const nat = box.querySelector('input[type=checkbox]');
+        if (nat) { if (!nat.checked) nat.click(); if (nat.checked) checked++; continue; }
+        const aui = box.querySelector('[role=checkbox], .a-checkbox, i[class*="checkbox"], .a-icon-checkbox, [class*="checkbox"], label');
+        const target = aui || box;
+        if (!isOn(box, aui)) ['pointerdown', 'mousedown', 'mouseup', 'click'].forEach((t) => target.dispatchEvent(new MouseEvent(t, { bubbles: true })));
+        if (isOn(box, aui)) checked++;
+      }
+      return { total, checked, dumps };
+    })();
+    const confirmTotal = cf.total;
+    const confirmChecked = cf.checked;
+    const confirmDumps = cf.dumps;
     // AI「いいえ」判定: react-aui の選択状態(aria-checked / .a-icon-radio-active) を探す
     const aiNo = (() => {
       const all = [...document.querySelectorAll('*')];
@@ -399,6 +415,7 @@ async function setStep2Options(page) {
       confirmPresent: confirmTotal > 0,
       confirmChecked,
       confirmTotal,
+      confirmDumps,
       aiNo,
     };
   });
@@ -435,7 +452,9 @@ async function fillStep2(page, coverPath, docxPath) {
   await page.waitForTimeout(2000);
   // 各種ラジオ/チェックを設定 (処理完了後の再描画後)。native input は click、AI は react-aui。
   let opt = await setStep2Options(page);
-  log('  step2 options:', JSON.stringify(opt));
+  log('  step2 options:', JSON.stringify({ ...opt, confirmDumps: undefined }));
+  if (opt.confirmDumps && opt.confirmDumps.length) for (const d of opt.confirmDumps) log('    confirm-box:', d);
+  else log('    confirm-box: (検出0件 — 確認チェック不在の可能性)');
   // 未設定(AI/DRM、または存在する確認チェック)が残っていれば数回まで再設定を試みる。
   for (let r = 0; r < 3 && (!opt.aiNo || !opt.drm || (opt.confirmPresent && !opt.confirm)); r++) {
     await page.waitForTimeout(2500);
