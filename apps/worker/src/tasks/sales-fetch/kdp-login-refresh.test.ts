@@ -13,20 +13,24 @@ import {
 // ---------------------------------------------------------------------------
 
 describe('looksLikeCaptcha', () => {
-  it('captcha という語が含まれれば true', () => {
-    expect(looksLikeCaptcha('<div>Enter the captcha below</div>')).toBe(true);
-  });
-
   it('cvf_captcha_input を含めば true', () => {
     expect(looksLikeCaptcha('<input id="cvf_captcha_input">')).toBe(true);
   });
 
-  it('日本語の「入力してください...文字」パターンで true', () => {
+  it('auth-captcha-image を含めば true', () => {
+    expect(looksLikeCaptcha('<img id="auth-captcha-image" src="...">')).toBe(true);
+  });
+
+  it('日本語の「画像に表示されている文字」パターンで true', () => {
     expect(looksLikeCaptcha('画像に表示されている文字を入力してください8文字')).toBe(true);
   });
 
   it('英語の characters you see パターンで true', () => {
     expect(looksLikeCaptcha('Type the characters you see in this image')).toBe(true);
+  });
+
+  it('単に captcha の語があるだけ(隠しマークアップ)では false — 誤検知防止', () => {
+    expect(looksLikeCaptcha('<script>var captchaConfig={};</script>')).toBe(false);
   });
 
   it('通常のログインページ HTML では false', () => {

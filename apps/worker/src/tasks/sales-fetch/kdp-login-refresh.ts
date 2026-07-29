@@ -25,6 +25,9 @@ const SIGNIN_SUBMIT_SELECTOR = '#signInSubmit, input#signInSubmit';
 const OTP_SELECTOR = '#auth-mfa-otpcode, input[name="otpCode"], #cvf-input-code, input[name="code"]';
 const REMEMBER_DEVICE_SELECTOR = '#auth-mfa-remember-device';
 const OTP_SUBMIT_SELECTOR = '#auth-signin-button, #cvf-submit-otp-button, input[type="submit"]';
+/** 実際に表示される CAPTCHA チャレンジ要素。HTML 文字列一致だと通常サインインの隠しマークアップで誤検知するため、可視要素で判定する。 */
+const CAPTCHA_SELECTOR =
+  '#auth-captcha-image, #captchacharacters, input[name="cvf_captcha_input"], #cvf_captcha_input, img[alt*="captcha" i], img[src*="captcha" i]';
 /** signin URL / アカウント切替ウィジェットの検知。max_auth_age=0 の再認証はアカウント選択から始まる。 */
 const SIGNIN_URL_RE = /signin|\/ap\//i;
 
@@ -50,13 +53,19 @@ export type KdpLoginRefreshResult =
  * ログインページ HTML から CAPTCHA 提示を検知する (純関数・テスト容易)。
  * ヘッドレス環境 (データセンター IP) は CAPTCHA を突破できないため、検知時は諦めて
  * 呼び出し側 (sales.fetch) が従来通り手動キャプチャへフォールバックする。
+ *
+ * NOTE: 通常のサインイン/パスワードページにも "captcha" の文字列や cvf の隠し要素が
+ * 埋め込まれているため、単なる文字列一致だと誤検知する (アカウント選択→パスワード遷移で
+ * 頻発した)。実運用のループでは本関数ではなく `CAPTCHA_SELECTOR` の「可視要素」判定を使う。
+ * 本関数は「明確に CAPTCHA を指す固有マーカー / 提示文言」のみで true を返す補助判定。
  */
 export function looksLikeCaptcha(html: string): boolean {
   return (
-    /captcha/i.test(html) ||
     html.includes('cvf_captcha_input') ||
-    /入力してください.*文字/.test(html) ||
-    /characters you see/i.test(html)
+    html.includes('auth-captcha-image') ||
+    html.includes('captchacharacters') ||
+    /画像に表示されている文字|表示されている文字を入力/.test(html) ||
+    /type the characters you see|enter the characters/i.test(html)
   );
 }
 
@@ -159,9 +168,15 @@ export async function refreshKdpSession(deps: KdpLoginRefreshDeps): Promise<KdpL
     await page.waitForTimeout(3000);
 
     for (let iter = 0; iter < MAX_ITERS; iter++) {
-      const html = await page.content().catch(() => '');
-      if (looksLikeCaptcha(html)) {
-        return { ok: false, reason: 'captcha', message: 'CAPTCHA detected — cannot solve headlessly' };
+      // CAPTCHA は「実際に表示されている要素」でのみ判定する。HTML 文字列一致だと
+      // 通常サインインの隠しマークアップで誤検知し、パスワード段階に進めなくなる。
+      const captchaEl = await page.$(CAPTCHA_SELECTOR).catch(() => null);
+      if (captchaEl && (await captchaEl.isVisible().catch(() => false))) {
+        return {
+          ok: false,
+          reason: 'captcha',
+          message: 'visible CAPTCHA challenge detected — cannot solve headlessly',
+        };
       }
 
       const emailEl = await page.$(EMAIL_SELECTOR).catch(() => null);
