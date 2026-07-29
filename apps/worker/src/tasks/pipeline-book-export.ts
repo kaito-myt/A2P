@@ -85,11 +85,13 @@ export interface PipelineBookExportPrisma {
         id: true;
         title: true;
         subtitle: true;
+        status: true;
       };
     }) => Promise<{
       id: string;
       title: string;
       subtitle: string | null;
+      status: string;
     } | null>;
     update: (args: {
       where: { id: string };

@@ -323,6 +323,139 @@ export function appendHashtags(
   return `${trimmed}\n\n${accepted.join(' ')}`;
 }
 
+// ===========================================================================
+// 事実サニタイズ + 検証済み事実の注入 (品質改善 2026-07-29)
+//   LLM は購入URL・価格・セール・ランキング実績を「それらしく」捏造しがち
+//   (例: 実在しない ASIN の URL、行っていない「99円セール」、根拠なき「1位」)。
+//   → 本文からこれらの "事実" を機械的に除去し、DB で検証済みの
+//     価格(kdp_metadata.price_jpy)・正規 Amazon URL(実 ASIN 由来)のみを注入する。
+//   本文の説得コピーは残し、事実だけをコード側の正データで上書きする方針。
+// ===========================================================================
+
+/** 全書籍 KDP Select 運用のため、KU 無料訴求は共通定型文で 1 箇所に集約。 */
+export const KU_FREE_NOTE = 'Kindle Unlimited会員は0円';
+
+// 生 URL(捏造 ASIN リンク含む) と Amazon 短縮ドメイン。
+const RAW_URL_RE = /https?:\/\/\S+/gi;
+const AMZN_SHORT_RE = /\b(?:amzn\.to|amzn\.asia|amzn\.jp|a\.co)\/\S+/gi;
+// 捏造セール/割引/クーポン(文単位で除去)。行っていない期間限定価格を消す。
+const SALE_SENTENCE_RE =
+  /[^。！!\n]*(?:\d+\s*日間限定|期間限定|通常\s*[¥￥]?\s*\d[\d,]*\s*円|[¥￥]?\s*\d[\d,]*\s*円\s*(?:→|->|⇒|〜|~)\s*[¥￥]?\s*\d|セール|キャンペーン|クーポン|[％%]\s*OFF|割引|今だけ|値下げ)[^。！!\n]*[。！!\n]?/g;
+// 捏造ランキング/実績(文単位)。根拠のない順位・部数・受賞主張を消す。
+const RANK_SENTENCE_RE =
+  /[^。！!\n]*(?:ランキング[^。\n]*[0-9０-９]+\s*位|カテゴリ[^。\n]*[0-9０-９]+\s*位|[0-9０-９]+\s*位を(?:獲得|記録)|ベストセラー|[0-9０-９]+\s*冠|殿堂入り|[0-9０-９]+\s*万部|重版)[^。！!\n]*[。！!\n]?/g;
+// 商品価格の言及(文単位)。書名中の金額(例「月12万円で…」)を守るため語彙を限定し、
+// 「Kindle◯円 / 定価 / 価格 / ◯円で読める・購入 / 0円」だけを対象にする。
+const PRICE_SENTENCE_RE =
+  /[^。！!\n]*(?:Kindle(?:版)?\s*(?:で)?\s*[¥￥]?\s*\d[\d,]*\s*円|定価\s*[¥￥]?\s*\d|価格\s*(?:は)?\s*[¥￥]?\s*\d|[¥￥]?\s*\d[\d,]*\s*円\s*で(?:読|購入|お求め|手に入|楽しめ)|[¥￥]?\s*0\s*円)[^。！!\n]*[。！!\n]?/g;
+
+/**
+ * 販促本文から「捏造されがちな事実」を除去する (決定的・純関数)。
+ *   - 生 URL / Amazon 短縮 URL (LLM が作った偽 ASIN リンクを含む)
+ *   - 行っていないセール・割引・クーポン
+ *   - 根拠のないランキング・部数・受賞主張
+ *   - 価格への言及 (検証済み価格を後段で注入するため)
+ * 事実は finalizePromoBody が DB の正データから注入し直す。
+ */
+export function sanitizePromoBody(body: string): string {
+  let s = String(body ?? '');
+  s = s.replace(RAW_URL_RE, ' ');
+  s = s.replace(AMZN_SHORT_RE, ' ');
+  s = s.replace(SALE_SENTENCE_RE, '');
+  s = s.replace(RANK_SENTENCE_RE, '');
+  s = s.replace(PRICE_SENTENCE_RE, '');
+  // 空白/空行の後始末。
+  s = s
+    .replace(/[ \t　]{2,}/g, ' ')
+    .replace(/[ \t　]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n');
+  return s.trim();
+}
+
+/** 検証済み価格から定型の価格訴求行を作る。価格不明なら KU 無料訴求のみ。 */
+export function priceFactLine(priceJpy: number | null | undefined): string {
+  if (typeof priceJpy === 'number' && Number.isFinite(priceJpy) && priceJpy > 0) {
+    return `📘 Kindle ${priceJpy}円（${KU_FREE_NOTE}）`;
+  }
+  return `📘 ${KU_FREE_NOTE}`;
+}
+
+/** tags のうち body にまだ含まれない # 付きタグを順序保持で返す。 */
+function newTagsFor(tags: readonly string[], body: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of tags) {
+    const t0 = typeof raw === 'string' ? raw.trim() : '';
+    if (!t0) continue;
+    const t = t0.startsWith('#') ? t0 : `#${t0}`;
+    if (seen.has(t) || body.includes(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+/** finalizePromoBody への入力(検証済み事実)。 */
+export interface FinalizeFacts {
+  channel: string;
+  body: string;
+  asin?: string | null;
+  priceJpy?: number | null;
+  /** アカウント戦略の定番タグ(未指定/空ならデフォルト本紹介タグにフォールバック)。 */
+  hashtags?: readonly string[] | null;
+}
+
+const PURCHASE_LABEL_X = '\n\n▼詳細・購入はこちら\n';
+const PURCHASE_LABEL_IG_LINK = '\n\n📚 詳細・購入はこちら（プロフィールのリンクからも）\n';
+const IG_NO_LINK = '\n\nプロフィールのリンクから見に来てください。';
+
+/**
+ * 投稿本文を「事実サニタイズ → 検証済み価格/正規URL/ハッシュタグ注入」で仕上げる。
+ * F-052/F-057 の finalize を、事実の正確性を保証する形に統合したもの。
+ *   - X: 280 重み内で 本文 + 価格 + URL + ハッシュタグ(最低限を必ず確保) を成立させる。
+ *   - instagram/tiktok/note: 長文可。全付与。IG は本文中 URL 非活性なので導線文を添える。
+ *   - blog: 本文重視。価格/URL のみ、ハッシュタグ無し。
+ * 実 ASIN が無ければ偽 URL を出さない (サニタイズで除去済み・注入もしない)。
+ */
+export function finalizePromoBody(facts: FinalizeFacts): string {
+  const channel = facts.channel;
+  const clean = sanitizePromoBody(facts.body);
+  const url = amazonUrlForAsin(facts.asin);
+  const priceLine = priceFactLine(facts.priceJpy);
+  const tags = resolveHashtags(facts.hashtags);
+
+  if (channel === 'blog') {
+    let out = clean ? `${clean}\n\n${priceLine}` : priceLine;
+    if (url) out += `${PURCHASE_LABEL_X}${url}`;
+    return out;
+  }
+
+  if (channel !== 'x') {
+    let out = clean ? `${clean}\n\n${priceLine}` : priceLine;
+    if (url) {
+      out += channel === 'instagram' ? `${PURCHASE_LABEL_IG_LINK}${url}` : `${PURCHASE_LABEL_X}${url}`;
+    } else if (channel === 'instagram' || channel === 'tiktok') {
+      out += IG_NO_LINK;
+    }
+    return appendHashtags(channel, out, tags);
+  }
+
+  // --- X: 280 重み予算内で成立させる ---
+  let suffix = `\n\n${priceLine}`;
+  if (url) suffix += `${PURCHASE_LABEL_X}${url}`;
+  const suffixWeight = weightedTweetLengthWithUrls(suffix);
+  // ハッシュタグは最低 2 つ分の枠を予約して本文を切り詰める(X で必ずタグが付くように)。
+  const reserved = newTagsFor(tags, clean).slice(0, 2);
+  let tagReserve = 0;
+  reserved.forEach((t, i) => {
+    tagReserve += (i === 0 ? 2 : 1) + weightedTweetLength(t);
+  });
+  const bodyBudget = Math.max(0, X_MAX_WEIGHT - suffixWeight - tagReserve);
+  const fittedBody = truncateToWeight(clean.trim(), bodyBudget);
+  const withSuffix = `${fittedBody}${suffix}`;
+  return appendHashtags('x', withSuffix, tags);
+}
+
 /** 記事見出しを summary / 本文の先頭行から決める (最大 60 字)。 */
 function deriveTitle(summary: string | undefined, body: string): string {
   const firstLine = (s: string): string => {

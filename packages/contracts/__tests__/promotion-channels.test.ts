@@ -15,6 +15,10 @@ import {
   amazonUrlForAsin,
   appendPurchaseLink,
   appendHashtags,
+  sanitizePromoBody,
+  priceFactLine,
+  finalizePromoBody,
+  KU_FREE_NOTE,
   X_MAX_WEIGHT,
   X_URL_WEIGHT,
 } from '../src/promotion/channels.js';
@@ -229,6 +233,128 @@ describe('appendHashtags', () => {
     const withLink = appendPurchaseLink('x', 'あ'.repeat(100), 'B0FVFCKJNF');
     const out = appendHashtags('x', withLink, ['#仕事術', '#タスク管理']);
     expect(weightedTweetLengthWithUrls(out)).toBeLessThanOrEqual(X_MAX_WEIGHT);
+  });
+});
+
+describe('sanitizePromoBody — 捏造事実の除去 (品質改善 2026-07-29)', () => {
+  it('生URL(捏造ASINリンク含む)を除去する', () => {
+    const out = sanitizePromoBody('良書です。 https://www.amazon.co.jp/dp/B0FAKE00000 どうぞ');
+    expect(out).not.toContain('http');
+    expect(out).not.toContain('B0FAKE00000');
+    expect(out).toContain('良書です');
+  });
+  it('Amazon短縮URLも除去する', () => {
+    const out = sanitizePromoBody('チェック → amzn.to/abc123 です');
+    expect(out).not.toContain('amzn.to');
+  });
+  it('行っていないセール/割引の文を除去する', () => {
+    const out = sanitizePromoBody('今だけ7日間限定99円！通常480円→99円。良い本です。');
+    expect(out).not.toMatch(/99円|セール|限定|通常/);
+    expect(out).toContain('良い本です');
+  });
+  it('根拠のないランキング/実績主張を除去する', () => {
+    const out = sanitizePromoBody('Amazon自己啓発カテゴリで1位を獲得！内容は本物です。');
+    expect(out).not.toMatch(/1位|ランキング|カテゴリ.*位/);
+    expect(out).toContain('内容は本物');
+  });
+  it('価格への言及を除去する(検証済み価格を後段で注入するため)', () => {
+    const out = sanitizePromoBody('Kindleで480円 / Kindle Unlimited会員は0円で読めます。おすすめです。');
+    expect(out).not.toMatch(/480円|0円/);
+    expect(out).toContain('おすすめ');
+  });
+  it('書名中の金額(例「月12万円で…」)は壊さない', () => {
+    const out = sanitizePromoBody('『月12万円で心ゆたかに暮らす』という本を書きました。');
+    expect(out).toContain('月12万円で心ゆたかに暮らす');
+  });
+});
+
+describe('priceFactLine', () => {
+  it('価格ありは Kindle◯円 + KU無料訴求', () => {
+    expect(priceFactLine(480)).toBe(`📘 Kindle 480円（${KU_FREE_NOTE}）`);
+  });
+  it('価格なし/0は KU無料訴求のみ', () => {
+    expect(priceFactLine(null)).toBe(`📘 ${KU_FREE_NOTE}`);
+    expect(priceFactLine(0)).toBe(`📘 ${KU_FREE_NOTE}`);
+  });
+});
+
+describe('finalizePromoBody — 事実サニタイズ + 検証済み事実注入', () => {
+  it('X: 捏造URLを消し、実ASINの正規URL・実価格・ハッシュタグを注入し 280 内に収める', () => {
+    const out = finalizePromoBody({
+      channel: 'x',
+      body: '努力の常識を疑う本です。 https://www.amazon.co.jp/dp/B0FAKE00000 通常480円→99円セール中！',
+      asin: 'B0FVFCKJNF',
+      priceJpy: 480,
+      hashtags: ['#読書', '#自己啓発'],
+    });
+    expect(out).toContain('https://www.amazon.co.jp/dp/B0FVFCKJNF'); // 正規URL
+    expect(out).not.toContain('B0FAKE00000'); // 捏造URL除去
+    expect(out).not.toMatch(/99円|セール/); // 捏造セール除去
+    expect(out).toContain('Kindle 480円'); // 検証済み価格
+    expect(out).toMatch(/#(読書|自己啓発)/); // ハッシュタグ必須
+    expect(weightedTweetLengthWithUrls(out)).toBeLessThanOrEqual(X_MAX_WEIGHT);
+  });
+  it('X: 実ASINが無ければ偽URLを一切出さない', () => {
+    const out = finalizePromoBody({
+      channel: 'x',
+      body: '良書。 https://www.amazon.co.jp/dp/B0FAKE00000',
+      asin: null,
+      priceJpy: 550,
+      hashtags: ['#本'],
+    });
+    expect(out).not.toContain('http');
+    expect(out).toContain('Kindle 550円');
+    expect(out).toContain('#本');
+  });
+  it('X: 短い本文でもハッシュタグが必ず付く(枠を予約)', () => {
+    const out = finalizePromoBody({
+      channel: 'x',
+      body: 'あ'.repeat(120), // weighted 240
+      asin: 'B0FVFCKJNF',
+      priceJpy: 480,
+      hashtags: ['#読書', '#おすすめ本'],
+    });
+    expect(out).toMatch(/#読書|#おすすめ本/);
+    expect(weightedTweetLengthWithUrls(out)).toBeLessThanOrEqual(X_MAX_WEIGHT);
+  });
+  it('instagram: 長文可・URL明記・プロフィール導線・全ハッシュタグ', () => {
+    const out = finalizePromoBody({
+      channel: 'instagram',
+      body: 'あ'.repeat(200),
+      asin: 'B0FVFCKJNF',
+      priceJpy: 680,
+      hashtags: ['#本紹介', '#読書記録', '#ブックスタグラム'],
+    });
+    expect(out).toContain('あ'.repeat(200));
+    expect(out).toContain('https://www.amazon.co.jp/dp/B0FVFCKJNF');
+    expect(out).toContain('プロフィール');
+    expect(out).toContain('Kindle 680円');
+    expect(out).toContain('#ブックスタグラム');
+  });
+  it('tiktok: ASINなしでも価格・導線・ハッシュタグを付与', () => {
+    const out = finalizePromoBody({
+      channel: 'tiktok',
+      body: 'この本おすすめです',
+      asin: null,
+      priceJpy: 500,
+      hashtags: null, // → デフォルト本紹介タグ
+    });
+    expect(out).toContain('Kindle 500円');
+    expect(out).toContain('プロフィール');
+    expect(out).toMatch(/#本紹介|#読書/);
+  });
+  it('blog: 本文重視・ハッシュタグ無し・価格/URLのみ', () => {
+    const out = finalizePromoBody({
+      channel: 'blog',
+      body: 'ブログ記事の骨子',
+      asin: 'B0FVFCKJNF',
+      priceJpy: 750,
+      hashtags: ['#本'],
+    });
+    expect(out).toContain('ブログ記事の骨子');
+    expect(out).toContain('Kindle 750円');
+    expect(out).toContain('https://www.amazon.co.jp/dp/B0FVFCKJNF');
+    expect(out).not.toContain('#本');
   });
 });
 

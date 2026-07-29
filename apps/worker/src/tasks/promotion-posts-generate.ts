@@ -4,12 +4,7 @@ import { z } from 'zod';
 import {
   buildPromotionPosts,
   pickAccountForChannel,
-  appendPurchaseLink,
-  appendHashtags,
-  amazonUrlForAsin,
-  truncateToWeight,
-  resolveHashtags,
-  X_MAX_WEIGHT,
+  finalizePromoBody,
 } from '@a2p/contracts/promotion/channels';
 import type { PromotionPlanOutput } from '@a2p/contracts/agents/promoter';
 import { AccountStrategyProfileSchema } from '@a2p/contracts/agents';
@@ -48,8 +43,16 @@ export interface PromotionPostsGeneratePrisma {
   book: {
     findUnique: (args: {
       where: { id: string };
-      select: { asin: true; theme: { select: { genre: true; target_reader: true } } };
-    }) => Promise<{ asin: string | null; theme: { genre: string; target_reader: string | null } | null } | null>;
+      select: {
+        asin: true;
+        theme: { select: { genre: true; target_reader: true } };
+        kdpMetadata: { select: { price_jpy: true } };
+      };
+    }) => Promise<{
+      asin: string | null;
+      theme: { genre: string; target_reader: string | null } | null;
+      kdpMetadata: { price_jpy: number } | null;
+    } | null>;
   };
   promotionAccount: {
     findMany: (args: {
@@ -139,10 +142,15 @@ export async function runPromotionPostsGenerate(
   // P4 増分2: 接続済み台帳アカウントへ投稿をルーティング（無ければ channel 既定設定を使う）。
   const bookRow = await prisma.book.findUnique({
     where: { id: bookId },
-    select: { asin: true, theme: { select: { genre: true, target_reader: true } } },
+    select: {
+      asin: true,
+      theme: { select: { genre: true, target_reader: true } },
+      kdpMetadata: { select: { price_jpy: true } },
+    },
   });
   const genre = bookRow?.theme?.genre ?? null;
   const asin = bookRow?.asin ?? null;
+  const priceJpy = bookRow?.kdpMetadata?.price_jpy ?? null;
   const bookTargetReader = bookRow?.theme?.target_reader ?? null;
   const connectedAccounts = await prisma.promotionAccount.findMany({
     where: { status: 'connected' },
@@ -190,19 +198,18 @@ export async function runPromotionPostsGenerate(
     for (const [id, r] of res) reviewed.set(id, { body: r.body, score: r.score, reason: r.reason });
   }
 
-  // 売上導線: ASIN があれば購入リンクを付与。**X のみ** 重み(280,日本語=2,URL=23)に収める。
-  // IG/TikTok/note/blog は長文キャプション可なのでそのまま(フルキャプション)。
-  // 最後にチャンネル戦略の定番ハッシュタグを付与する。
-  const finalizeBody = (channel: string, body: string): string => {
-    const withLink = amazonUrlForAsin(asin)
-      ? appendPurchaseLink(channel, body, asin)
-      : channel === 'x'
-        ? truncateToWeight(body.trim(), X_MAX_WEIGHT)
-        : body;
-    if (channel === 'blog') return withLink;
-    const tags = resolveHashtags(coreHashtagsByChannel.get(channel));
-    return appendHashtags(channel, withLink, tags);
-  };
+  // 事実サニタイズ + 検証済み事実の注入 (2026-07-29 品質改善):
+  // LLM 生成本文から捏造 URL/価格/セール/実績を除去し、DB の正データ
+  // (実 ASIN 由来の正規 URL・kdp_metadata.price_jpy・戦略ハッシュタグ) を注入する。
+  // X は 280 重み内で本文+価格+URL+ハッシュタグを必ず成立させる。実 ASIN が無ければ偽 URL は出さない。
+  const finalizeBody = (channel: string, body: string): string =>
+    finalizePromoBody({
+      channel,
+      body,
+      asin,
+      priceJpy,
+      hashtags: coreHashtagsByChannel.get(channel) ?? null,
+    });
 
   const created = await prisma.promotionPost.createMany({
     data: drafts.map((d, i) => {
