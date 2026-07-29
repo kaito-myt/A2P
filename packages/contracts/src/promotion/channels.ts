@@ -364,12 +364,41 @@ export function sanitizePromoBody(body: string): string {
   s = s.replace(SALE_SENTENCE_RE, '');
   s = s.replace(RANK_SENTENCE_RE, '');
   s = s.replace(PRICE_SENTENCE_RE, '');
+  // 購入導線/リンクのプレースホルダ行を除去する。購入リンクはコード側が正規URLで付与するため、
+  // LLM が書いた「(リンク)」「▼Amazon商品ページ」「購入はこちら」等の空導線は不要 (URLを剥がすと
+  // 見出しだけ残って不格好になる)。行単位で判定して落とす。
+  s = s
+    .split('\n')
+    .filter((line) => !isCtaPlaceholderLine(line))
+    .join('\n');
   // 空白/空行の後始末。
   s = s
     .replace(/[ \t　]{2,}/g, ' ')
     .replace(/[ \t　]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n');
   return s.trim();
+}
+
+/** 「(リンク)」「▼Amazonの商品ページはこちら」「ご購入はこちら」等、URL無しの購入導線だけの行か。 */
+function isCtaPlaceholderLine(line: string): boolean {
+  const t = line
+    .replace(/^[\s　#*>・►▶▼■>：:\-—–（(【\[]+/, '')
+    .replace(/[\s　）)】\]：:！!。．.]+$/, '')
+    .trim();
+  if (!t) return false;
+  // 「リンク」「URL」単体のプレースホルダ
+  if (/^(?:リンク|URL)$/i.test(t)) return true;
+  // 「Amazon(の)商品ページ(はこちら)」「(ご)購入はこちら」「詳細はこちら」「こちらから」等
+  if (
+    /^(?:amazon|アマゾン)?(?:の)?(?:商品)?ページ(?:はこちら|へ|:)?$/i.test(t) ||
+    /^(?:ご)?購入(?:は)?こちら(?:から)?$/.test(t) ||
+    /^(?:詳細|お求め|ご注文|ご購入)(?:は)?こちら(?:から)?$/.test(t) ||
+    /^こちら(?:から)?(?:どうぞ)?$/.test(t) ||
+    /^(?:amazon|アマゾン)(?:の)?(?:商品)?ページ/i.test(t)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /** 検証済み価格から定型の価格訴求行を作る。価格不明なら KU 無料訴求のみ。 */

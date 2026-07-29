@@ -266,6 +266,18 @@ describe('sanitizePromoBody — 捏造事実の除去 (品質改善 2026-07-29)'
     const out = sanitizePromoBody('『月12万円で心ゆたかに暮らす』という本を書きました。');
     expect(out).toContain('月12万円で心ゆたかに暮らす');
   });
+  it('URL無しの購入導線プレースホルダ行を除去する', () => {
+    const out = sanitizePromoBody('良書です。\n\n▼Amazonの商品ページはこちら\n(リンク)\n\nぜひ。');
+    expect(out).not.toMatch(/リンク|商品ページ/);
+    expect(out).toContain('良書です');
+    expect(out).toContain('ぜひ');
+  });
+  it('「ご購入はこちら」「詳細はこちら」等の導線行も除去する', () => {
+    const out = sanitizePromoBody('内容紹介。\nご購入はこちら\n詳細はこちらから\n本文つづき');
+    expect(out).not.toMatch(/購入はこちら|詳細はこちら/);
+    expect(out).toContain('内容紹介');
+    expect(out).toContain('本文つづき');
+  });
 });
 
 describe('priceFactLine', () => {
