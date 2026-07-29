@@ -12,6 +12,7 @@
 import { createLogger } from '@a2p/contracts/logger';
 
 import { requestOtpViaLine, pushLine, type LineAuthRelayPrisma } from '../lib/line-auth-relay.js';
+import type { KdpProxyConfig } from './kdp-proxy.js';
 import { UA, LAUNCH_ARGS } from './playwright-browser-port.js';
 
 const log = createLogger('worker.sales-fetch.kdp-login-refresh');
@@ -39,6 +40,8 @@ export interface KdpLoginRefreshDeps {
   prisma: LineAuthRelayPrisma;
   /** 直前まで使っていた storageState (device-trust cookie 維持のため引き継ぐ)。 */
   oldStorageState?: string;
+  /** 自宅回線経由の HTTP プロキシ(住宅IP)。未指定なら直結。データセンターIPだと anti-bot に当たるため通常は指定する。 */
+  proxy?: KdpProxyConfig;
 }
 
 export type KdpLoginRefreshResult =
@@ -151,7 +154,12 @@ export async function refreshKdpSession(deps: KdpLoginRefreshDeps): Promise<KdpL
     return { ok: false, reason: 'unknown', message: `playwright unavailable: ${errMsg(err)}` };
   }
 
-  const browser = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
+  const browser = await chromium.launch({
+    headless: true,
+    args: LAUNCH_ARGS,
+    ...(deps.proxy ? { proxy: deps.proxy } : {}),
+  });
+  if (deps.proxy) log.info({ server: deps.proxy.server }, 'refreshKdpSession via home proxy');
   try {
     const context = await browser.newContext({
       storageState: deps.oldStorageState

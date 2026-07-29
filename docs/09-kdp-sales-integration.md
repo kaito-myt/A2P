@@ -192,3 +192,34 @@ Amazon はヘッドレス自動ログインを bot 検知でブロックしが�
 ### 9.5 共有パッケージ
 - `@a2p/kdp-report`(parse/normalize + xlsx)。web(手動アップロード)と worker(自動取得)で共有。
   web の `lib/kdp-sales/{parse,normalize}.ts` は互換シム(再エクスポート)。
+
+### 9.6 自宅プロキシ経由アクセス(住宅IP) — anti-bot 回避
+Railway のデータセンター IP から Amazon にログインすると、再認証(`max_auth_age=0`)で
+CAPTCHA/停滞などの anti-bot に高確率で当たり、ヘッドレス自動ログインが完了しない。
+対策として **worker の KDP アクセスを運営者の自宅回線(住宅IP)経由に切り替える**トンネルを用意する。
+
+構成:
+```
+[自宅PC] scripts/kdp-home-proxy.mjs
+  ├─ 認証付き HTTP プロキシ(CONNECT トンネル) 127.0.0.1:8899
+  ├─ ngrok tcp 8899  → 公開アドレス host:port
+  └─ app_settings.kdp_proxy_url に host:port を heartbeat 公開(60s毎, enabled=true)
+        │
+        ▼
+[Railway worker] resolveKdpProxy(app_settings)
+  └─ Playwright launch({ proxy: { server:'http://host:port', username, password }})
+        → downloadReport / refreshKdpSession が住宅IPから Amazon にアクセス
+```
+
+- **認証情報は DB に置かない**。ユーザ/パスは env `KDP_PROXY_USER` / `KDP_PROXY_PASS`
+  (Railway worker と自宅 `scripts/.kdp-proxy.env` で一致させる)。DB に載るのは ephemeral な
+  ngrok アドレスのみ。
+- **鮮度判定**: `kdp_proxy_updated_at` が 5 分より古い、または `kdp_proxy_enabled=false` の場合、
+  worker は proxy を使わず**直結にフォールバック**(自宅PCを落とせば従来動作へ自動回帰)。
+  → `resolveKdpProxy` / `buildProxyConfig`(`apps/worker/src/tasks/sales-fetch/kdp-proxy.ts`)。
+- **AppSettings 追加列**: `kdp_proxy_enabled`(Boolean, 既定 false) / `kdp_proxy_url`(host:port) /
+  `kdp_proxy_updated_at`(DateTime)。migration `20260730120000_kdp_home_proxy`。
+- 起動: 自宅作業中に `node scripts/kdp-home-proxy.mjs` を常駐させる(Ctrl+C で DB を
+  `enabled=false` に戻し worker は直結へ)。前提: ngrok 導入＋authtoken 設定済み。
+- 適用範囲: レポート DL(有効セッションなら本来 Railway 直結でも通る)と再ログイン(anti-bot が
+  かかる部分)の両方を proxy 経由に統一し、IP フィンガープリントの不一致を避ける。

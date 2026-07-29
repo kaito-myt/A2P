@@ -14,6 +14,8 @@
  *   (Playwright 依存は playwright-browser-port.ts に閉じる)。
  */
 
+import type { KdpProxyConfig } from './kdp-proxy.js';
+
 export interface DownloadReportArgs {
   /** 復号済み Playwright storageState(JSON 文字列)。ログイン済み Cookie を含む。 */
   sessionState: string;
@@ -21,6 +23,8 @@ export interface DownloadReportArgs {
   yearMonth: string;
   /** タイムアウト ms (既定 60_000)。 */
   timeoutMs?: number;
+  /** 自宅回線経由の HTTP プロキシ(住宅IP)。未指定なら直結(従来動作)。 */
+  proxy?: KdpProxyConfig;
 }
 
 export type DownloadReportResult =

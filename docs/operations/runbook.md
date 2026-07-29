@@ -233,6 +233,36 @@ KDP の AI 生成コンテンツ開示ポリシーが変わった場合:
 
 ---
 
+## 6.5 KDP 売上取得を自宅回線(住宅IP)経由にする — anti-bot 回避
+
+Railway のデータセンター IP からの Amazon ログインは anti-bot(CAPTCHA/停滞)に当たりやすい。
+自宅作業中は worker の KDP アクセスを自宅の住宅IP経由に切り替えられる(詳細: `docs/09 §9.6`)。
+
+**初回セットアップ(1回だけ):**
+1. ngrok を導入し authtoken を設定
+   ```bash
+   winget install Ngrok.Ngrok
+   ngrok config add-authtoken <https://dashboard.ngrok.com で取得したトークン>
+   ```
+   ※ winget 後は PATH 反映のためシェル再起動。フルパスは
+   `C:\Users\<user>\AppData\Local\Microsoft\WinGet\Packages\Ngrok.Ngrok_*\ngrok.exe`。
+2. `scripts/.kdp-proxy.env`(gitignore 済)を用意 — `scripts/.kdp-proxy.env.example` を複製し
+   `DATABASE_PUBLIC_URL` / `KDP_PROXY_USER` / `KDP_PROXY_PASS` を記入。
+   認証情報は Railway `A2P-Worker` の env `KDP_PROXY_USER` / `KDP_PROXY_PASS` と**一致**させる。
+
+**日常運用:**
+```bash
+# 自宅作業中に常駐起動(このウィンドウは開いたまま)
+node scripts/kdp-home-proxy.mjs
+#  → 認証付きプロキシ + ngrok + DB heartbeat 公開。worker は住宅IP経由に自動切替。
+# Ctrl+C で停止 → DB を kdp_proxy_enabled=false に戻し worker は直結へ自動回帰。
+```
+- 起動中は `app_settings.kdp_proxy_enabled=true` かつ `kdp_proxy_url` が 60s 毎に更新される。
+- worker は `kdp_proxy_updated_at` が 5 分超で古いと直結にフォールバック(自宅PCを落として放置でも安全)。
+- 動作確認: 起動後に売上取得を手動トリガ → worker ログに `via home proxy` が出れば経由成功。
+
+---
+
 ## 7. 日常運用チートシート
 
 ```bash

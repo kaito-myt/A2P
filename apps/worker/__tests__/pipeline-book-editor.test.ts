@@ -864,7 +864,9 @@ describe('runPipelineBookEditor error paths', () => {
     expect(failedCall).toBeDefined();
   });
 
-  it('ai_disclosure_text 空文字 → ValidationError, Job=failed (R-05 違反防止)', async () => {
+  it('ai_disclosure_text 空(空白のみ) → 許容: editBook を空文字で呼び本文へ AI 開示文を挿入しない', async () => {
+    // 運営者要望により本文への AI 開示文は挿入しない運用 (既定で空)。
+    // 空/空白のみは正常系: editBook は aiDisclosureText='' で呼ばれ、末尾挿入は agent 側で skip される。
     const { job, book, theme, chapters } = makeJobBookThemeChapters();
     const { prisma, captures } = buildPrisma({
       jobs: [job],
@@ -877,15 +879,12 @@ describe('runPipelineBookEditor error paths', () => {
     const { addJob } = makeAddJob();
 
     await expect(
-      runPipelineBookEditor(
-        { book_id: 'book_1', job_id: 'job_editor_1' },
-        addJob,
-        deps,
-      ),
-    ).rejects.toBeInstanceOf(ValidationError);
-    expect(editCalls).toHaveLength(0);
+      runPipelineBookEditor({ book_id: 'book_1', job_id: 'job_editor_1' }, addJob, deps),
+    ).resolves.not.toThrow();
+    expect(editCalls).toHaveLength(1);
+    expect((editCalls[0] as { aiDisclosureText?: unknown }).aiDisclosureText).toBe('');
     const failedCall = captures.jobUpdates.find((c) => c.data.status === 'failed');
-    expect(failedCall).toBeDefined();
+    expect(failedCall).toBeUndefined();
   });
 
   it('editBook throw → 透過, Job failed, ChapterRevision 0 件', async () => {

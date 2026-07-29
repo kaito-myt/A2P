@@ -8,6 +8,7 @@ import { parseKdpReportWorkbook, normalizeKdpRows } from '@a2p/kdp-report';
 import { isLineRelayConfigured, pushLine, type LineAuthRelayPrisma } from './lib/line-auth-relay.js';
 import type { BrowserPort } from './sales-fetch/browser-port.js';
 import { refreshKdpSession } from './sales-fetch/kdp-login-refresh.js';
+import { resolveKdpProxy, type KdpProxyConfig, type KdpProxyPrisma } from './sales-fetch/kdp-proxy.js';
 
 /**
  * `sales.fetch` ワーカタスク (F-038, 自動取得 Phase2)。
@@ -112,6 +113,8 @@ export interface SalesFetchDeps {
   prisma?: SalesFetchPrisma;
   logger?: Logger;
   now?: () => Date;
+  /** 自宅回線経由の HTTP プロキシ(住宅IP)。指定時は DL/再ログインをこのプロキシ経由で行う。 */
+  proxy?: KdpProxyConfig;
 }
 
 export interface SalesFetchResult {
@@ -155,7 +158,11 @@ export async function runSalesFetch(deps: SalesFetchDeps): Promise<SalesFetchRes
   }
 
   // 2. レポート DL
-  let dl = await deps.browserPort.downloadReport({ sessionState, yearMonth: payload.year_month });
+  let dl = await deps.browserPort.downloadReport({
+    sessionState,
+    yearMonth: payload.year_month,
+    proxy: deps.proxy,
+  });
 
   // 2b. セッション切れ → LINE 中継 + AMAZON_EMAIL/PASSWORD が揃っていれば自動再ログインを試みる。
   if (!dl.ok && dl.reason === 'session_expired') {
@@ -163,7 +170,7 @@ export async function runSalesFetch(deps: SalesFetchDeps): Promise<SalesFetchRes
       isLineRelayConfigured() && Boolean(process.env.AMAZON_EMAIL) && Boolean(process.env.AMAZON_PASSWORD);
     if (canAutoRelogin) {
       await pushLine('KDP売上取得: セッション切れを検知。自動再ログインを試みます。').catch(() => {});
-      const ref = await refreshKdpSession({ prisma: db, oldStorageState: sessionState });
+      const ref = await refreshKdpSession({ prisma: db, oldStorageState: sessionState, proxy: deps.proxy });
       if (ref.ok) {
         try {
           await db.account.update({
@@ -176,6 +183,7 @@ export async function runSalesFetch(deps: SalesFetchDeps): Promise<SalesFetchRes
         const retryDl = await deps.browserPort.downloadReport({
           sessionState: ref.storageState,
           yearMonth: payload.year_month,
+          proxy: deps.proxy,
         });
         if (!retryDl.ok) {
           log.warn({ runId, reason: retryDl.reason }, 'auto re-login succeeded but retry download still failed');
@@ -323,5 +331,7 @@ export const salesFetchTask: Task = async (payload: unknown, _helpers) => {
   if (!parsed.success) {
     throw new Error(`Invalid sales.fetch payload: ${parsed.error.message}`);
   }
-  await runSalesFetch({ payload: parsed.data, browserPort: createPlaywrightBrowserPort() });
+  // 自宅プロキシ(住宅IP経由)が有効かつ heartbeat が新しければ、KDP アクセスを経由させる。
+  const proxy = (await resolveKdpProxy(defaultPrisma as unknown as KdpProxyPrisma)) ?? undefined;
+  await runSalesFetch({ payload: parsed.data, browserPort: createPlaywrightBrowserPort(), proxy });
 };

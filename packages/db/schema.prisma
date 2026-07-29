@@ -1070,6 +1070,15 @@ model AppSettings {
   autopass_content_enabled        Boolean  @default(false) // 本文承認を自動パス
   autopass_cover_enabled          Boolean  @default(false) // サムネ(表紙)承認を自動パス(合格時に自動採用→export)
   autopass_kdp_enabled            Boolean  @default(false) // KDP入稿を自動化(アシスト出版ツール scripts/kdp-publish.mjs の実行対象とする)
+  // F-038 補強: KDP アクセスを運営者の自宅回線(住宅IP)経由にするトンネルプロキシ設定。
+  // Railway のデータセンター IP だと Amazon ログインが anti-bot(CAPTCHA/停滞)に当たるため、
+  // 自宅PCで動くオーケストレータ(scripts/kdp-home-proxy.mjs)が ngrok の公開アドレスを
+  // kdp_proxy_url に heartbeat 公開し、worker はそれを HTTP プロキシとして Playwright に渡す。
+  // 認証情報(ユーザ/パス)は env(KDP_PROXY_USER/KDP_PROXY_PASS)に置き DB には保存しない。
+  // kdp_proxy_updated_at が古い(既定5分超)場合はトンネル停止とみなし直結にフォールバックする。
+  kdp_proxy_enabled               Boolean   @default(false) // 自宅プロキシ経由を有効化(マスタスイッチ)
+  kdp_proxy_url                   String? // 例: "1.tcp.ngrok.io:12345" (host:port、スキーム/認証は含めない)
+  kdp_proxy_updated_at            DateTime? // 自宅オーケストレータの最終 heartbeat 時刻(鮮度判定用)
   updated_at                      DateTime @updatedAt
 
   @@map("app_settings")

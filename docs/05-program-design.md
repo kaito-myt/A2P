@@ -956,6 +956,12 @@ model AppSettings {
   prompt_auto_approval_rollback_h   Int      @default(24)
   sales_auto_fetch_enabled          Boolean  @default(false)
   sales_auto_fetch_cron             String   @default("0 17 * * *") // 02:00 JST
+  // KDP アクセスを自宅回線(住宅IP)経由にするトンネルプロキシ設定 (docs/09 §9.6)。
+  // 自宅の scripts/kdp-home-proxy.mjs が ngrok アドレスを heartbeat 公開し、worker が
+  // Playwright の HTTP プロキシとして使う。認証情報は env(KDP_PROXY_USER/PASS)、DBには置かない。
+  kdp_proxy_enabled                 Boolean  @default(false)  // 自宅プロキシ経由の有効化
+  kdp_proxy_url                     String?  // ngrok の host:port
+  kdp_proxy_updated_at              DateTime? // 最終 heartbeat(5分超で失効→直結フォールバック)
   kdp_submit_timeout_minutes        Int      @default(10)
   kdp_submit_retry_count            Int      @default(2)
   job_log_retention_days            Int      @default(90)

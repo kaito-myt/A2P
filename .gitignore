@@ -45,3 +45,6 @@ scripts/.kdp-session.json
 scripts/.kdp-captures/
 kdp-session.json
 scripts/.kdp-userdata/
+
+# KDP home proxy secrets
+scripts/.kdp-proxy.env

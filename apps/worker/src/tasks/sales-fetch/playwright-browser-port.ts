@@ -49,7 +49,12 @@ async function downloadReport(args: DownloadReportArgs): Promise<DownloadReportR
     return { ok: false, reason: 'unknown', message: `playwright unavailable: ${errMsg(err)}` };
   }
 
-  const browser = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
+  const browser = await chromium.launch({
+    headless: true,
+    args: LAUNCH_ARGS,
+    ...(args.proxy ? { proxy: args.proxy } : {}),
+  });
+  if (args.proxy) log.info({ server: args.proxy.server }, 'downloadReport via home proxy');
   try {
     const context = await browser.newContext({
       // storageState 型は Playwright の StorageState (復号済み JSON をそのまま渡す)。
