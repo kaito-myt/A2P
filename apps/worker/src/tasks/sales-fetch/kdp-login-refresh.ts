@@ -20,11 +20,13 @@ const BOOKSHELF_URL = 'https://kdp.amazon.co.jp/ja_JP/bookshelf';
 const EMAIL_SELECTOR = '#ap_email, input[type="email"][name="email"]';
 const CONTINUE_SELECTOR = '#continue, input#continue';
 const PASSWORD_SELECTOR = '#ap_password, input[type="password"][name="password"]';
-const REMEMBER_ME_SELECTOR = '#rememberMe';
+const REMEMBER_ME_SELECTOR = '#rememberMe, #auth-remember-me';
 const SIGNIN_SUBMIT_SELECTOR = '#signInSubmit, input#signInSubmit';
 const OTP_SELECTOR = '#auth-mfa-otpcode, input[name="otpCode"], #cvf-input-code, input[name="code"]';
 const REMEMBER_DEVICE_SELECTOR = '#auth-mfa-remember-device';
-const OTP_SUBMIT_SELECTOR = '#auth-signin-button, input[type="submit"]';
+const OTP_SUBMIT_SELECTOR = '#auth-signin-button, #cvf-submit-otp-button, input[type="submit"]';
+/** signin URL / アカウント切替ウィジェットの検知。max_auth_age=0 の再認証はアカウント選択から始まる。 */
+const SIGNIN_URL_RE = /signin|\/ap\//i;
 
 const MAX_ITERS = 40;
 const ITER_WAIT_MS = 5000;
@@ -184,7 +186,10 @@ export async function refreshKdpSession(deps: KdpLoginRefreshDeps): Promise<KdpL
       }
 
       if (passVisible && passEl) {
-        await passEl.fill(password).catch(() => {});
+        // .fill だと Amazon 側の検証が発火しないことがあるため click→clear→type で確実に入力する。
+        await passEl.click().catch(() => {});
+        await passEl.fill('').catch(() => {});
+        await passEl.type(password, { delay: 25 }).catch(() => {});
         await page.check(REMEMBER_ME_SELECTOR).catch(() => {});
         await page.click(SIGNIN_SUBMIT_SELECTOR).catch(() => {});
         await page.waitForTimeout(3000);
@@ -201,6 +206,19 @@ export async function refreshKdpSession(deps: KdpLoginRefreshDeps): Promise<KdpL
         continue;
       }
 
+      // アカウント選択ページ (アカウントの切り替え): max_auth_age=0 の再認証は
+      // email/password/OTP のいずれも表示されないこの画面から始まることが多い。
+      // 保存済みアカウントのタイルをクリックしてパスワード画面へ進める。
+      // これが無いとサインインページで何もできずタイムアウトしていた (実障害の原因)。
+      if (SIGNIN_URL_RE.test(page.url())) {
+        const picked = await clickAccountTile(page, email);
+        if (picked) {
+          log.info({ picked }, 'clicked account-picker tile');
+          await page.waitForTimeout(3500);
+          continue;
+        }
+      }
+
       await page.waitForTimeout(ITER_WAIT_MS);
     }
 
@@ -215,6 +233,38 @@ export async function refreshKdpSession(deps: KdpLoginRefreshDeps): Promise<KdpL
   } finally {
     await browser.close().catch(() => {});
   }
+}
+
+/**
+ * アカウント選択ページで、保存済みメールアドレスに一致するアカウントのタイルを
+ * クリックする。見つからなければ「@ を含む(=アカウントらしい)最初のタイル」に
+ * フォールバックする。クリックできたらそのラベル(先頭40字)を、無ければ null を返す。
+ * scripts/kdp-backfill-asin.mjs の passReauth で実 KDP 検証済みのロジックを移植したもの。
+ */
+async function clickAccountTile(
+  page: import('playwright').Page,
+  email: string,
+): Promise<string | null> {
+  return page
+    .evaluate((mail) => {
+      const t = (mail || '').toLowerCase();
+      const nodes = Array.from(
+        document.querySelectorAll('a, div[role="button"], button, [data-a-target], .a-link-normal'),
+      ) as HTMLElement[];
+      const hit =
+        (t ? nodes.find((n) => (n.textContent || '').toLowerCase().includes(t)) : undefined) ??
+        nodes.find(
+          (n) =>
+            !/アカウントの追加|別のアカウント/.test(n.textContent || '') &&
+            /@/.test(n.textContent || ''),
+        );
+      if (hit) {
+        hit.click();
+        return (hit.textContent || '').trim().slice(0, 40);
+      }
+      return null;
+    }, email)
+    .catch(() => null);
 }
 
 function errMsg(err: unknown): string {
