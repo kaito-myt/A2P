@@ -134,42 +134,48 @@ async function passReauth(page, db) {
   return false;
 }
 
-/** タイトルで検索し、一致行から {asin, priceJpy} を抽出する。 */
+/** 検索ボックスをリトライ付きで取得。reauth 直後の遷移で null になることがある。 */
+async function getSearchBox(page, db) {
+  for (let i = 0; i < 6; i++) {
+    await passReauth(page, db);
+    const sb = await page.$('input[type="search"], input[aria-label*="検索"], input[placeholder*="検索"], input[name*="search"]').catch(() => null);
+    if (sb && (await sb.isVisible().catch(() => false))) return sb;
+    await page.waitForTimeout(2500);
+  }
+  return null;
+}
+
+/**
+ * タイトルで検索し、ページ上の ASIN/価格を安全に抽出する。
+ * 誤登録を避けるため「ページ上の live な B0 ASIN が一意のときだけ」採用する
+ * (複数ヒットは ambiguous としてスキップ)。価格は表示があれば拾い、無ければ null(据え置き)。
+ */
 async function lookup(db, page, title) {
   await page.goto(BOOKSHELF, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(5000);
-  if (!(await passReauth(page, db))) return { error: 'reauth_failed' };
-  const sb = await page.$('input[type="search"], input[aria-label*="検索"], input[placeholder*="検索"], input[name*="search"]').catch(() => null);
+  const sb = await getSearchBox(page, db);
   if (!sb) return { error: 'no_search_box' };
-  // タイトル先頭 20 文字程度で検索(長すぎると検索が滑る)
-  const q = title.slice(0, 24);
-  await sb.fill(''); await sb.fill(q); await page.keyboard.press('Enter');
-  await page.waitForTimeout(5000);
+  await sb.fill(''); await sb.fill(title.trim()); await page.keyboard.press('Enter');
+  await page.waitForTimeout(6000);
 
-  // 各行(dots メニューを持つコンテナ)を走査し、タイトルを含む行のテキストを取る。
-  const rows = await page.$$('button[id$="-other-actions-announce"]');
-  if (rows.length === 0) return { error: 'not_found' };
-  const results = [];
-  for (const dots of rows) {
-    const text = await page.evaluate((el) => {
-      let n = el; for (let i = 0; i < 7 && n; i++) { const t = n.textContent || ''; if (t.trim().length > 30) return t; n = n.parentElement; }
-      return el.textContent || '';
-    }, dots).catch(() => '');
-    results.push(text);
-  }
-  // タイトル(先頭12字)を含む行を優先。無ければ最初の行。
-  const key = title.slice(0, 12);
-  const rowText = results.find((t) => t.includes(key)) || (rows.length === 1 ? results[0] : null);
-  if (!rowText) return { error: `ambiguous(${rows.length})`, rows: results.map((t) => t.slice(0, 60)) };
+  const info = await page.evaluate(() => {
+    const html = document.documentElement.outerHTML;
+    const asins = [...new Set((html.match(/B0[A-Z0-9]{8}/g) || []))];
+    const prices = [...new Set((html.match(/[¥￥]\s*[\d,]{2,}/g) || []))].map((s) => Number(s.replace(/[¥￥,\s]/g, ''))).filter((n) => n >= 99 && n <= 5000);
+    const dots = document.querySelectorAll('button[id$="-other-actions-announce"]').length;
+    const live = document.querySelectorAll('[id*="live-book-actions"]').length;
+    const bodyText = (document.body.textContent || '');
+    return { asins, prices, dots, live, hasReview: /レビュー中|出版準備中/.test(bodyText), hasLive: /販売中|ライブ/.test(bodyText) };
+  }).catch(() => null);
+  if (!info) return { error: 'eval_failed' };
+  if (info.dots === 0 && info.asins.length === 0) return { error: 'not_found' };
+  if (info.asins.length !== 1) return { error: `ambiguous(asins=${info.asins.length},dots=${info.dots})`, asins: info.asins };
 
-  const asinM = rowText.match(/B0[A-Z0-9]{8}/);
-  // 価格: 「￥1,234」「1,234 円」「¥ 500」等
-  const priceM = rowText.match(/[¥￥]\s*([\d,]+)/) || rowText.match(/([\d,]+)\s*円/);
   return {
-    asin: asinM ? asinM[0] : null,
-    priceJpy: priceM ? Number(priceM[1].replace(/,/g, '')) : null,
-    live: /販売中|ライブ|Live/i.test(rowText),
-    raw: rowText.slice(0, 120),
+    asin: info.asins[0],
+    priceJpy: info.prices.length === 1 ? info.prices[0] : null, // 価格も一意のときだけ採用
+    live: info.hasLive || info.live > 0,
+    raw: `dots=${info.dots} prices=${JSON.stringify(info.prices)} review=${info.hasReview} live=${info.hasLive}`,
   };
 }
 
