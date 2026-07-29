@@ -19,9 +19,24 @@ const ALL = process.argv.includes('--all');
 const USERDATA = 'C:/DEV/A2P/scripts/.kdp-userdata';
 const BOOKSHELF = 'https://kdp.amazon.co.jp/ja_JP/bookshelf';
 const STAGE = path.join(os.tmpdir(), 'kdp-publish-stage');
+const AMZ_EMAIL = process.env.AMAZON_EMAIL || '';
 const AMZ_PASS = process.env.AMAZON_PASSWORD || '';
+const LINE_PUSH_URL = 'https://api.line.me/v2/bot/message/push';
+const LINE_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
+const LINE_USER = process.env.LINE_USER_ID || process.env.LINE_ALLOWED_USER_ID || '';
 const OTP_SEL = '#auth-mfa-otpcode, input[name="otpCode"], #cvf-input-code, input[name="code"]';
+const MAX_OTP_ROUNDS = 3;
+const genId = () => 'kar_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
+
+async function pushLine(text) {
+  if (!LINE_TOKEN || !LINE_USER) { log('  LINE未設定 — push省略'); return false; }
+  try {
+    const res = await fetch(LINE_PUSH_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + LINE_TOKEN }, body: JSON.stringify({ to: LINE_USER, messages: [{ type: 'text', text }] }) });
+    if (!res.ok) { log('  LINE push失敗', res.status); return false; }
+    return true;
+  } catch (e) { log('  LINE push例外', e.message); return false; }
+}
 
 const dbUrl = process.env.DBURL || process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL;
 if (!dbUrl) { console.error('DBURL 未設定'); process.exit(1); }
@@ -33,32 +48,97 @@ async function dbClient() {
   return c;
 }
 
-async function passReauth(page) {
-  const authForm = async () => page.$('#ap_password, input[type="password"][name="password"], #signInSubmit, ' + OTP_SEL).catch(() => null);
-  if (!(await authForm())) return true;
-  log('🔐 再認証要求 → パスワード自動入力');
-  for (let i = 0; i < 60; i++) {
+// 認証待ちを1件作成 → LINE通知 → 5分ポーリング。code | null。
+async function awaitOtpOnce(db, page, prompt) {
+  const id = genId();
+  const expires = new Date(Date.now() + 5 * 60 * 1000);
+  await db.query(`INSERT INTO kdp_auth_requests (id, purpose, status, prompt, expires_at) VALUES ($1,'kdp_login_otp','pending',$2,$3)`, [id, prompt, expires]);
+  const ok = await pushLine(prompt);
+  if (!ok) log('  ※LINE未送信だがDBに認証待ち作成済(webhook経由で受信可)');
+  for (let i = 0; i < 150; i++) {
+    const r = await db.query(`SELECT code, status FROM kdp_auth_requests WHERE id=$1`, [id]);
+    const row = r.rows[0];
+    if (row && row.status === 'fulfilled' && row.code) { await db.query(`UPDATE kdp_auth_requests SET status='consumed', consumed_at=now() WHERE id=$1`, [id]); return row.code; }
+    await page.waitForTimeout(2000);
+  }
+  await db.query(`UPDATE kdp_auth_requests SET status='expired' WHERE id=$1 AND status='pending'`, [id]);
+  return null;
+}
+
+async function relayOtpViaLine(db, page, otpInput) {
+  for (let round = 1; round <= MAX_OTP_ROUNDS; round++) {
+    const prompt = round === 1
+      ? '🔐 A2P: KDP本棚の読み取りにログイン認証が必要です。\n認証アプリの6桁コードをこのトークに返信してください（5分以内）。'
+      : `🔁 A2P: 認証コードを再送してください（${round}/${MAX_OTP_ROUNDS}）。最新の6桁コードを返信してください（5分以内）。`;
+    log(`  LINE認証リレー round ${round}/${MAX_OTP_ROUNDS} — 返信待機中...`);
+    const code = await awaitOtpOnce(db, page, prompt);
+    if (!code) { await pushLine('⏰ A2P: コード未受信。もう一度送っていただければ再開します。'); continue; }
+    let el = otpInput;
+    if (!(await el?.isVisible().catch(() => false))) el = await page.$(OTP_SEL).catch(() => null);
+    if (el) await el.fill(code).catch(() => {});
+    await page.check('#auth-mfa-remember-device').catch(() => {});
+    const submit = (await page.$('#auth-signin-button').catch(() => null)) ? '#auth-signin-button' : (await page.$('#cvf-submit-otp-button').catch(() => null)) ? '#cvf-submit-otp-button' : 'input[type="submit"]';
+    await page.click(submit).catch(() => {});
+    await page.waitForTimeout(5000);
+    const stillOtp = await page.$(OTP_SEL).catch(() => null);
+    if (!(stillOtp && (await stillOtp.isVisible().catch(() => false)))) { log('  認証成功'); return true; }
+    await pushLine('❌ A2P: コードが不正/期限切れでした。新しい6桁コードを送ってください。');
+    otpInput = stillOtp;
+  }
+  return false;
+}
+
+// アカウント選択画面 → パスワード → OTP を通す。認証フォームが無ければ即通過。
+async function passReauth(page, db) {
+  const authFormOrPicker = async () =>
+    page.$('#ap_password, input[type="password"][name="password"], #signInSubmit, #ap_email, ' + OTP_SEL + ', a[href*="signin"], .cvf-account-switcher-spacing, [data-name="accountSwitcher"]').catch(() => null);
+  if (!/signin|\/ap\//i.test(page.url()) && !(await authFormOrPicker())) return true;
+  log('  🔐 再認証(reauth)要求 → 自動通過を試行');
+  let autoTries = 0;
+  for (let i = 0; i < 120; i++) {
+    // アカウント選択画面: 対象アカウントのタイルをクリックしてパスワード画面へ。
+    if (!(await page.$('#ap_password, input[type="password"][name="password"]').catch(() => null))) {
+      const picked = await page.evaluate((email) => {
+        const nodes = Array.from(document.querySelectorAll('a, div[role="button"], button, [data-a-target], .a-link-normal'));
+        const t = (email || '').toLowerCase();
+        const hit = nodes.find((n) => (n.textContent || '').toLowerCase().includes(t) && t) ||
+                    nodes.find((n) => /アカウントの追加|別のアカウント/.test(n.textContent || '') === false && /@/.test(n.textContent || ''));
+        if (hit) { hit.click(); return (hit.textContent || '').trim().slice(0, 40); }
+        return null;
+      }, AMZ_EMAIL).catch(() => null);
+      if (picked) { log('  アカウント選択:', picked); await page.waitForTimeout(3500); }
+    }
+    // email 入力(稀)
+    const emailEl = await page.$('#ap_email, input[type="email"][name="email"]').catch(() => null);
+    if (emailEl && AMZ_EMAIL && (await emailEl.isVisible().catch(() => false))) {
+      await emailEl.fill(AMZ_EMAIL).catch(() => {}); await page.click('#continue, input#continue').catch(() => {}); await page.waitForTimeout(2500);
+    }
+    // OTP → LINE
+    const otpEl = await page.$(OTP_SEL).catch(() => null);
+    if (otpEl && (await otpEl.isVisible().catch(() => false))) { if (!(await relayOtpViaLine(db, page, otpEl))) return false; }
+    // password 自動入力(最大3回)
     const passEl = await page.$('#ap_password, input[type="password"][name="password"]').catch(() => null);
-    if (passEl && (await passEl.isVisible().catch(() => false)) && AMZ_PASS) {
+    if (passEl && (await passEl.isVisible().catch(() => false)) && AMZ_PASS && autoTries < 3) {
+      autoTries++;
       await passEl.click().catch(() => {}); await passEl.fill('').catch(() => {});
-      await passEl.type(AMZ_PASS, { delay: 30 }).catch(() => {});
+      await passEl.type(AMZ_PASS, { delay: 25 }).catch(() => {});
       await page.check('#auth-remember-me, #rememberMe').catch(() => {});
       await page.click('#signInSubmit, input#signInSubmit').catch(() => {});
       await page.waitForTimeout(4000);
     }
-    const otpEl = await page.$(OTP_SEL).catch(() => null);
-    if (otpEl && (await otpEl.isVisible().catch(() => false))) log('⏳ OTP をブラウザで手入力してください(最大3分)');
-    await page.waitForTimeout(3000);
-    if (!(await authForm())) return true;
+    // 通過判定: bookshelf に到達 or 認証要素が消えた
+    if (/\/bookshelf/.test(page.url()) && !/signin/i.test(page.url())) return true;
+    if (!/signin|\/ap\//i.test(page.url()) && !(await page.$('#ap_password, ' + OTP_SEL).catch(() => null))) { await page.waitForTimeout(1500); return true; }
+    await page.waitForTimeout(2500);
   }
   return false;
 }
 
 /** タイトルで検索し、一致行から {asin, priceJpy} を抽出する。 */
-async function lookup(page, title) {
+async function lookup(db, page, title) {
   await page.goto(BOOKSHELF, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(5000);
-  await passReauth(page);
+  if (!(await passReauth(page, db))) return { error: 'reauth_failed' };
   const sb = await page.$('input[type="search"], input[aria-label*="検索"], input[placeholder*="検索"], input[name*="search"]').catch(() => null);
   if (!sb) return { error: 'no_search_box' };
   // タイトル先頭 20 文字程度で検索(長すぎると検索が滑る)
@@ -112,7 +192,7 @@ async function lookup(page, title) {
   let updated = 0, failed = 0;
   try {
     for (const b of books) {
-      const r = await lookup(page, b.title);
+      const r = await lookup(db, page, b.title);
       if (r.error) { log(`❓ ${b.title.slice(0, 20)} → ${r.error}`, r.rows ? JSON.stringify(r.rows) : ''); failed++; continue; }
       log(`📗 ${b.title.slice(0, 20)} → asin=${r.asin} price=${r.priceJpy} live=${r.live} | ${r.raw}`);
       if (!r.asin) { failed++; continue; }
